@@ -1,0 +1,19 @@
+# Superseded rule phrasings — one per line, exact text, added by the amendment
+# that superseded them. init.sh fails if any appears outside progress/ (which
+# is history and must not be rewritten) or this file.
+#
+# Why this exists: after the src/Cqrs amendment, the old two-project rule was
+# left standing in .claude/agents/reviewer.md — a file that instructs every
+# future reviewer. It was caught by a grep one review round AFTER the same
+# class of miss had already put everyone on notice. A discipline that fails
+# twice in two rounds under maximum attention will not hold twenty phases
+# later under normal attention, so the sweep is a check rather than a habit.
+#
+# Add a line here in the same commit that makes an amendment. One line per
+# amendment; it costs nothing and it converts "remember to sweep" into
+# something that fails.
+The only shared runtime code is `src/SharedKernel` (zero `PackageReference`) and `src/Contracts`
+No shared runtime code beyond `src/SharedKernel` and `src/Contracts`.
+The JSON wire shape must match #7 byte for byte
+money columns `int`
+Every `design.md` for a feature that ports a #7 mechanism carries a short section
