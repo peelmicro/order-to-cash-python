@@ -1,0 +1,39 @@
+# EditorConfig — https://editorconfig.org
+# Assessment #9. The baseline mirrors #7's and #8's so the three repositories
+# format identically where they can; the [*.py] section is the Python addition.
+# Lint and format *enforcement* (ruff, mypy) lives in pyproject.toml from
+# Phase 5 — ruff's line length is set to match max_line_length below.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 100
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.{json,jsonc}]
+indent_size = 2
+
+[*.sh]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+# ---------------------------------------------------------------------------
+# Python (PEP 8 indentation; formatting itself is ruff's job)
+# ---------------------------------------------------------------------------
+[*.{py,pyi}]
+indent_size = 4
+
+[*.toml]
+indent_size = 4

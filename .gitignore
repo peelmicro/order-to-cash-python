@@ -1,0 +1,84 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+# Build output of `uv build`, scoped to where it can appear. NOTE: GitHub's
+# Python template ignores bare `build/`, `lib/` and `parts/` — deliberately
+# NOT copied: a bare entry swallows any source directory that happens to carry
+# that name, the trap a bare `data/` set in assessment #7 (11 source files
+# silently kept out of version control until phase 8).
+/dist/
+/packages/*/dist/
+/services/*/dist/
+
+# ---------- Python tooling caches ----------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+
+# ---------- Python tests / coverage ----------
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ---------- SonarQube scanner working directory ----------
+.scannerwork/
+
+# ---------- Node / pnpm (apps/web only) ----------
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# ---------- Analog / Angular / Nitro (apps/web) ----------
+/apps/web/dist/
+.nitro/
+.output/
+.angular/
+*.tsbuildinfo
+
+# ---------- Web tests ----------
+playwright-report/
+playwright/.cache/
+test-results/
+blob-report/
+
+# ---------- Environment ----------
+.env
+.env.*
+!.env.example
+
+# ---------- Docker bind mounts / local volumes ----------
+# NOTE: anchored with a leading slash, for the same reason as above: a bare
+# `data/` also matches source directories such as a seed job's data folder.
+/data/
+infra/**/data/
+
+# ---------- Logs ----------
+# Verification run logs kept locally for reference; the durable record of what
+# was verified lives in progress/.
+logs/
+*.log
+
+# ---------- Caches ----------
+.cache/
+
+# ---------- IDE ----------
+.idea/
+*.iml
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# ---------- OS ----------
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# init.sh backlog tripwire baseline — within-session state, not a shared artifact
+.backlog-snapshot
