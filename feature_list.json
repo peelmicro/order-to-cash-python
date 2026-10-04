@@ -62,7 +62,7 @@
       "phase": 3,
       "title": "specs/shared/ copied VERBATIM from #8: domain model, saga, EARS requirements, AsyncAPI, OpenAPI, test matrix",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "six files byte-identical to #8's AND to #7's, proven by cmp; test-matrix.md reset by the SA-1 recipe with columns 1-4 identical on all 63 rows",
         "source commit SHA of the #8 checkout recorded in the commit message",
@@ -70,7 +70,8 @@
         "specs/shared/ re-read end to end",
         "leak sweep reported as an enumeration: command, full output, one classification per hit",
         "init.sh section 5d green against both siblings"
-      ]
+      ],
+      "note": "Closed by the leader as a LIGHT change (a verbatim copy plus the SA-1 reset): parity proven by cmp against #8 and #7, columns 1-4 by script (armed), the leak sweep reported as an enumeration with a sentinel. Source: #8 a9a2f8d (specs unchanged since the harness copy at 79dc89b)."
     },
     {
       "id": 200,

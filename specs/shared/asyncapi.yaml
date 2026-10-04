@@ -1,0 +1,3750 @@
+asyncapi: 3.0.0
+
+info:
+  title: Order-To-Cash — Messaging Contract
+  version: 1.0.0
+  description: |
+    **Stack-agnostic** messaging contract of the Order-To-Cash trilogy, reused
+    **verbatim** by assessments **#7**, **#8** and **#9**. It defines the two
+    transports, the fact topics and their dead-letter companions, the shared
+    event envelope, all fourteen domain facts, and every request-reply subject
+    with both its request and its reply schema.
+
+    Companion documents: `domain-model.md` (aggregates, invariants, the fact
+    catalogue), `saga.md` (sequence, compensation, idempotency) and
+    `requirements.md` (`R1`–`R61`).
+
+    ## The two transports
+
+    | | Fact stream (Kafka) | RPC transport (NATS core request-reply) |
+    |---|---|---|
+    | Carries | The fourteen domain **facts** — immutable, durable, replayable | **Commands and queries** — one responder, answer needed now |
+    | Channels here | `otc.*.facts.v1` (+ `.dlq`) | the `orders.*`, `fulfillment.*`, `billing.*`, `catalog.*` subjects |
+    | Delivery | At-least-once, per-order ordered by partition key | At-most-once; a timeout is a legitimate, handled answer |
+    | Advances the saga | **Yes — only facts advance it** | **No.** A reply is used only to decide whether to retry |
+
+    ## Normative rules encoded by this document
+
+    1. **Envelope (R11).** Every fact carries `eventId`, `eventType`,
+       `aggregateId`, `correlationId`, `causationId`, `occurredAt` and
+       `payload`. No field may be absent, null or empty.
+    2. **Correlation (R12, R15).** `correlationId` is **always the order id**.
+       It is the partition key of every fact topic, so all facts produced by one
+       context about one order are delivered in emission order.
+    3. **Money (R1).** Every monetary value is an **integer count of minor
+       units** plus an ISO 4217 alpha-3 currency code. There is no decimal,
+       floating-point or major-unit representation anywhere in this contract.
+       Two shapes express it, and they are used consistently across this
+       document and `openapi.yaml`:
+       - `Money` — an object `{ amount, currency }`, used wherever an amount
+         travels **alone**;
+       - `MinorUnits` — a bare integer, used wherever the **enclosing object
+         already declares** its `currency` (order lines, invoice lines, totals
+         inside a payload that carries `currency`).
+    4. **Versioning.** The `v<n>` suffix is part of the `eventType`. A breaking
+       payload change is a **new** `v<n+1>` message carried alongside the old
+       one on the same topic, never a redefinition of this one. Additive,
+       optional fields are non-breaking, which is why payload schemas do not
+       close `additionalProperties`.
+    5. **Idempotency (R17, R18).** `eventId` is the idempotency key of every
+       consumer; the dedup key is the pair (`eventId`, consumer name). RPC
+       commands are idempotent by (`orderReference`, operation), except
+       `billing.payment.register`, which is idempotent by `paymentReference`
+       (R48).
+    6. **Tracing (R57).** Every message on both transports carries W3C trace
+       context headers, and consumers continue the trace rather than starting a
+       new one.
+  license:
+    name: Assessment material — not for redistribution
+  tags:
+    - name: order-to-cash
+    - name: saga
+    - name: stack-agnostic
+
+defaultContentType: application/json
+
+servers:
+  factStream:
+    host: fact-stream:9092
+    protocol: kafka
+    title: Fact stream
+    summary: Durable, replayable, many-consumer log carrying domain facts.
+    description: |
+      Broker-neutral logical server for the Kafka-protocol fact stream. Host,
+      authentication and client tuning are per-assessment concerns and belong in
+      each assessment's `design.md`.
+    tags:
+      - name: facts
+  rpcTransport:
+    host: rpc-transport:4222
+    protocol: nats
+    title: RPC transport
+    summary: Request-reply bus carrying commands and synchronous queries.
+    description: |
+      NATS **core** request-reply. No durability, no replay, no stream: nothing
+      on this transport needs them, and a timeout is a legitimate answer that
+      the caller handles (R29).
+    tags:
+      - name: rpc
+
+channels:
+  # ────────────────────────────── fact topics ──────────────────────────────
+  ordersFacts:
+    address: otc.orders.facts.v1
+    title: Orders facts
+    summary: Facts produced by the Orders context about the Order aggregate.
+    description: |
+      **Producer:** `orders`.
+      **Consumers:** `orders.saga` (for `order.placed.v1` only — the
+      orchestrator ignores the three facts it produced itself, and never
+      consumes `order.saga_failed.v1` either — it is the one that emits
+      it), `projector` (all facts), `notifications` (four of the five
+      facts on this topic — not `order.saga_failed.v1`, which is purely
+      diagnostic, R29's dead-letter clause / OR3).
+
+      Partition key: `correlationId` (the order id).
+    servers:
+      - $ref: '#/servers/factStream'
+    messages:
+      orderPlaced:
+        $ref: '#/components/messages/OrderPlaced'
+      orderConfirmed:
+        $ref: '#/components/messages/OrderConfirmed'
+      orderCompleted:
+        $ref: '#/components/messages/OrderCompleted'
+      orderCancelled:
+        $ref: '#/components/messages/OrderCancelled'
+      orderSagaFailed:
+        $ref: '#/components/messages/OrderSagaFailed'
+    bindings:
+      kafka:
+        topic: otc.orders.facts.v1
+        bindingVersion: '0.5.0'
+
+  fulfillmentFacts:
+    address: otc.fulfillment.facts.v1
+    title: Fulfillment facts
+    summary: Facts produced by the Fulfillment context about stock and despatch.
+    description: |
+      **Producer:** `fulfillment`.
+      **Consumers:** `orders.saga` (all four), `projector` (all four),
+      `notifications` (`order.despatched.v1` only — `stock.*` facts are internal
+      saga mechanics).
+
+      Partition key: `correlationId` (the order id).
+    servers:
+      - $ref: '#/servers/factStream'
+    messages:
+      stockReserved:
+        $ref: '#/components/messages/StockReserved'
+      stockRejected:
+        $ref: '#/components/messages/StockRejected'
+      stockReleased:
+        $ref: '#/components/messages/StockReleased'
+      orderDespatched:
+        $ref: '#/components/messages/OrderDespatched'
+    bindings:
+      kafka:
+        topic: otc.fulfillment.facts.v1
+        bindingVersion: '0.5.0'
+
+  billingFacts:
+    address: otc.billing.facts.v1
+    title: Billing facts
+    summary: Facts produced by the Billing context about credit, invoices and payments.
+    description: |
+      **Producer:** `billing`.
+      **Consumers:** `orders.saga` (all five), `projector` (all five),
+      `notifications` (`invoice.issued.v1` and `payment.received.v1` only —
+      `credit.*` facts are internal saga mechanics).
+
+      `payment.received.v1` and `credit.released.v1` are written to the outbox
+      **in one transaction, in that order, on the same partition key**, which is
+      what lets the orchestrator rely on the sequence `invoiced → paid →
+      completed` without assuming any cross-context ordering (`saga.md` §6).
+    servers:
+      - $ref: '#/servers/factStream'
+    messages:
+      creditApproved:
+        $ref: '#/components/messages/CreditApproved'
+      creditRejected:
+        $ref: '#/components/messages/CreditRejected'
+      creditReleased:
+        $ref: '#/components/messages/CreditReleased'
+      invoiceIssued:
+        $ref: '#/components/messages/InvoiceIssued'
+      paymentReceived:
+        $ref: '#/components/messages/PaymentReceived'
+    bindings:
+      kafka:
+        topic: otc.billing.facts.v1
+        bindingVersion: '0.5.0'
+
+  # ───────────────────────────── dead-letter topics ─────────────────────────
+  ordersFactsDlq:
+    address: otc.orders.facts.v1.dlq
+    title: Orders facts — dead letter
+    summary: Facts from otc.orders.facts.v1 that a consumer failed to process N times.
+    description: &dlqDescription |
+      **Producer:** the retry handler of the failing consumer, after the
+      configured maximum number of attempts is exhausted (R16). The original
+      fact is then **acknowledged** on its source topic so the partition is not
+      blocked.
+
+      **Consumers:** humans, through the broker console. No service consumes a
+      dead-letter topic automatically; redriving is a deliberate operational
+      act.
+
+      The payload is the **unmodified original envelope**. Everything diagnostic
+      travels in headers, so a redrive is a byte-for-byte republish onto the
+      source topic. `x-failed-consumer`, `x-attempts` and `x-error` are
+      mandatory; dead-letter depth per topic is a required metric (R59).
+    servers:
+      - $ref: '#/servers/factStream'
+    messages:
+      deadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+    bindings:
+      kafka:
+        topic: otc.orders.facts.v1.dlq
+        bindingVersion: '0.5.0'
+
+  fulfillmentFactsDlq:
+    address: otc.fulfillment.facts.v1.dlq
+    title: Fulfillment facts — dead letter
+    summary: Facts from otc.fulfillment.facts.v1 that a consumer failed to process N times.
+    description: *dlqDescription
+    servers:
+      - $ref: '#/servers/factStream'
+    messages:
+      deadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+    bindings:
+      kafka:
+        topic: otc.fulfillment.facts.v1.dlq
+        bindingVersion: '0.5.0'
+
+  billingFactsDlq:
+    address: otc.billing.facts.v1.dlq
+    title: Billing facts — dead letter
+    summary: Facts from otc.billing.facts.v1 that a consumer failed to process N times.
+    description: *dlqDescription
+    servers:
+      - $ref: '#/servers/factStream'
+    messages:
+      deadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+    bindings:
+      kafka:
+        topic: otc.billing.facts.v1.dlq
+        bindingVersion: '0.5.0'
+
+  # ─────────────────────────── RPC — request channels ───────────────────────
+  ordersCreate:
+    address: orders.create
+    title: orders.create — request
+    summary: Place an order. Caller — gateway. Responder — orders.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/OrdersCreateRequest'
+  ordersCreateReply:
+    address: null
+    title: orders.create — reply
+    description: &replyChannelDescription |
+      Reply channel. The address is the caller-supplied reply subject (a NATS
+      inbox), unknown at design time. **A reply never advances the saga**
+      (`saga.md` §2): it tells the caller only whether to retry.
+
+      Absence of any reply within the caller's deadline is a **timeout** — see
+      `components.schemas.RpcTimeout` for the semantics and
+      `components.messages.RpcErrorReply` for the error shape.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/OrdersCreateReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  ordersCancel:
+    address: orders.cancel
+    title: orders.cancel — request
+    summary: Operator cancellation, pre-despatched only. Caller — gateway. Responder — orders.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/OrdersCancelRequest'
+  ordersCancelReply:
+    address: null
+    title: orders.cancel — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/OrdersCancelReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  stockCheck:
+    address: fulfillment.stock.check
+    title: fulfillment.stock.check — request
+    summary: Non-locking availability read at order acceptance. Caller — orders. Responder — fulfillment.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/StockCheckRequest'
+  stockCheckReply:
+    address: null
+    title: fulfillment.stock.check — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/StockCheckReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  stockReserve:
+    address: fulfillment.stock.reserve
+    title: fulfillment.stock.reserve — request
+    summary: Reserve every line of an order, all-or-nothing. Caller — orders.saga. Responder — fulfillment.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/StockReserveRequest'
+  stockReserveReply:
+    address: null
+    title: fulfillment.stock.reserve — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/StockReserveReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  stockRelease:
+    address: fulfillment.stock.release
+    title: fulfillment.stock.release — request
+    summary: Compensation — release an order's reservations. Caller — orders.saga. Responder — fulfillment.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/StockReleaseRequest'
+  stockReleaseReply:
+    address: null
+    title: fulfillment.stock.release — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/StockReleaseReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  stockList:
+    address: fulfillment.stock.list
+    title: fulfillment.stock.list — request
+    summary: On-hand and reserved units. Caller — gateway. Responder — fulfillment.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/StockListRequest'
+  stockListReply:
+    address: null
+    title: fulfillment.stock.list — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/StockListReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  stockReplenish:
+    address: fulfillment.stock.replenish
+    title: fulfillment.stock.replenish — request
+    summary: Top up on-hand units. Caller — gateway (demo replenishment workflow). Responder — fulfillment.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/StockReplenishRequest'
+  stockReplenishReply:
+    address: null
+    title: fulfillment.stock.replenish — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/StockReplenishReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  despatchCreate:
+    address: fulfillment.despatch.create
+    title: fulfillment.despatch.create — request
+    summary: Create the despatch advice (DESADV). Caller — orders.saga. Responder — fulfillment.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/DespatchCreateRequest'
+  despatchCreateReply:
+    address: null
+    title: fulfillment.despatch.create — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/DespatchCreateReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  creditHold:
+    address: billing.credit.hold
+    title: billing.credit.hold — request
+    summary: Credit check and hold for the order total. Caller — orders.saga. Responder — billing.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/CreditHoldRequest'
+  creditHoldReply:
+    address: null
+    title: billing.credit.hold — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/CreditHoldReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  creditRelease:
+    address: billing.credit.release
+    title: billing.credit.release — request
+    summary: Release an order's outstanding credit hold. Caller — orders.saga. Responder — billing.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/CreditReleaseRequest'
+  creditReleaseReply:
+    address: null
+    title: billing.credit.release — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/CreditReleaseReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  creditList:
+    address: billing.credit.list
+    title: billing.credit.list — request
+    summary: Credit limits and amounts currently held. Caller — gateway. Responder — billing.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/CreditListRequest'
+  creditListReply:
+    address: null
+    title: billing.credit.list — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/CreditListReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  invoiceIssue:
+    address: billing.invoice.issue
+    title: billing.invoice.issue — request
+    summary: Issue the invoice (INVOIC) after despatch. Caller — orders.saga. Responder — billing.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/InvoiceIssueRequest'
+  invoiceIssueReply:
+    address: null
+    title: billing.invoice.issue — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/InvoiceIssueReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  invoiceList:
+    address: billing.invoice.list
+    title: billing.invoice.list — request
+    summary: Invoice view with a link back to the order. Caller — gateway. Responder — billing.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/InvoiceListRequest'
+  invoiceListReply:
+    address: null
+    title: billing.invoice.list — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/InvoiceListReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  paymentRegister:
+    address: billing.payment.register
+    title: billing.payment.register — request
+    summary: Remittance intake, idempotent by paymentReference. Caller — gateway. Responder — billing.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/PaymentRegisterRequest'
+  paymentRegisterReply:
+    address: null
+    title: billing.payment.register — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/PaymentRegisterReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+  catalogReferenceList:
+    address: catalog.reference.list
+    title: catalog.reference.list — request
+    summary: Reference data for the place-order form. Caller — gateway. Responder — orders.
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      request:
+        $ref: '#/components/messages/CatalogReferenceListRequest'
+  catalogReferenceListReply:
+    address: null
+    title: catalog.reference.list — reply
+    description: *replyChannelDescription
+    servers:
+      - $ref: '#/servers/rpcTransport'
+    messages:
+      success:
+        $ref: '#/components/messages/CatalogReferenceListReply'
+      error:
+        $ref: '#/components/messages/RpcErrorReply'
+
+operations:
+  # ─────────────────────── fact production (outbox relay) ───────────────────
+  publishOrdersFacts:
+    action: send
+    title: Orders publishes its facts
+    channel:
+      $ref: '#/channels/ordersFacts'
+    description: |
+      Published **only** by the Orders outbox relay, after the aggregate and its
+      outbox records were committed in one transaction (R13, R14). No aggregate,
+      command handler or domain service publishes directly.
+    messages:
+      - $ref: '#/channels/ordersFacts/messages/orderPlaced'
+      - $ref: '#/channels/ordersFacts/messages/orderConfirmed'
+      - $ref: '#/channels/ordersFacts/messages/orderCompleted'
+      - $ref: '#/channels/ordersFacts/messages/orderCancelled'
+
+  publishFulfillmentFacts:
+    action: send
+    title: Fulfillment publishes its facts
+    channel:
+      $ref: '#/channels/fulfillmentFacts'
+    description: Published only by the Fulfillment outbox relay (R13, R14).
+    messages:
+      - $ref: '#/channels/fulfillmentFacts/messages/stockReserved'
+      - $ref: '#/channels/fulfillmentFacts/messages/stockRejected'
+      - $ref: '#/channels/fulfillmentFacts/messages/stockReleased'
+      - $ref: '#/channels/fulfillmentFacts/messages/orderDespatched'
+
+  publishBillingFacts:
+    action: send
+    title: Billing publishes its facts
+    channel:
+      $ref: '#/channels/billingFacts'
+    description: Published only by the Billing outbox relay (R13, R14).
+    messages:
+      - $ref: '#/channels/billingFacts/messages/creditApproved'
+      - $ref: '#/channels/billingFacts/messages/creditRejected'
+      - $ref: '#/channels/billingFacts/messages/creditReleased'
+      - $ref: '#/channels/billingFacts/messages/invoiceIssued'
+      - $ref: '#/channels/billingFacts/messages/paymentReceived'
+
+  # ─────────────────────────── fact consumption ─────────────────────────────
+  sagaConsumesOrdersFacts:
+    action: receive
+    title: Saga orchestrator consumes orders facts
+    channel:
+      $ref: '#/channels/ordersFacts'
+    summary: Consumer name — orders.saga.
+    description: |
+      The orchestrator acts on `order.placed.v1` only (R19): it issues
+      `fulfillment.stock.reserve` and leaves the order in `placed` until the
+      resulting **fact** arrives. It deliberately ignores `order.confirmed.v1`,
+      `order.completed.v1` and `order.cancelled.v1` — it produced them, and
+      consuming them would be a loop.
+    messages:
+      - $ref: '#/channels/ordersFacts/messages/orderPlaced'
+
+  sagaConsumesFulfillmentFacts:
+    action: receive
+    title: Saga orchestrator consumes fulfillment facts
+    channel:
+      $ref: '#/channels/fulfillmentFacts'
+    summary: Consumer name — orders.saga.
+    description: |
+      - `stock.reserved.v1` + status `placed` → `stock_reserved`, issue
+        `billing.credit.hold` (R20).
+      - `stock.rejected.v1` + status `placed` → `cancelled` (`stock_rejected`),
+        and **no release command** is issued (R26).
+      - `stock.released.v1` + status `stock_reserved` → `cancelled`
+        (`credit_rejected`) — compensation step 2 (R28).
+      - `order.despatched.v1` + status `confirmed` → `despatched`, issue
+        `billing.invoice.issue` (R22).
+
+      Any fact whose precondition is unmet changes nothing and is recorded as
+      ignored (R25).
+    messages:
+      - $ref: '#/channels/fulfillmentFacts/messages/stockReserved'
+      - $ref: '#/channels/fulfillmentFacts/messages/stockRejected'
+      - $ref: '#/channels/fulfillmentFacts/messages/stockReleased'
+      - $ref: '#/channels/fulfillmentFacts/messages/orderDespatched'
+
+  sagaConsumesBillingFacts:
+    action: receive
+    title: Saga orchestrator consumes billing facts
+    channel:
+      $ref: '#/channels/billingFacts'
+    summary: Consumer name — orders.saga.
+    description: |
+      - `credit.approved.v1` + status `stock_reserved` → `credit_approved` →
+        `confirmed`, emit exactly one `order.confirmed.v1`, issue
+        `fulfillment.despatch.create` (R21).
+      - `credit.rejected.v1` + status `stock_reserved` → issue
+        `fulfillment.stock.release`; **the order stays `stock_reserved`** until
+        `stock.released.v1` arrives (R27).
+      - `invoice.issued.v1` + status `despatched` → `invoiced`, no further
+        command; the saga now waits for the outside world (R23).
+      - `payment.received.v1` + status `invoiced` → `paid` (R24).
+      - `credit.released.v1` + status `paid` → `completed`, emit exactly one
+        `order.completed.v1` (R24).
+    messages:
+      - $ref: '#/channels/billingFacts/messages/creditApproved'
+      - $ref: '#/channels/billingFacts/messages/creditRejected'
+      - $ref: '#/channels/billingFacts/messages/creditReleased'
+      - $ref: '#/channels/billingFacts/messages/invoiceIssued'
+      - $ref: '#/channels/billingFacts/messages/paymentReceived'
+
+  projectorConsumesOrdersFacts:
+    action: receive
+    title: Projector consumes orders facts
+    channel:
+      $ref: '#/channels/ordersFacts'
+    summary: Consumer name — projector.
+    description: &projectorDescription |
+      The projector consumes **all fourteen** facts and is the **sole writer**
+      of the read model (R54). For each fact it appends a timeline entry keyed
+      by `correlationId`, ordered by `occurredAt` (R50), skips an `eventId`
+      already present (R51), never regresses the document status on
+      out-of-order delivery (R52), and creates a placeholder document when a
+      fact outruns `order.placed.v1` (R53). `order.saga_failed.v1` renders as
+      a diagnostic timeline entry only — it changes no document status field
+      (R29's dead-letter clause / OR3).
+    messages:
+      - $ref: '#/channels/ordersFacts/messages/orderPlaced'
+      - $ref: '#/channels/ordersFacts/messages/orderConfirmed'
+      - $ref: '#/channels/ordersFacts/messages/orderCompleted'
+      - $ref: '#/channels/ordersFacts/messages/orderCancelled'
+      - $ref: '#/channels/ordersFacts/messages/orderSagaFailed'
+
+  projectorConsumesFulfillmentFacts:
+    action: receive
+    title: Projector consumes fulfillment facts
+    channel:
+      $ref: '#/channels/fulfillmentFacts'
+    summary: Consumer name — projector.
+    description: *projectorDescription
+    messages:
+      - $ref: '#/channels/fulfillmentFacts/messages/stockReserved'
+      - $ref: '#/channels/fulfillmentFacts/messages/stockRejected'
+      - $ref: '#/channels/fulfillmentFacts/messages/stockReleased'
+      - $ref: '#/channels/fulfillmentFacts/messages/orderDespatched'
+
+  projectorConsumesBillingFacts:
+    action: receive
+    title: Projector consumes billing facts
+    channel:
+      $ref: '#/channels/billingFacts'
+    summary: Consumer name — projector.
+    description: *projectorDescription
+    messages:
+      - $ref: '#/channels/billingFacts/messages/creditApproved'
+      - $ref: '#/channels/billingFacts/messages/creditRejected'
+      - $ref: '#/channels/billingFacts/messages/creditReleased'
+      - $ref: '#/channels/billingFacts/messages/invoiceIssued'
+      - $ref: '#/channels/billingFacts/messages/paymentReceived'
+
+  notificationsConsumeOrdersFacts:
+    action: receive
+    title: Notifications consumes orders facts
+    channel:
+      $ref: '#/channels/ordersFacts'
+    summary: Consumer name — notifications.
+    description: &notificationsDescription |
+      Notifications consumes exactly seven of the fourteen facts:
+      `order.placed.v1`, `order.confirmed.v1`, `order.despatched.v1`,
+      `invoice.issued.v1`, `payment.received.v1`, `order.completed.v1`,
+      `order.cancelled.v1`.
+
+      It deliberately does **not** notify on `stock.*` and `credit.*`: those are
+      internal saga mechanics, not events a counterparty should be told about.
+      The compensation *outcome* reaches them as `order.cancelled.v1` carrying
+      its `cancellationReason`. One delivery per (`eventId`, `notifications`)
+      regardless of redelivery (R17, R18).
+    messages:
+      - $ref: '#/channels/ordersFacts/messages/orderPlaced'
+      - $ref: '#/channels/ordersFacts/messages/orderConfirmed'
+      - $ref: '#/channels/ordersFacts/messages/orderCompleted'
+      - $ref: '#/channels/ordersFacts/messages/orderCancelled'
+
+  notificationsConsumeFulfillmentFacts:
+    action: receive
+    title: Notifications consumes fulfillment facts
+    channel:
+      $ref: '#/channels/fulfillmentFacts'
+    summary: Consumer name — notifications.
+    description: *notificationsDescription
+    messages:
+      - $ref: '#/channels/fulfillmentFacts/messages/orderDespatched'
+
+  notificationsConsumeBillingFacts:
+    action: receive
+    title: Notifications consumes billing facts
+    channel:
+      $ref: '#/channels/billingFacts'
+    summary: Consumer name — notifications.
+    description: *notificationsDescription
+    messages:
+      - $ref: '#/channels/billingFacts/messages/invoiceIssued'
+      - $ref: '#/channels/billingFacts/messages/paymentReceived'
+
+  # ────────────────────────────── dead letters ──────────────────────────────
+  publishOrdersFactsDlq:
+    action: send
+    title: Retry handler dead-letters an orders fact
+    channel:
+      $ref: '#/channels/ordersFactsDlq'
+    description: &dlqOperationDescription |
+      After the configured maximum attempts, the failing consumer's retry
+      handler republishes the **unmodified** envelope here with the diagnostic
+      headers, then acknowledges the original so the partition is not blocked
+      (R16). The saga additionally records a saga-failure entry in the order
+      timeline and leaves the order in its last legal status (R29).
+    messages:
+      - $ref: '#/channels/ordersFactsDlq/messages/deadLetterRecord'
+
+  publishFulfillmentFactsDlq:
+    action: send
+    title: Retry handler dead-letters a fulfillment fact
+    channel:
+      $ref: '#/channels/fulfillmentFactsDlq'
+    description: *dlqOperationDescription
+    messages:
+      - $ref: '#/channels/fulfillmentFactsDlq/messages/deadLetterRecord'
+
+  publishBillingFactsDlq:
+    action: send
+    title: Retry handler dead-letters a billing fact
+    channel:
+      $ref: '#/channels/billingFactsDlq'
+    description: *dlqOperationDescription
+    messages:
+      - $ref: '#/channels/billingFactsDlq/messages/deadLetterRecord'
+
+  inspectOrdersFactsDlq:
+    action: receive
+    title: Operator inspects the orders dead-letter topic
+    channel:
+      $ref: '#/channels/ordersFactsDlq'
+    description: &dlqInspectDescription |
+      No service subscribes automatically. Dead letters are read by a human
+      through the broker console; a redrive republishes the payload byte-for-byte
+      onto the source topic once the cause is fixed.
+    messages:
+      - $ref: '#/channels/ordersFactsDlq/messages/deadLetterRecord'
+
+  inspectFulfillmentFactsDlq:
+    action: receive
+    title: Operator inspects the fulfillment dead-letter topic
+    channel:
+      $ref: '#/channels/fulfillmentFactsDlq'
+    description: *dlqInspectDescription
+    messages:
+      - $ref: '#/channels/fulfillmentFactsDlq/messages/deadLetterRecord'
+
+  inspectBillingFactsDlq:
+    action: receive
+    title: Operator inspects the billing dead-letter topic
+    channel:
+      $ref: '#/channels/billingFactsDlq'
+    description: *dlqInspectDescription
+    messages:
+      - $ref: '#/channels/billingFactsDlq/messages/deadLetterRecord'
+
+  # ─────────────────────────── RPC request-reply ────────────────────────────
+  requestOrdersCreate:
+    action: send
+    title: orders.create
+    summary: Caller — gateway. Responder — orders.
+    channel:
+      $ref: '#/channels/ordersCreate'
+    description: |
+      Places an order. The responder validates the lines, calls
+      `fulfillment.stock.check` (a non-locking read — R31), computes the totals
+      inside the aggregate (R6) and, **in one transaction**, persists the
+      `Order` in status `placed` together with the `order.placed.v1` outbox
+      record (R13). The reply carries the order id, which is also the saga
+      `correlationId`.
+
+      Idempotency: by `requestId` when supplied. Rejections are business
+      outcomes, not transport errors: `STOCK_UNAVAILABLE` names the short lines.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/ordersCreateReply'
+      messages:
+        - $ref: '#/channels/ordersCreateReply/messages/success'
+        - $ref: '#/channels/ordersCreateReply/messages/error'
+    messages:
+      - $ref: '#/channels/ordersCreate/messages/request'
+
+  requestOrdersCancel:
+    action: send
+    title: orders.cancel
+    summary: Caller — gateway. Responder — orders.
+    channel:
+      $ref: '#/channels/ordersCancel'
+    description: |
+      Operator cancellation, legal only from `placed`, `stock_reserved`,
+      `credit_approved` or `confirmed` (R8). The responder unwinds only the
+      acquisitions that actually succeeded (`saga.md` §4.3) — from
+      `credit_approved` or `confirmed` the stock reservation first, then the
+      credit hold, because the despatch requested on confirmation may still
+      consume that stock; if it does, the cancellation is overtaken.
+      From `despatched` onwards the reply is `ORDER_NOT_CANCELLABLE`.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/ordersCancelReply'
+      messages:
+        - $ref: '#/channels/ordersCancelReply/messages/success'
+        - $ref: '#/channels/ordersCancelReply/messages/error'
+    messages:
+      - $ref: '#/channels/ordersCancel/messages/request'
+
+  requestStockCheck:
+    action: send
+    title: fulfillment.stock.check
+    summary: Caller — orders (acceptance, not the saga). Responder — fulfillment.
+    channel:
+      $ref: '#/channels/stockCheck'
+    description: |
+      A **non-locking read**. It mutates no stock item and emits no fact (R31),
+      and it is explicitly **not** a reservation: another order may consume the
+      units before `fulfillment.stock.reserve` runs. That race is real and
+      intentional — it is why the saga and its compensation exist.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/stockCheckReply'
+      messages:
+        - $ref: '#/channels/stockCheckReply/messages/success'
+        - $ref: '#/channels/stockCheckReply/messages/error'
+    messages:
+      - $ref: '#/channels/stockCheck/messages/request'
+
+  requestStockReserve:
+    action: send
+    title: fulfillment.stock.reserve
+    summary: Caller — orders.saga. Responder — fulfillment.
+    channel:
+      $ref: '#/channels/stockReserve'
+    description: |
+      **All-or-nothing** (invariant F3): either every line is reserved and
+      `stock.reserved.v1` is emitted (R32), or nothing is reserved and
+      `stock.rejected.v1` names the short lines (R33). Idempotent by
+      (`orderReference`, `reserve`): a repeat returns the existing reservations
+      with `outcome: already_reserved` and emits no second fact.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/stockReserveReply'
+      messages:
+        - $ref: '#/channels/stockReserveReply/messages/success'
+        - $ref: '#/channels/stockReserveReply/messages/error'
+    messages:
+      - $ref: '#/channels/stockReserve/messages/request'
+
+  requestStockRelease:
+    action: send
+    title: fulfillment.stock.release
+    summary: Caller — orders.saga. Responder — fulfillment.
+    channel:
+      $ref: '#/channels/stockRelease'
+    description: |
+      **The compensating command.** Moves the order's reservations from
+      `reserved` to `released`, decrements `reservedUnits` and emits exactly one
+      `stock.released.v1` (R34). If every reservation of that order is already
+      `released`, the reply is a **success no-op** — `outcome:
+      already_released`, no counter change, **no second fact** (invariant F5) —
+      which is what makes a redelivered `credit.rejected.v1` harmless.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/stockReleaseReply'
+      messages:
+        - $ref: '#/channels/stockReleaseReply/messages/success'
+        - $ref: '#/channels/stockReleaseReply/messages/error'
+    messages:
+      - $ref: '#/channels/stockRelease/messages/request'
+
+  requestStockList:
+    action: send
+    title: fulfillment.stock.list
+    summary: Caller — gateway. Responder — fulfillment.
+    channel:
+      $ref: '#/channels/stockList'
+    description: |
+      Read-only view of on-hand and reserved units. Backs `GET /stock` and the
+      demo replenishment workflow's `belowThreshold` query.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/stockListReply'
+      messages:
+        - $ref: '#/channels/stockListReply/messages/success'
+        - $ref: '#/channels/stockListReply/messages/error'
+    messages:
+      - $ref: '#/channels/stockList/messages/request'
+
+  requestStockReplenish:
+    action: send
+    title: fulfillment.stock.replenish
+    summary: Caller — gateway (demo replenishment workflow). Responder — fulfillment.
+    channel:
+      $ref: '#/channels/stockReplenish'
+    description: |
+      Adds on-hand units so a long-running demo never starves. It touches
+      `units` only — `reservedUnits` and every reservation are untouched, and
+      invariant F1 (`reservedUnits ≤ units`) therefore cannot be broken by a
+      replenishment. It emits **no fact**: stock top-up is an operational act
+      outside any order's saga, so it belongs in no order timeline.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/stockReplenishReply'
+      messages:
+        - $ref: '#/channels/stockReplenishReply/messages/success'
+        - $ref: '#/channels/stockReplenishReply/messages/error'
+    messages:
+      - $ref: '#/channels/stockReplenish/messages/request'
+
+  requestDespatchCreate:
+    action: send
+    title: fulfillment.despatch.create
+    summary: Caller — orders.saga. Responder — fulfillment.
+    channel:
+      $ref: '#/channels/despatchCreate'
+    description: |
+      Moves the order's reservations from `reserved` to `consumed`, creates
+      exactly one despatch advice whose lines despatch exactly the reserved
+      units, and emits exactly one `order.despatched.v1` (R36). Idempotent by
+      (`orderReference`, `despatch`): a repeat returns the existing
+      `despatchReference` with `created: false` and emits no second fact
+      (invariant F8).
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/despatchCreateReply'
+      messages:
+        - $ref: '#/channels/despatchCreateReply/messages/success'
+        - $ref: '#/channels/despatchCreateReply/messages/error'
+    messages:
+      - $ref: '#/channels/despatchCreate/messages/request'
+
+  requestCreditHold:
+    action: send
+    title: billing.credit.hold
+    summary: Caller — orders.saga. Responder — billing.
+    channel:
+      $ref: '#/channels/creditHold'
+    description: |
+      Places a hold for the order total against the retailer's credit line.
+      Approval appends a `hold` ledger entry and emits `credit.approved.v1`
+      (R38). Rejection appends **no** ledger entry and emits
+      `credit.rejected.v1` with a machine-readable `reason` (R39) — one of
+      `over_limit`, `simulated_cents_rule` (the `.99` **simulator affordance**,
+      R42) or `simulated_failure_rate` (R43). The three are indistinguishable
+      downstream except by that field (R44). Idempotent by (`orderReference`,
+      `hold`): a repeat returns the existing hold (invariant B4).
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/creditHoldReply'
+      messages:
+        - $ref: '#/channels/creditHoldReply/messages/success'
+        - $ref: '#/channels/creditHoldReply/messages/error'
+    messages:
+      - $ref: '#/channels/creditHold/messages/request'
+
+  requestCreditRelease:
+    action: send
+    title: billing.credit.release
+    summary: Caller — orders.saga. Responder — billing.
+    channel:
+      $ref: '#/channels/creditRelease'
+    description: |
+      Releases the order's outstanding hold, appending exactly one `release`
+      ledger entry and emitting `credit.released.v1` with `reason:
+      order_cancelled` (added to Phase 14's operator-cancellation feature;
+      the domain method `BuyerCredit.releaseHold` and the `order_cancelled`
+      reason already existed — only this RPC surface was missing). Idempotent
+      by construction: exposure is recomputed from the ledger on every call,
+      so a repeat after the hold is already released finds zero outstanding
+      exposure and appends nothing (BC11, B5) — the reply still reports
+      success, `released` false, so a caller can tell a repeat from a first
+      release without treating either as an error.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/creditReleaseReply'
+      messages:
+        - $ref: '#/channels/creditReleaseReply/messages/success'
+        - $ref: '#/channels/creditReleaseReply/messages/error'
+    messages:
+      - $ref: '#/channels/creditRelease/messages/request'
+
+  requestCreditList:
+    action: send
+    title: billing.credit.list
+    summary: Caller — gateway. Responder — billing.
+    channel:
+      $ref: '#/channels/creditList'
+    description: Read-only view of credit limits, active holds, open exposure and available credit.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/creditListReply'
+      messages:
+        - $ref: '#/channels/creditListReply/messages/success'
+        - $ref: '#/channels/creditListReply/messages/error'
+    messages:
+      - $ref: '#/channels/creditList/messages/request'
+
+  requestInvoiceIssue:
+    action: send
+    title: billing.invoice.issue
+    summary: Caller — orders.saga. Responder — billing.
+    channel:
+      $ref: '#/channels/invoiceIssue'
+    description: |
+      Creates exactly one invoice in status `issued`, converts the order's
+      credit `hold` into open exposure with a `consume` ledger entry — which is
+      numerically neutral on available credit and therefore emits **no**
+      `credit.released.v1` (R40) — and emits exactly one `invoice.issued.v1`
+      (R45). Idempotent by (`orderReference`, `issue`): a repeat returns the
+      existing `invoiceReference` with `created: false` (invariant B7).
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/invoiceIssueReply'
+      messages:
+        - $ref: '#/channels/invoiceIssueReply/messages/success'
+        - $ref: '#/channels/invoiceIssueReply/messages/error'
+    messages:
+      - $ref: '#/channels/invoiceIssue/messages/request'
+
+  requestInvoiceList:
+    action: send
+    title: billing.invoice.list
+    summary: Caller — gateway. Responder — billing.
+    channel:
+      $ref: '#/channels/invoiceList'
+    description: |
+      Read-only invoice view with a link back to the order. `issuedBeforeMinutes`
+      is what the demo bank robot filters on when it pays invoices "within
+      terms".
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/invoiceListReply'
+      messages:
+        - $ref: '#/channels/invoiceListReply/messages/success'
+        - $ref: '#/channels/invoiceListReply/messages/error'
+    messages:
+      - $ref: '#/channels/invoiceList/messages/request'
+
+  requestPaymentRegister:
+    action: send
+    title: billing.payment.register
+    summary: Caller — gateway (operator, API tests, external payment robot). Responder — billing.
+    channel:
+      $ref: '#/channels/paymentRegister'
+    description: |
+      **Remittance intake — the only way an invoice becomes `paid`.** There is
+      no internal payment timer; payment always arrives from outside the system.
+
+      On an unseen `paymentReference` whose amount and currency equal the
+      invoice total, the responder records the payment, moves the invoice
+      `issued → paid`, appends a `release` ledger entry, and emits
+      `payment.received.v1` **followed by** `credit.released.v1` in that order
+      and in the same transaction (R47).
+
+      **Idempotent by `paymentReference` (R48):** a repeat returns the original
+      outcome with `outcome: duplicate`, records no second payment and emits no
+      second fact. A mismatched amount or currency, or a different
+      `paymentReference` against an already-`paid` invoice, is rejected with a
+      machine-readable reason and changes nothing (R49).
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/paymentRegisterReply'
+      messages:
+        - $ref: '#/channels/paymentRegisterReply/messages/success'
+        - $ref: '#/channels/paymentRegisterReply/messages/error'
+    messages:
+      - $ref: '#/channels/paymentRegister/messages/request'
+
+  requestCatalogReferenceList:
+    action: send
+    title: catalog.reference.list
+    summary: Caller — gateway. Responder — orders.
+    channel:
+      $ref: '#/channels/catalogReferenceList'
+    description: |
+      Reference data — products, retailers, companies, currencies — for the
+      place-order form. Read-only; the catalogue is owned by the Orders context.
+    reply:
+      address:
+        location: '$message.header#/reply-to'
+      channel:
+        $ref: '#/channels/catalogReferenceListReply'
+      messages:
+        - $ref: '#/channels/catalogReferenceListReply/messages/success'
+        - $ref: '#/channels/catalogReferenceListReply/messages/error'
+    messages:
+      - $ref: '#/channels/catalogReferenceList/messages/request'
+
+components:
+  correlationIds:
+    orderCorrelationId:
+      description: |
+        The order id. It is the `correlationId` of every fact in one order's
+        saga, the partition key of every fact topic, the read-model document
+        key and the log correlation id (R12, R15).
+      location: '$message.payload#/correlationId'
+    rpcCorrelationId:
+      description: |
+        The order id when the request concerns a known order, otherwise the
+        gateway request id. Carried in a header because RPC messages have no
+        envelope.
+      location: '$message.header#/x-correlation-id'
+
+  messages:
+    # ───────────────────────────── the 14 facts ─────────────────────────────
+    OrderPlaced:
+      name: order.placed.v1
+      title: Order placed
+      summary: An order was accepted and persisted; the saga starts.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/OrderPlacedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: orders
+      examples:
+        - name: placedEurOrder
+          summary: A EUR order of two lines totalling 1 242,50 € (124250 minor units)
+          payload:
+            eventId: 5b7a0f1e-1f22-4c1f-9f2a-8c1a1f2b3c4d
+            eventType: order.placed.v1
+            aggregateId: 9f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f
+            correlationId: 9f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f
+            causationId: 1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f
+            occurredAt: '2026-08-18T10:15:00.000Z'
+            payload:
+              orderReference: ORD-000042
+              retailerCode: CarrefourEs
+              companyCode: IBERFOODS
+              buyerGln: '8412345000013'
+              supplierGln: '8400000000017'
+              currency: EUR
+              orderDate: '2026-08-18T10:15:00.000Z'
+              lines:
+                - productCode: PRD-0001
+                  description: Olive oil 1 L
+                  quantity: 5
+                  unitPrice: 2995
+                  lineDiscount: 0
+                - productCode: PRD-0007
+                  description: Sea salt 500 g
+                  quantity: 25
+                  unitPrice: 3891
+                  lineDiscount: 0
+              initialAmount: 124250
+              initialDiscount: 0
+              totalAmount: 124250
+
+    StockReserved:
+      name: stock.reserved.v1
+      title: Stock reserved
+      summary: Every line of the order was reserved.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/StockReservedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: fulfillment
+
+    StockRejected:
+      name: stock.rejected.v1
+      title: Stock rejected
+      summary: At least one line could not be reserved; nothing was reserved.
+      description: |
+        Reservation is all-or-nothing (invariant F3). This fact therefore means
+        **no** reservation exists for the order, which is why the orchestrator
+        must **not** issue a release command when it observes it (R26).
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/StockRejectedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: fulfillment
+        - name: compensation
+
+    StockReleased:
+      name: stock.released.v1
+      title: Stock released
+      summary: A previously held reservation was returned to available stock (compensation).
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/StockReleasedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: fulfillment
+        - name: compensation
+
+    CreditApproved:
+      name: credit.approved.v1
+      title: Credit approved
+      summary: A hold for the order total was placed within the retailer's limit.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/CreditApprovedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: billing
+
+    CreditRejected:
+      name: credit.rejected.v1
+      title: Credit rejected
+      summary: The hold was refused; no ledger entry was written.
+      description: |
+        `reason` distinguishes a genuine over-limit refusal from the two
+        **simulator affordances** (`simulated_cents_rule`, R42;
+        `simulated_failure_rate`, R43). Everything else about the fact — type,
+        payload shape, compensation path — is identical, by requirement (R44).
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/CreditRejectedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: billing
+        - name: compensation
+      examples:
+        - name: centsRuleRejection
+          summary: The .99 simulator affordance firing on a 1 242,99 € total
+          payload:
+            eventId: 7d8e9f0a-1b2c-4d3e-8f4a-5b6c7d8e9f01
+            eventType: credit.rejected.v1
+            aggregateId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+            correlationId: 9f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f
+            causationId: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+            occurredAt: '2026-08-18T10:15:04.120Z'
+            payload:
+              orderReference: ORD-000042
+              retailerCode: CarrefourEs
+              companyCode: IBERFOODS
+              requestedAmount: 124299
+              currency: EUR
+              availableCredit: 500000
+              reason: simulated_cents_rule
+
+    CreditReleased:
+      name: credit.released.v1
+      title: Credit released
+      summary: A hold or open exposure was returned to the retailer's available credit.
+      description: |
+        Emitted only when credit genuinely returns: `invoice_paid` (the
+        remittance closed the exposure) or `order_cancelled` (an order holding
+        credit was cancelled before invoicing). The `consume` ledger entry at
+        invoice issue is numerically neutral and emits nothing (R40).
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/CreditReleasedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: billing
+
+    OrderConfirmed:
+      name: order.confirmed.v1
+      title: Order confirmed
+      summary: The ORDRSP moment — the order is commercially confirmed.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/OrderConfirmedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: orders
+
+    OrderDespatched:
+      name: order.despatched.v1
+      title: Order despatched
+      summary: The DESADV was created; the order's reservations became consumed.
+      description: |
+        Produced by **Fulfillment**, not Orders: the despatch is a Fulfillment
+        fact whose subject happens to be an order. Fulfillment never mutates an
+        `Order`.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/OrderDespatchedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: fulfillment
+
+    InvoiceIssued:
+      name: invoice.issued.v1
+      title: Invoice issued
+      summary: The INVOIC was issued.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/InvoiceIssuedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: billing
+
+    PaymentReceived:
+      name: payment.received.v1
+      title: Payment received
+      summary: A remittance was accepted and the invoice moved to paid.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/PaymentReceivedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: billing
+
+    OrderCompleted:
+      name: order.completed.v1
+      title: Order completed
+      summary: The saga closed successfully.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/OrderCompletedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: orders
+
+    OrderCancelled:
+      name: order.cancelled.v1
+      title: Order cancelled
+      summary: The saga closed by cancellation; compensation, if any, already ran.
+      description: |
+        `compensationSteps` is what makes the unwinding auditable: it lists, in
+        causal order, the compensating facts that ran **before** this one. For a
+        credit rejection it holds the `stock.released.v1` step; for a stock
+        rejection it is empty, because nothing was ever acquired (R26).
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/OrderCancelledEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: orders
+        - name: compensation
+
+    OrderSagaFailed:
+      name: order.saga_failed.v1
+      title: Saga command dead-lettered
+      summary: A saga command exhausted its in-line retries and parked; the order stays in its last legal status.
+      description: |
+        Emitted by Orders, at most once per `saga_commands` row, on the first
+        transition into `parked` (R29's dead-letter clause, OR3) — never on a
+        later re-park of the same row. Purely diagnostic: no aggregate
+        invariant depends on it, and `SO5`'s indefinite capped-backoff retry
+        of the underlying command is unaffected by its emission.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/FactHeaders'
+      payload:
+        $ref: '#/components/schemas/OrderSagaFailedEvent'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: orders
+        - name: reliability
+
+    # ─────────────────────────── dead-letter record ──────────────────────────
+    DeadLetterRecord:
+      name: dead.letter.record
+      title: Dead-letter record
+      summary: An unmodified fact envelope that a named consumer failed to process N times.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/orderCorrelationId'
+      headers:
+        $ref: '#/components/schemas/DeadLetterHeaders'
+      payload:
+        $ref: '#/components/schemas/Envelope'
+      bindings:
+        kafka:
+          key:
+            $ref: '#/components/schemas/UniqueId'
+          bindingVersion: '0.5.0'
+      tags:
+        - name: reliability
+      examples:
+        - name: projectorPoisonedFact
+          summary: The projector gave up on a fact after 5 attempts
+          headers:
+            x-failed-consumer: projector
+            x-attempts: 5
+            x-error: 'ReadModelUnavailable: connection refused'
+            x-original-topic: otc.billing.facts.v1
+            x-first-failed-at: '2026-08-18T10:16:00.000Z'
+            x-failed-at: '2026-08-18T10:16:31.442Z'
+            traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+
+    # ───────────────────────────── RPC messages ─────────────────────────────
+    RpcErrorReply:
+      name: rpc.error
+      title: RPC error reply
+      summary: The single error reply shape used by every request-reply subject.
+      description: |
+        Returned when the responder could not produce a success reply. It is
+        **not** used for domain outcomes: an insufficient-stock or refused-credit
+        answer is a *business outcome* carried in the success reply's `outcome`
+        field and in the corresponding rejection **fact**, not an error.
+
+        A **timeout** produces no message at all — see
+        `components.schemas.RpcTimeout`.
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/RpcError'
+      tags:
+        - name: rpc
+
+    OrdersCreateRequest:
+      name: orders.create.request
+      title: orders.create — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/OrdersCreateRequestPayload'
+    OrdersCreateReply:
+      name: orders.create.reply
+      title: orders.create — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/OrdersCreateReplyPayload'
+
+    OrdersCancelRequest:
+      name: orders.cancel.request
+      title: orders.cancel — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/OrdersCancelRequestPayload'
+    OrdersCancelReply:
+      name: orders.cancel.reply
+      title: orders.cancel — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/OrdersCancelReplyPayload'
+
+    StockCheckRequest:
+      name: fulfillment.stock.check.request
+      title: fulfillment.stock.check — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockCheckRequestPayload'
+    StockCheckReply:
+      name: fulfillment.stock.check.reply
+      title: fulfillment.stock.check — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockCheckReplyPayload'
+
+    StockReserveRequest:
+      name: fulfillment.stock.reserve.request
+      title: fulfillment.stock.reserve — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockReserveRequestPayload'
+    StockReserveReply:
+      name: fulfillment.stock.reserve.reply
+      title: fulfillment.stock.reserve — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockReserveReplyPayload'
+
+    StockReleaseRequest:
+      name: fulfillment.stock.release.request
+      title: fulfillment.stock.release — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockReleaseRequestPayload'
+    StockReleaseReply:
+      name: fulfillment.stock.release.reply
+      title: fulfillment.stock.release — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockReleaseReplyPayload'
+
+    StockListRequest:
+      name: fulfillment.stock.list.request
+      title: fulfillment.stock.list — request
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockListRequestPayload'
+    StockListReply:
+      name: fulfillment.stock.list.reply
+      title: fulfillment.stock.list — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockListReplyPayload'
+
+    StockReplenishRequest:
+      name: fulfillment.stock.replenish.request
+      title: fulfillment.stock.replenish — request
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockReplenishRequestPayload'
+    StockReplenishReply:
+      name: fulfillment.stock.replenish.reply
+      title: fulfillment.stock.replenish — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/StockReplenishReplyPayload'
+
+    DespatchCreateRequest:
+      name: fulfillment.despatch.create.request
+      title: fulfillment.despatch.create — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/DespatchCreateRequestPayload'
+    DespatchCreateReply:
+      name: fulfillment.despatch.create.reply
+      title: fulfillment.despatch.create — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/DespatchCreateReplyPayload'
+
+    CreditHoldRequest:
+      name: billing.credit.hold.request
+      title: billing.credit.hold — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/CreditHoldRequestPayload'
+    CreditHoldReply:
+      name: billing.credit.hold.reply
+      title: billing.credit.hold — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/CreditHoldReplyPayload'
+    CreditReleaseRequest:
+      name: billing.credit.release.request
+      title: billing.credit.release — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/CreditReleaseRequestPayload'
+    CreditReleaseReply:
+      name: billing.credit.release.reply
+      title: billing.credit.release — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/CreditReleaseReplyPayload'
+
+    CreditListRequest:
+      name: billing.credit.list.request
+      title: billing.credit.list — request
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/CreditListRequestPayload'
+    CreditListReply:
+      name: billing.credit.list.reply
+      title: billing.credit.list — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/CreditListReplyPayload'
+
+    InvoiceIssueRequest:
+      name: billing.invoice.issue.request
+      title: billing.invoice.issue — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/InvoiceIssueRequestPayload'
+    InvoiceIssueReply:
+      name: billing.invoice.issue.reply
+      title: billing.invoice.issue — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/InvoiceIssueReplyPayload'
+
+    InvoiceListRequest:
+      name: billing.invoice.list.request
+      title: billing.invoice.list — request
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/InvoiceListRequestPayload'
+    InvoiceListReply:
+      name: billing.invoice.list.reply
+      title: billing.invoice.list — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/InvoiceListReplyPayload'
+
+    PaymentRegisterRequest:
+      name: billing.payment.register.request
+      title: billing.payment.register — request
+      contentType: application/json
+      correlationId:
+        $ref: '#/components/correlationIds/rpcCorrelationId'
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/PaymentRegisterRequestPayload'
+    PaymentRegisterReply:
+      name: billing.payment.register.reply
+      title: billing.payment.register — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/PaymentRegisterReplyPayload'
+
+    CatalogReferenceListRequest:
+      name: catalog.reference.list.request
+      title: catalog.reference.list — request
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/CatalogReferenceListRequestPayload'
+    CatalogReferenceListReply:
+      name: catalog.reference.list.reply
+      title: catalog.reference.list — success reply
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/RpcHeaders'
+      payload:
+        $ref: '#/components/schemas/CatalogReferenceListReplyPayload'
+
+  schemas:
+    # ───────────────────────── shared kernel primitives ──────────────────────
+    UniqueId:
+      type: string
+      format: uuid
+      description: An opaque, globally unique identifier generated inside the domain, never by a store.
+      examples:
+        - 9f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f
+
+    Instant:
+      type: string
+      format: date-time
+      description: A UTC instant, ISO-8601 on the wire, stamped through a clock port.
+      examples:
+        - '2026-08-18T10:15:00.000Z'
+
+    CurrencyCode:
+      type: string
+      pattern: '^[A-Z]{3}$'
+      description: ISO 4217 alpha-3 code of a seeded currency.
+      examples:
+        - EUR
+        - GBP
+        - USD
+
+    MinorUnits:
+      type: integer
+      format: int64
+      description: |
+        An amount as a whole count of the currency's smallest denomination
+        (cents for EUR/GBP/USD). **Never** a decimal, float or major-unit value.
+        `€1,242.50` is `124250`. Used where the enclosing object already
+        declares its `currency`; where an amount travels alone, use `Money`.
+        The `.99` simulator predicate (R42) reads `totalAmount mod 100 = 99`,
+        which is only well defined on this representation.
+      examples:
+        - 124250
+
+    Money:
+      type: object
+      description: An amount that travels alone — integer minor units plus its currency.
+      properties:
+        amount:
+          $ref: '#/components/schemas/MinorUnits'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+      required:
+        - amount
+        - currency
+      examples:
+        - amount: 124250
+          currency: EUR
+
+    Gln:
+      type: string
+      pattern: '^[0-9]{13}$'
+      description: |
+        Global Location Number — exactly 13 decimal digits whose final digit is
+        the GS1 mod-10 check digit over the preceding twelve (R4). The pattern
+        cannot express the check digit; it is a domain rule, validated on
+        construction.
+      examples:
+        - '8412345000013'
+
+    Quantity:
+      type: integer
+      minimum: 1
+      description: A strictly positive whole count of units. Zero, negative and fractional quantities do not exist in this model (R3).
+
+    UnitCount:
+      type: integer
+      minimum: 0
+      description: A non-negative whole count of units (on-hand, reserved, available).
+
+    OrderReference:
+      type: string
+      pattern: '^ORD-[0-9]{6,}$'
+      description: Human-readable, unique, immutable business reference of an order.
+      examples:
+        - ORD-000042
+
+    DespatchReference:
+      type: string
+      pattern: '^DES-[0-9]{6,}$'
+      examples:
+        - DES-000031
+
+    InvoiceReference:
+      type: string
+      pattern: '^INV-[0-9]{6,}$'
+      examples:
+        - INV-000027
+
+    CreditCode:
+      type: string
+      pattern: '^CR-[0-9]{6,}$'
+      examples:
+        - CR-000004
+
+    PartyCode:
+      type: string
+      minLength: 1
+      maxLength: 20
+      description: Business identifier of a retailer (buyer) or company (supplier). Contexts reference each other by this, never by another context's internal id.
+      examples:
+        - CarrefourEs
+
+    ProductCode:
+      type: string
+      minLength: 1
+      maxLength: 30
+      examples:
+        - PRD-0001
+
+    PaymentReference:
+      type: string
+      minLength: 1
+      maxLength: 30
+      description: The idempotency key of the remittance intake (R48, invariant B10).
+      examples:
+        - PAY-2026-08-18-000019
+
+    PartyRef:
+      type: object
+      description: A party as it appears in a read view — business code, display name and GLN. Named identically in `openapi.yaml`.
+      properties:
+        code:
+          $ref: '#/components/schemas/PartyCode'
+        name:
+          type: string
+        gln:
+          $ref: '#/components/schemas/Gln'
+      required:
+        - code
+        - gln
+
+    OrderStatus:
+      type: string
+      enum:
+        - placed
+        - stock_reserved
+        - credit_approved
+        - confirmed
+        - despatched
+        - invoiced
+        - paid
+        - completed
+        - cancelled
+      description: The `Order` state machine of `domain-model.md` §3.3, which is also the saga state. `completed` and `cancelled` are terminal.
+
+    CancellationReason:
+      type: string
+      enum:
+        - stock_rejected
+        - credit_rejected
+        - operator_cancelled
+
+    InvoiceStatus:
+      type: string
+      enum:
+        - issued
+        - paid
+
+    ReservationStatus:
+      type: string
+      enum:
+        - reserved
+        - released
+        - consumed
+
+    PaymentSource:
+      type: string
+      enum:
+        - operator
+        - robot
+        - test
+      description: Provenance of a remittance. Carries no rule; it exists so a demo can tell an operator click from the external payment robot.
+
+    OrderLine:
+      type: object
+      description: One line of an order. `unitPrice` and `lineDiscount` are minor units in the order's currency, snapshotted at order time.
+      properties:
+        productCode:
+          $ref: '#/components/schemas/ProductCode'
+        description:
+          type: string
+        quantity:
+          $ref: '#/components/schemas/Quantity'
+        unitPrice:
+          $ref: '#/components/schemas/MinorUnits'
+        lineDiscount:
+          $ref: '#/components/schemas/MinorUnits'
+      required:
+        - productCode
+        - quantity
+        - unitPrice
+        - lineDiscount
+
+    ReservationRef:
+      type: object
+      properties:
+        reservationId:
+          $ref: '#/components/schemas/UniqueId'
+        productCode:
+          $ref: '#/components/schemas/ProductCode'
+        units:
+          $ref: '#/components/schemas/Quantity'
+      required:
+        - reservationId
+        - productCode
+        - units
+
+    Shortage:
+      type: object
+      description: One line that could not be satisfied, with what was asked for and what was free.
+      properties:
+        productCode:
+          $ref: '#/components/schemas/ProductCode'
+        requested:
+          $ref: '#/components/schemas/Quantity'
+        available:
+          $ref: '#/components/schemas/UnitCount'
+      required:
+        - productCode
+        - requested
+        - available
+
+    DespatchLine:
+      type: object
+      properties:
+        productCode:
+          $ref: '#/components/schemas/ProductCode'
+        units:
+          $ref: '#/components/schemas/Quantity'
+      required:
+        - productCode
+        - units
+
+    InvoiceLine:
+      type: object
+      properties:
+        productCode:
+          $ref: '#/components/schemas/ProductCode'
+        units:
+          $ref: '#/components/schemas/Quantity'
+        unitPrice:
+          $ref: '#/components/schemas/MinorUnits'
+      required:
+        - productCode
+        - units
+        - unitPrice
+
+    CompensationStep:
+      type: object
+      description: One compensating action that ran before the cancellation, so the unwinding is auditable in causal order.
+      properties:
+        step:
+          type: string
+          enum:
+            - stock_released
+            - credit_released
+        eventId:
+          $ref: '#/components/schemas/UniqueId'
+        eventType:
+          type: string
+        occurredAt:
+          $ref: '#/components/schemas/Instant'
+        summary:
+          type: string
+      required:
+        - step
+        - eventType
+        - occurredAt
+
+    # ───────────────────────────── the envelope ─────────────────────────────
+    Envelope:
+      type: object
+      title: Fact envelope
+      description: |
+        The payload-independent contract carried by **every** fact, identical
+        across the trilogy (R11, R12). No field may be absent, null or empty.
+        Each of the fourteen fact schemas composes this with a `const`
+        `eventType` and its own `payload`.
+      properties:
+        eventId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: Globally unique. **The idempotency key of every consumer**, generated in the domain when the event is created, not when it is published.
+        eventType:
+          type: string
+          pattern: '^[a-z]+\.[a-z_]+\.v[0-9]+$'
+          description: '`<aggregate>.<fact>.v<n>`. The version suffix is part of the type: a breaking payload change is a new `v<n+1>` type carried alongside the old one.'
+        aggregateId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: Identity of the aggregate that produced the fact — the order, the stock item, the credit line, the invoice.
+        correlationId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: '**Always the order id.** Partition key of the fact stream, log correlation id and read-model document key.'
+        causationId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: The `eventId` of the fact — or the id of the command — that caused this one, so the causal chain is reconstructible from the facts alone.
+        occurredAt:
+          allOf:
+            - $ref: '#/components/schemas/Instant'
+          description: When the fact **became true in the domain**, stamped by the aggregate — not when it was published or consumed. Timelines order by this, never by arrival (R50).
+        payload:
+          type: object
+          description: The fact-specific body. All monetary fields are integer minor units.
+      required:
+        - eventId
+        - eventType
+        - aggregateId
+        - correlationId
+        - causationId
+        - occurredAt
+        - payload
+
+    FactHeaders:
+      type: object
+      description: Transport headers carried by every fact. Trace context is mandatory so one distributed trace spans both brokers (R56, R57).
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context, injected on publish and extracted on consume.
+        tracestate:
+          type: string
+        x-event-type:
+          type: string
+          description: Mirror of the envelope's `eventType`, so a consumer can filter without deserialising the payload (the cost of topic-per-service rather than topic-per-event).
+        content-type:
+          type: string
+          default: application/json
+      required:
+        - traceparent
+        - x-event-type
+
+    DeadLetterHeaders:
+      type: object
+      description: |
+        Diagnostic headers of a dead-letter record. The payload stays the
+        unmodified original envelope so a redrive is a byte-for-byte republish;
+        everything about the failure lives here.
+
+        `x-first-failed-at` is the instant the FIRST processing attempt failed —
+        never the instant processing began; it equals `x-failed-at` only when a
+        single attempt was made. `x-failed-at` is the instant the final attempt
+        failed, immediately before the record was dead-lettered.
+      properties:
+        x-failed-consumer:
+          type: string
+          description: Name of the consumer that exhausted its attempts — `orders.saga`, `projector` or `notifications`.
+          examples:
+            - projector
+        x-attempts:
+          type: integer
+          minimum: 1
+          description: How many processing attempts were made before giving up.
+        x-error:
+          type: string
+          description: The error of the final attempt — class or code plus message. Stack traces belong in logs, not here.
+        x-original-topic:
+          type: string
+          description: The source topic, so a redrive knows where to republish.
+        x-first-failed-at:
+          $ref: '#/components/schemas/Instant'
+        x-failed-at:
+          $ref: '#/components/schemas/Instant'
+        traceparent:
+          type: string
+        x-event-type:
+          type: string
+      required:
+        - x-failed-consumer
+        - x-attempts
+        - x-error
+
+    # ──────────────────────── the 14 fact payloads ──────────────────────────
+    OrderPlacedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        buyerGln:
+          $ref: '#/components/schemas/Gln'
+        supplierGln:
+          $ref: '#/components/schemas/Gln'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        orderDate:
+          $ref: '#/components/schemas/Instant'
+        lines:
+          type: array
+          minItems: 1
+          description: At least one line — an order with none cannot exist (invariant O1).
+          items:
+            $ref: '#/components/schemas/OrderLine'
+        initialAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        initialDiscount:
+          $ref: '#/components/schemas/MinorUnits'
+        totalAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        notes:
+          type: string
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - buyerGln
+        - supplierGln
+        - currency
+        - orderDate
+        - lines
+        - initialAmount
+        - initialDiscount
+        - totalAmount
+
+    StockReservedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        reservations:
+          type: array
+          minItems: 1
+          description: One reservation per order line — reservation is all-or-nothing (invariant F3).
+          items:
+            $ref: '#/components/schemas/ReservationRef'
+      required:
+        - orderReference
+        - companyCode
+        - reservations
+
+    StockRejectedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        shortages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Shortage'
+        reason:
+          type: string
+          enum:
+            - insufficient_stock
+            - unknown_product
+      required:
+        - orderReference
+        - companyCode
+        - shortages
+        - reason
+
+    StockReleasedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        released:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ReservationRef'
+        reason:
+          type: string
+          enum:
+            - credit_rejected
+            - order_cancelled
+          description: Why the reservation was returned. Compensation after a credit refusal, or an operator cancellation while stock was held.
+      required:
+        - orderReference
+        - companyCode
+        - released
+        - reason
+
+    CreditApprovedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        creditCode:
+          $ref: '#/components/schemas/CreditCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        heldAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        availableCreditAfter:
+          $ref: '#/components/schemas/MinorUnits'
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - creditCode
+        - currency
+        - heldAmount
+        - availableCreditAfter
+
+    CreditRejectedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        creditCode:
+          $ref: '#/components/schemas/CreditCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        requestedAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        availableCredit:
+          $ref: '#/components/schemas/MinorUnits'
+          description: The retailer's available credit at the moment of refusal. Unchanged by the refusal — no ledger entry was written (invariant B1).
+        reason:
+          type: string
+          enum:
+            - over_limit
+            - simulated_cents_rule
+            - simulated_failure_rate
+          description: |
+            `over_limit` is a genuine domain refusal. `simulated_cents_rule`
+            (R42) and `simulated_failure_rate` (R43) come from the credit-check
+            **simulator adapter** bound behind the credit port — a demo
+            determinism device, not a credit policy. Downstream behaviour is
+            identical in all three cases (R44).
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - currency
+        - requestedAmount
+        - availableCredit
+        - reason
+
+    CreditReleasedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        creditCode:
+          $ref: '#/components/schemas/CreditCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        releasedAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        availableCreditAfter:
+          $ref: '#/components/schemas/MinorUnits'
+        reason:
+          type: string
+          enum:
+            - invoice_paid
+            - order_cancelled
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - currency
+        - releasedAmount
+        - availableCreditAfter
+        - reason
+
+    OrderConfirmedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        totalAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        confirmedAt:
+          $ref: '#/components/schemas/Instant'
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - currency
+        - totalAmount
+        - confirmedAt
+
+    OrderDespatchedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        despatchReference:
+          $ref: '#/components/schemas/DespatchReference'
+        despatchDate:
+          $ref: '#/components/schemas/Instant'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/DespatchLine'
+      required:
+        - orderReference
+        - despatchReference
+        - despatchDate
+        - companyCode
+        - retailerCode
+        - lines
+
+    InvoiceIssuedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        invoiceReference:
+          $ref: '#/components/schemas/InvoiceReference'
+        invoiceDate:
+          $ref: '#/components/schemas/Instant'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/InvoiceLine'
+        amount:
+          $ref: '#/components/schemas/MinorUnits'
+        discount:
+          $ref: '#/components/schemas/MinorUnits'
+        totalAmount:
+          $ref: '#/components/schemas/MinorUnits'
+      required:
+        - orderReference
+        - invoiceReference
+        - invoiceDate
+        - retailerCode
+        - companyCode
+        - currency
+        - lines
+        - amount
+        - discount
+        - totalAmount
+
+    PaymentReceivedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        invoiceReference:
+          $ref: '#/components/schemas/InvoiceReference'
+        paymentReference:
+          $ref: '#/components/schemas/PaymentReference'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        amount:
+          $ref: '#/components/schemas/MinorUnits'
+          description: Equals the invoice `totalAmount` exactly — partial payment is out of scope (invariant B10).
+        valueDate:
+          $ref: '#/components/schemas/Instant'
+        source:
+          $ref: '#/components/schemas/PaymentSource'
+      required:
+        - orderReference
+        - invoiceReference
+        - paymentReference
+        - currency
+        - amount
+        - valueDate
+        - source
+
+    OrderCompletedPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        totalAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        completedAt:
+          $ref: '#/components/schemas/Instant'
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - currency
+        - totalAmount
+        - completedAt
+
+    OrderCancelledPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        cancellationReason:
+          $ref: '#/components/schemas/CancellationReason'
+        cancelledAt:
+          $ref: '#/components/schemas/Instant'
+        compensationSteps:
+          type: array
+          description: The compensating facts that ran before this cancellation, in causal order. Empty for `stock_rejected` — nothing was ever acquired (R26).
+          items:
+            $ref: '#/components/schemas/CompensationStep'
+        note:
+          type: string
+          description: Free-text operator note, carried through from the cancellation request so the timeline entry built from this fact can record it. Named identically in `openapi.yaml` (`CancelOrderRequest.note`). Optional, and absent unless an operator supplied one — `stock_rejected` and `credit_rejected` are decided by the saga, never asked for, so they never carry it.
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - cancellationReason
+        - cancelledAt
+        - compensationSteps
+
+    # ── the 14th fact (observability_reliability / feature 27) ───────────────
+    # OrderSagaFailedPayload is the 14th fact, added to satisfy R29's
+    # dead-letter clause ("record a saga-failure entry in the order
+    # timeline" — `order timeline` is R50's defined term, the projector's
+    # read model). Gate decision (progress/spec_observability_reliability.md's
+    # open-points table, row 3): Option 1 — mint this fact — chosen over
+    # Option 2 (an Orders-owned side channel merged only at the Gateway).
+    # Registered on the `ordersFacts` channel's `messages:` map, consumed by
+    # the projector alongside the other thirteen (never by `orders.saga`
+    # itself, which emits it, and never by `notifications`, which is
+    # purely diagnostic — see the channel's own description).
+    OrderSagaFailedPayload:
+      type: object
+      description: A saga command was retried to exhaustion (SO4) and parked (SO5) without ever completing; the order stays in its last legal status. Emitted at most once per parked `saga_commands` row (OR3), on the first park transition only — a later re-park after a further exhausted retry emits nothing further.
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        command:
+          type: string
+          description: The saga command that could not be delivered — one of `stock.reserve`, `stock.release`, `despatch.create`, `credit.hold`, `invoice.issue`.
+        attempts:
+          type: integer
+          minimum: 1
+          description: In-line attempts made before parking (SO4's configured maximum).
+        lastError:
+          type: string
+          description: The error of the final in-line attempt.
+        failedAt:
+          $ref: '#/components/schemas/Instant'
+      required:
+        - orderReference
+        - command
+        - attempts
+        - lastError
+        - failedAt
+
+    # ─────────────────────── the 14 fact event schemas ──────────────────────
+    OrderPlacedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: order.placed.v1
+            payload:
+              $ref: '#/components/schemas/OrderPlacedPayload'
+
+    StockReservedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: stock.reserved.v1
+            payload:
+              $ref: '#/components/schemas/StockReservedPayload'
+
+    StockRejectedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: stock.rejected.v1
+            payload:
+              $ref: '#/components/schemas/StockRejectedPayload'
+
+    StockReleasedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: stock.released.v1
+            payload:
+              $ref: '#/components/schemas/StockReleasedPayload'
+
+    CreditApprovedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: credit.approved.v1
+            payload:
+              $ref: '#/components/schemas/CreditApprovedPayload'
+
+    CreditRejectedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: credit.rejected.v1
+            payload:
+              $ref: '#/components/schemas/CreditRejectedPayload'
+
+    CreditReleasedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: credit.released.v1
+            payload:
+              $ref: '#/components/schemas/CreditReleasedPayload'
+
+    OrderConfirmedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: order.confirmed.v1
+            payload:
+              $ref: '#/components/schemas/OrderConfirmedPayload'
+
+    OrderDespatchedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: order.despatched.v1
+            payload:
+              $ref: '#/components/schemas/OrderDespatchedPayload'
+
+    InvoiceIssuedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: invoice.issued.v1
+            payload:
+              $ref: '#/components/schemas/InvoiceIssuedPayload'
+
+    PaymentReceivedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: payment.received.v1
+            payload:
+              $ref: '#/components/schemas/PaymentReceivedPayload'
+
+    OrderCompletedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: order.completed.v1
+            payload:
+              $ref: '#/components/schemas/OrderCompletedPayload'
+
+    OrderCancelledEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: order.cancelled.v1
+            payload:
+              $ref: '#/components/schemas/OrderCancelledPayload'
+
+    OrderSagaFailedEvent:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            eventType:
+              const: order.saga_failed.v1
+            payload:
+              $ref: '#/components/schemas/OrderSagaFailedPayload'
+
+    # ───────────────────────── RPC common structures ────────────────────────
+    RpcHeaders:
+      type: object
+      description: Headers carried by every request and every reply on the RPC transport.
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context, injected on request and extracted by the responder so the trace continues across both brokers (R57).
+        tracestate:
+          type: string
+        x-correlation-id:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: The order id when the request concerns a known order; otherwise the gateway request id. Present on every structured log line produced while handling the request (R58).
+        x-request-id:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: Identity of this request attempt. A retry after a timeout reuses the same value, which is what lets a responder recognise a duplicate.
+        x-deadline-ms:
+          type: integer
+          minimum: 1
+          description: The caller's remaining budget in milliseconds. A responder that cannot answer within it should not start.
+      required:
+        - traceparent
+
+    RpcError:
+      type: object
+      title: RPC error reply
+      description: |
+        The error reply of every subject. `code` is stable and machine-readable;
+        `message` is for humans and is never parsed.
+      properties:
+        code:
+          type: string
+          enum:
+            - VALIDATION_FAILED
+            - NOT_FOUND
+            - CONFLICT
+            - PRECONDITION_FAILED
+            - ORDER_NOT_CANCELLABLE
+            - STOCK_UNAVAILABLE
+            - INVOICE_NOT_PAYABLE
+            - PAYMENT_MISMATCH
+            - DOMAIN_ERROR
+            - INTERNAL_ERROR
+            - UNAVAILABLE
+            - TIMEOUT
+          description: |
+            `TIMEOUT` is produced **by the caller**, not by a responder, when no
+            reply arrives within the deadline — it exists here so callers can
+            log and count timeouts in the same shape as real error replies.
+        message:
+          type: string
+        details:
+          type: object
+          description: Structured context — offending field, shortages, expected versus observed status. Shape depends on `code`.
+        correlationId:
+          $ref: '#/components/schemas/UniqueId'
+        occurredAt:
+          $ref: '#/components/schemas/Instant'
+      required:
+        - code
+        - message
+
+    RpcTimeout:
+      type: object
+      title: RPC timeout — the absence of a reply
+      description: |
+        **A timeout is not a message.** It is the caller observing that no reply
+        arrived within `x-deadline-ms`, and it is a legitimate, handled answer
+        on this transport — which is precisely why the RPC transport needs no
+        durability (`saga.md` §1).
+
+        Handling is normative (R29): the orchestrator retries with backoff up to
+        the configured maximum **while leaving the order status unchanged**, so
+        the saga is always resumable from a legal state. Because every command
+        is idempotent by (`orderReference`, operation), a retry that duplicates
+        an effect the responder already applied returns the existing outcome
+        instead of repeating it. On exhausting the attempts, the **triggering
+        fact** is routed to the dead-letter topic and a saga-failure entry is
+        written to the order timeline.
+
+        This schema is documentation of that contract; nothing serialises it.
+      properties:
+        code:
+          const: TIMEOUT
+        subject:
+          type: string
+          description: The subject that did not answer.
+        attempt:
+          type: integer
+          minimum: 1
+        maxAttempts:
+          type: integer
+          minimum: 1
+        deadlineMs:
+          type: integer
+          minimum: 1
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+      required:
+        - code
+        - subject
+        - attempt
+
+    PageRequest:
+      type: object
+      description: Common paging request fields for the read-only list subjects.
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 25
+
+    PageInfo:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+      required:
+        - page
+        - pageSize
+        - total
+
+    StockView:
+      type: object
+      description: On-hand and reserved units for one (companyCode, productCode) pair.
+      properties:
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        productCode:
+          $ref: '#/components/schemas/ProductCode'
+        units:
+          $ref: '#/components/schemas/UnitCount'
+        reservedUnits:
+          $ref: '#/components/schemas/UnitCount'
+        availableUnits:
+          $ref: '#/components/schemas/UnitCount'
+          description: '`units − reservedUnits`. Derived, never stored — invariant F1 guarantees it is non-negative.'
+        lowStockThreshold:
+          $ref: '#/components/schemas/UnitCount'
+      required:
+        - companyCode
+        - productCode
+        - units
+        - reservedUnits
+        - availableUnits
+        - lowStockThreshold
+
+    CreditView:
+      type: object
+      description: One credit line — limit, active holds, open invoice exposure and what is left.
+      properties:
+        creditCode:
+          $ref: '#/components/schemas/CreditCode'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        creditLimit:
+          $ref: '#/components/schemas/MinorUnits'
+        activeHolds:
+          $ref: '#/components/schemas/MinorUnits'
+        openExposure:
+          $ref: '#/components/schemas/MinorUnits'
+        availableCredit:
+          $ref: '#/components/schemas/MinorUnits'
+          description: '`creditLimit − activeHolds − openExposure`, never negative (invariant B1).'
+      required:
+        - creditCode
+        - retailerCode
+        - companyCode
+        - currency
+        - creditLimit
+        - activeHolds
+        - openExposure
+        - availableCredit
+
+    InvoiceView:
+      type: object
+      properties:
+        invoiceId:
+          $ref: '#/components/schemas/UniqueId'
+        invoiceReference:
+          $ref: '#/components/schemas/InvoiceReference'
+        invoiceDate:
+          $ref: '#/components/schemas/Instant'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        amount:
+          $ref: '#/components/schemas/MinorUnits'
+        discount:
+          $ref: '#/components/schemas/MinorUnits'
+        totalAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        status:
+          $ref: '#/components/schemas/InvoiceStatus'
+        paidAt:
+          oneOf:
+            - $ref: '#/components/schemas/Instant'
+            - type: 'null'
+          description: Set exactly when the status becomes `paid`, and null while `issued` (invariant B9).
+      required:
+        - invoiceId
+        - invoiceReference
+        - invoiceDate
+        - orderReference
+        - retailerCode
+        - companyCode
+        - currency
+        - amount
+        - discount
+        - totalAmount
+        - status
+
+    Product:
+      type: object
+      properties:
+        code:
+          $ref: '#/components/schemas/ProductCode'
+        ean:
+          type: string
+          pattern: '^[0-9]{13}$'
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          $ref: '#/components/schemas/MinorUnits'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        enabled:
+          type: boolean
+      required:
+        - code
+        - name
+        - price
+        - currency
+        - enabled
+
+    Party:
+      type: object
+      description: A retailer or a company as the place-order form sees it.
+      properties:
+        code:
+          $ref: '#/components/schemas/PartyCode'
+        name:
+          type: string
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        vat:
+          type: string
+        gln:
+          $ref: '#/components/schemas/Gln'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        enabled:
+          type: boolean
+      required:
+        - code
+        - name
+        - country
+        - gln
+        - currency
+        - enabled
+
+    CurrencyView:
+      type: object
+      properties:
+        code:
+          $ref: '#/components/schemas/CurrencyCode'
+        isoNumber:
+          type: string
+          pattern: '^[0-9]{3}$'
+        symbol:
+          type: string
+        decimalPoints:
+          type: integer
+          minimum: 0
+          description: How many decimal places the currency has when **rendered**. It never changes the fact that amounts are transported as integer minor units.
+      required:
+        - code
+        - decimalPoints
+
+    # ───────────────────── RPC request / reply payloads ─────────────────────
+    OrdersCreateRequestPayload:
+      type: object
+      properties:
+        requestId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: Optional client-supplied idempotency key. A repeat with the same value returns the original order instead of placing a second one.
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              productCode:
+                $ref: '#/components/schemas/ProductCode'
+              quantity:
+                $ref: '#/components/schemas/Quantity'
+              unitPrice:
+                $ref: '#/components/schemas/MinorUnits'
+                description: Optional. When omitted the responder snapshots the catalogue price. When supplied it must match the enclosing `currency`.
+              lineDiscount:
+                $ref: '#/components/schemas/MinorUnits'
+            required:
+              - productCode
+              - quantity
+        orderDiscount:
+          $ref: '#/components/schemas/MinorUnits'
+        notes:
+          type: string
+      required:
+        - retailerCode
+        - companyCode
+        - currency
+        - lines
+
+    OrdersCreateReplyPayload:
+      type: object
+      properties:
+        orderId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: Also the saga `correlationId` of every fact this order will produce.
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        status:
+          const: placed
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        initialAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        initialDiscount:
+          $ref: '#/components/schemas/MinorUnits'
+        totalAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        orderDate:
+          $ref: '#/components/schemas/Instant'
+      required:
+        - orderId
+        - orderReference
+        - status
+        - currency
+        - totalAmount
+        - orderDate
+
+    OrdersCancelRequestPayload:
+      type: object
+      properties:
+        orderId:
+          $ref: '#/components/schemas/UniqueId'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        reason:
+          const: operator_cancelled
+          description: Operator cancellation is the only reason a caller may request. `stock_rejected` and `credit_rejected` are decided by the saga, never asked for.
+        note:
+          type: string
+      required:
+        - reason
+
+    OrdersCancelReplyPayload:
+      type: object
+      properties:
+        orderId:
+          $ref: '#/components/schemas/UniqueId'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        cancellationReason:
+          $ref: '#/components/schemas/CancellationReason'
+        compensationPlanned:
+          type: array
+          description: The acquisitions that will be unwound, in the order they are released (`saga.md` §4.3) — `stock_release` then `credit_release` from `credit_approved` or `confirmed`. The cancellation itself completes only when their facts arrive, and from those two statuses it can be overtaken by the despatch already requested.
+          items:
+            type: string
+            enum:
+              - credit_release
+              - stock_release
+      required:
+        - orderId
+        - orderReference
+        - status
+        - compensationPlanned
+
+    StockCheckRequestPayload:
+      type: object
+      properties:
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              productCode:
+                $ref: '#/components/schemas/ProductCode'
+              quantity:
+                $ref: '#/components/schemas/Quantity'
+            required:
+              - productCode
+              - quantity
+      required:
+        - companyCode
+        - lines
+
+    StockCheckReplyPayload:
+      type: object
+      properties:
+        available:
+          type: boolean
+          description: True only when every line is satisfiable **at the moment of the read**. It is not a promise, and it is not a reservation.
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              productCode:
+                $ref: '#/components/schemas/ProductCode'
+              requested:
+                $ref: '#/components/schemas/Quantity'
+              available:
+                $ref: '#/components/schemas/UnitCount'
+              sufficient:
+                type: boolean
+            required:
+              - productCode
+              - requested
+              - available
+              - sufficient
+      required:
+        - available
+        - lines
+
+    StockReserveRequestPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              productCode:
+                $ref: '#/components/schemas/ProductCode'
+              units:
+                $ref: '#/components/schemas/Quantity'
+            required:
+              - productCode
+              - units
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - lines
+
+    StockReserveReplyPayload:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum:
+            - accepted
+            - rejected
+            - already_reserved
+          description: '`already_reserved` is the idempotent repeat — the existing reservations are returned and no second `stock.reserved.v1` is emitted.'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        reservations:
+          type: array
+          description: Present when `outcome` is `accepted` or `already_reserved`.
+          items:
+            $ref: '#/components/schemas/ReservationRef'
+        shortages:
+          type: array
+          description: Present when `outcome` is `rejected`. Nothing was reserved (invariant F3).
+          items:
+            $ref: '#/components/schemas/Shortage'
+      required:
+        - outcome
+        - orderReference
+
+    StockReleaseRequestPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        reason:
+          type: string
+          enum:
+            - credit_rejected
+            - order_cancelled
+      required:
+        - orderReference
+        - reason
+
+    StockReleaseReplyPayload:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum:
+            - released
+            - already_released
+          description: '`already_released` is a **success no-op**: no counter changed and no second fact was emitted (invariant F5, R34).'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        released:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReservationRef'
+      required:
+        - outcome
+        - orderReference
+
+    StockListRequestPayload:
+      allOf:
+        - $ref: '#/components/schemas/PageRequest'
+        - type: object
+          properties:
+            companyCode:
+              $ref: '#/components/schemas/PartyCode'
+            productCode:
+              $ref: '#/components/schemas/ProductCode'
+            belowThreshold:
+              type: boolean
+              description: When true, return only items whose available units are below `lowStockThreshold`. This is the query the demo replenishment workflow runs.
+
+    StockListReplyPayload:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockView'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+        - items
+        - page
+
+    StockReplenishRequestPayload:
+      type: object
+      properties:
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              productCode:
+                $ref: '#/components/schemas/ProductCode'
+              units:
+                $ref: '#/components/schemas/Quantity'
+                description: Units to **add** to on-hand stock. This is a delta, not a target level.
+            required:
+              - productCode
+              - units
+      required:
+        - companyCode
+        - lines
+
+    StockReplenishReplyPayload:
+      type: object
+      properties:
+        items:
+          type: array
+          description: The affected stock items after replenishment.
+          items:
+            $ref: '#/components/schemas/StockView'
+      required:
+        - items
+
+    DespatchCreateRequestPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+      required:
+        - orderReference
+
+    DespatchCreateReplyPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        despatchReference:
+          $ref: '#/components/schemas/DespatchReference'
+        despatchDate:
+          $ref: '#/components/schemas/Instant'
+        created:
+          type: boolean
+          description: False on the idempotent repeat — the existing despatch advice is returned and no second fact is emitted (invariant F8).
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/DespatchLine'
+      required:
+        - orderReference
+        - despatchReference
+        - despatchDate
+        - created
+
+    CreditHoldRequestPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        amount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The order's total amount. It travels alone here, so it is a `Money` object — integer minor units plus currency.
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - amount
+
+    CreditHoldReplyPayload:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum:
+            - approved
+            - rejected
+            - already_held
+          description: '`already_held` is the idempotent repeat (invariant B4) — the existing hold is returned and no second fact is emitted.'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        creditCode:
+          $ref: '#/components/schemas/CreditCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        heldAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        availableCredit:
+          $ref: '#/components/schemas/MinorUnits'
+        reason:
+          type: string
+          enum:
+            - over_limit
+            - simulated_cents_rule
+            - simulated_failure_rate
+          description: Present when `outcome` is `rejected`, and identical to the `reason` of the emitted `credit.rejected.v1` (R44).
+      required:
+        - outcome
+        - orderReference
+        - currency
+        - availableCredit
+
+    CreditReleaseRequestPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+      description: |
+        `reason` is not a caller-supplied field — this RPC always releases
+        with reason `order_cancelled` (the only external trigger for it).
+        `invoice_paid` is set only by Billing's own payment-registration flow,
+        never by an external caller.
+
+    CreditReleaseReplyPayload:
+      type: object
+      properties:
+        released:
+          type: boolean
+          description: |
+            `true` — an outstanding hold existed and was released this call.
+            `false` — idempotent repeat or nothing was ever held (BC11, B5);
+            not an error, no ledger entry, no fact.
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        creditCode:
+          $ref: '#/components/schemas/CreditCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        releasedAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        availableCreditAfter:
+          $ref: '#/components/schemas/MinorUnits'
+      required:
+        - released
+        - orderReference
+        - currency
+        - availableCreditAfter
+
+    CreditListRequestPayload:
+      allOf:
+        - $ref: '#/components/schemas/PageRequest'
+        - type: object
+          properties:
+            retailerCode:
+              $ref: '#/components/schemas/PartyCode'
+            companyCode:
+              $ref: '#/components/schemas/PartyCode'
+
+    CreditListReplyPayload:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditView'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+        - items
+        - page
+
+    InvoiceIssueRequestPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        lines:
+          type: array
+          minItems: 1
+          description: The despatched lines. The invoice mirrors them exactly — partial despatch and partial invoicing are out of scope (invariant F7).
+          items:
+            $ref: '#/components/schemas/InvoiceLine'
+        discount:
+          $ref: '#/components/schemas/MinorUnits'
+      required:
+        - orderReference
+        - retailerCode
+        - companyCode
+        - currency
+        - lines
+
+    InvoiceIssueReplyPayload:
+      type: object
+      properties:
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        invoiceId:
+          $ref: '#/components/schemas/UniqueId'
+        invoiceReference:
+          $ref: '#/components/schemas/InvoiceReference'
+        invoiceDate:
+          $ref: '#/components/schemas/Instant'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        totalAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        status:
+          $ref: '#/components/schemas/InvoiceStatus'
+        created:
+          type: boolean
+          description: False on the idempotent repeat — the existing invoice is returned and no second fact is emitted (invariant B7).
+      required:
+        - orderReference
+        - invoiceReference
+        - invoiceDate
+        - currency
+        - totalAmount
+        - status
+        - created
+
+    InvoiceListRequestPayload:
+      allOf:
+        - $ref: '#/components/schemas/PageRequest'
+        - type: object
+          properties:
+            status:
+              $ref: '#/components/schemas/InvoiceStatus'
+            retailerCode:
+              $ref: '#/components/schemas/PartyCode'
+            companyCode:
+              $ref: '#/components/schemas/PartyCode'
+            orderReference:
+              $ref: '#/components/schemas/OrderReference'
+            issuedBeforeMinutes:
+              type: integer
+              minimum: 0
+              description: Return only invoices issued at least this many minutes ago. This is how the demo payment robot selects invoices to pay "within terms".
+
+    InvoiceListReplyPayload:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceView'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+      required:
+        - items
+        - page
+
+    PaymentRegisterRequestPayload:
+      type: object
+      properties:
+        invoiceId:
+          $ref: '#/components/schemas/UniqueId'
+        invoiceReference:
+          $ref: '#/components/schemas/InvoiceReference'
+        paymentReference:
+          allOf:
+            - $ref: '#/components/schemas/PaymentReference'
+          description: '**The idempotency key.** A repeat returns the original outcome and emits no second fact (R48).'
+        amount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: Must equal the invoice `totalAmount` and currency exactly. Partial payment is out of scope (invariant B10).
+        valueDate:
+          $ref: '#/components/schemas/Instant'
+        source:
+          $ref: '#/components/schemas/PaymentSource'
+      required:
+        - paymentReference
+        - amount
+        - valueDate
+        - source
+
+    PaymentRegisterReplyPayload:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum:
+            - accepted
+            - duplicate
+          description: '`duplicate` is the idempotent replay of an already-recorded `paymentReference`, carrying the **original** outcome (R48). A mismatched amount or currency is not a duplicate — it is an error reply (R49).'
+        paymentReference:
+          $ref: '#/components/schemas/PaymentReference'
+        invoiceReference:
+          $ref: '#/components/schemas/InvoiceReference'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        invoiceStatus:
+          $ref: '#/components/schemas/InvoiceStatus'
+        paidAt:
+          $ref: '#/components/schemas/Instant'
+      required:
+        - outcome
+        - paymentReference
+        - invoiceReference
+        - invoiceStatus
+
+    CatalogReferenceListRequestPayload:
+      type: object
+      properties:
+        kinds:
+          type: array
+          minItems: 1
+          description: Which reference collections to return. Omit for all of them.
+          items:
+            type: string
+            enum:
+              - products
+              - retailers
+              - companies
+              - currencies
+        includeDisabled:
+          type: boolean
+          default: false
+
+    CatalogReferenceListReplyPayload:
+      type: object
+      description: Only the requested collections are present.
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/Product'
+        retailers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Party'
+        companies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Party'
+        currencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrencyView'

@@ -1,0 +1,53 @@
+{
+  "id": "otcBurst",
+  "name": "4 - Burst (Order-To-Cash)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "={{ $env.BURST_WEBHOOK_PATH || 'otc-burst' }}",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "otc-burst"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Burst \u2014 see specs/shared/n8n-workflows.md \u00a76.\n// Manual webhook: fires BURST_ORDER_COUNT orders (same composition logic as\n// the order generator, \u00a73.1-\u00a73.2) at BURST_CONCURRENCY in parallel, and\n// responds with the placed/refused counts and the order references.\n\nconst gatewayUrl = ($env.OTC_GATEWAY_URL || 'http://gateway:3001').replace(/\\/$/, '');\nconst username = $env.GATEWAY_OPERATOR_USERNAME;\nconst password = $env.GATEWAY_OPERATOR_PASSWORD;\nconst timeoutMs = Number($env.OTC_REQUEST_TIMEOUT_MS || 10000);\n\nconst enabled = ($env.BURST_ENABLED ?? 'true') !== 'false';\n\nconst body = $input.first().json.body ?? {};\nconst orderCount = Number(body.count ?? $env.BURST_ORDER_COUNT ?? 20);\nconst compensationRatio = Number(body.compensationRatio ?? $env.BURST_COMPENSATION_RATIO ?? 0.2);\nconst concurrency = Number($env.BURST_CONCURRENCY || 5);\nconst maxLines = Number($env.ORDER_GENERATOR_MAX_LINES || 4);\nconst maxUnits = Number($env.ORDER_GENERATOR_MAX_UNITS || 10);\n\nif (!enabled) {\n  return [{ json: { enabled: false, message: 'BURST_ENABLED=false', placed: 0, refused: 0, orderReferences: [] } }];\n}\n\nfunction sleep(ms) {\n  return new Promise((resolve) => setTimeout(resolve, ms));\n}\n\nasync function requestWithRetry(options, { retryOn5xxAndNetwork = true } = {}) {\n  const attempts = retryOn5xxAndNetwork ? 4 : 1;\n  let lastErr;\n  for (let attempt = 0; attempt < attempts; attempt += 1) {\n    try {\n      return await this.helpers.httpRequest({ timeout: timeoutMs, ...options });\n    } catch (err) {\n      lastErr = err;\n      const status = err.status ?? err.response?.status;\n      const isNetworkError = status === undefined;\n      const is5xx = typeof status === 'number' && status >= 500;\n      if (!retryOn5xxAndNetwork || !(isNetworkError || is5xx) || attempt === attempts - 1) {\n        throw err;\n      }\n      await sleep(2 ** attempt * 250);\n    }\n  }\n  throw lastErr;\n}\n\nasync function login() {\n  const res = await requestWithRetry.call(this, {\n    method: 'POST', url: `${gatewayUrl}/auth/login`, body: { username, password }, json: true,\n  });\n  return res.accessToken;\n}\n\nfunction authHeaders(token) {\n  return { Authorization: `Bearer ${token}` };\n}\n\nasync function loadCatalogue(token) {\n  const headers = authHeaders(token);\n  const [productsRes, retailersRes, companiesRes] = await Promise.all([\n    requestWithRetry.call(this, { method: 'GET', url: `${gatewayUrl}/catalog/products`, headers, json: true }),\n    requestWithRetry.call(this, { method: 'GET', url: `${gatewayUrl}/catalog/retailers`, headers, json: true }),\n    requestWithRetry.call(this, { method: 'GET', url: `${gatewayUrl}/catalog/companies`, headers, json: true }),\n  ]);\n  return {\n    products: productsRes.items.filter((p) => p.enabled),\n    retailers: retailersRes.items.filter((r) => r.enabled),\n    companies: companiesRes.items.filter((c) => c.enabled),\n  };\n}\n\nfunction pick(arr) {\n  return arr[Math.floor(Math.random() * arr.length)];\n}\n\nfunction composeOrder(catalogue) {\n  const retailer = pick(catalogue.retailers);\n  const company = pick(catalogue.companies);\n  const currency = retailer.currency;\n  const eligibleProducts = catalogue.products.filter((p) => p.currency === currency);\n  if (!eligibleProducts.length) return null;\n  const lineCount = 1 + Math.floor(Math.random() * Math.max(1, maxLines));\n  const lines = [];\n  for (let i = 0; i < lineCount; i += 1) {\n    const p = pick(eligibleProducts);\n    lines.push({ productCode: p.code, quantity: 1 + Math.floor(Math.random() * Math.max(1, maxUnits)), unitPrice: p.price });\n  }\n  return { retailerCode: retailer.code, companyCode: company.code, currency, lines, notes: 'n8n burst' };\n}\n\nfunction orderTotal(order) {\n  return order.lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);\n}\nfunction mod100(n) {\n  return ((n % 100) + 100) % 100;\n}\nfunction engineerCompensation(order) {\n  // Review fix (D1) \u2014 same fix as the order generator's identical function;\n  // see its comment and progress/impl_n8n_workflows.md, \"Review fixes\".\n  const lastLine = order.lines[order.lines.length - 1];\n  lastLine.quantity = 1;\n  const total = orderTotal(order);\n  if (mod100(total) === 99) return true;\n  const delta = mod100(99 - total); // 0..99, always reachable at quantity 1\n  if (lastLine.unitPrice + delta < 1) return false; // defensive; unreachable with delta >= 0\n  lastLine.unitPrice += delta;\n  return mod100(orderTotal(order)) === 99;\n}\n\nasync function placeOne(token, catalogue) {\n  const order = composeOrder(catalogue);\n  if (!order) return { outcome: 'skipped', reason: 'no eligible retailer/company/product combination' };\n  if (compensationRatio > 0 && Math.random() < compensationRatio) engineerCompensation(order);\n  try {\n    const res = await requestWithRetry.call(this, {\n      method: 'POST', url: `${gatewayUrl}/orders`, headers: authHeaders(token), body: order, json: true,\n    });\n    return { outcome: 'accepted', orderReference: res.orderReference };\n  } catch (err) {\n    const status = err.status ?? err.response?.status;\n    if (status === 409 || status === 422) return { outcome: 'refused', status };\n    throw err;\n  }\n}\n\n// simple concurrency pool\nasync function runPool(tasks, poolSize) {\n  const results = new Array(tasks.length);\n  let next = 0;\n  async function worker() {\n    while (next < tasks.length) {\n      const i = next;\n      next += 1;\n      results[i] = await tasks[i]();\n    }\n  }\n  await Promise.all(Array.from({ length: Math.min(poolSize, tasks.length) }, worker));\n  return results;\n}\n\nasync function run() {\n  const token = await login.call(this);\n  const catalogue = await loadCatalogue.call(this, token);\n  const tasks = Array.from({ length: Math.max(1, orderCount) }, () => () => placeOne.call(this, token, catalogue));\n  const results = await runPool(tasks, Math.max(1, concurrency));\n  const placed = results.filter((r) => r.outcome === 'accepted');\n  const refused = results.filter((r) => r.outcome === 'refused');\n  return {\n    enabled: true,\n    requested: orderCount,\n    placed: placed.length,\n    refused: refused.length,\n    orderReferences: placed.map((r) => r.orderReference),\n  };\n}\n\nconst summary = await run.call(this);\nreturn [{ json: summary }];\n"
+      },
+      "id": "code-1",
+      "name": "Fire burst",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fire burst",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "id": "otcPaymentRobot",
+  "name": "2 - Payment Robot (Order-To-Cash)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": "={{ Number($env.PAYMENT_ROBOT_INTERVAL_SECONDS) || 120 }}"
+            }
+          ]
+        }
+      },
+      "id": "trigger-1",
+      "name": "Schedule trigger (PAYMENT_ROBOT_INTERVAL_SECONDS)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Payment robot (\"the bank\") \u2014 see specs/shared/n8n-workflows.md \u00a74.\n// Pays every invoice issued at least PAYMENT_AGE_MINUTES ago, using a\n// deterministic paymentReference so a replay is a safe no-op (R48).\n\nconst gatewayUrl = ($env.OTC_GATEWAY_URL || 'http://gateway:3001').replace(/\\/$/, '');\nconst username = $env.GATEWAY_OPERATOR_USERNAME;\nconst password = $env.GATEWAY_OPERATOR_PASSWORD;\nconst timeoutMs = Number($env.OTC_REQUEST_TIMEOUT_MS || 10000);\n\nconst enabled = ($env.PAYMENT_ROBOT_ENABLED ?? 'true') !== 'false';\nconst ageMinutes = Number($env.PAYMENT_AGE_MINUTES ?? 2);\nconst batchSize = Number($env.PAYMENT_ROBOT_BATCH_SIZE || 10);\nconst retailerFilter = ($env.PAYMENT_ROBOT_RETAILERS || '').split(',').map((s) => s.trim()).filter(Boolean);\n\nif (!enabled) {\n  return [{ json: { skipped: true, reason: 'PAYMENT_ROBOT_ENABLED=false' } }];\n}\n\nfunction sleep(ms) {\n  return new Promise((resolve) => setTimeout(resolve, ms));\n}\n\nasync function requestWithRetry(options, { retryOn5xxAndNetwork = true } = {}) {\n  const attempts = retryOn5xxAndNetwork ? 4 : 1;\n  let lastErr;\n  for (let attempt = 0; attempt < attempts; attempt += 1) {\n    try {\n      return await this.helpers.httpRequest({ timeout: timeoutMs, ...options });\n    } catch (err) {\n      lastErr = err;\n      const status = err.status ?? err.response?.status;\n      const isNetworkError = status === undefined;\n      const is5xx = typeof status === 'number' && status >= 500;\n      if (!retryOn5xxAndNetwork || !(isNetworkError || is5xx) || attempt === attempts - 1) {\n        throw err;\n      }\n      await sleep(2 ** attempt * 250);\n    }\n  }\n  throw lastErr;\n}\n\nasync function login() {\n  const res = await requestWithRetry.call(this, {\n    method: 'POST',\n    url: `${gatewayUrl}/auth/login`,\n    body: { username, password },\n    json: true,\n  });\n  return res.accessToken;\n}\n\nfunction authHeaders(token) {\n  return { Authorization: `Bearer ${token}` };\n}\n\nasync function listDueInvoices(token) {\n  const qs = {\n    status: 'issued',\n    issuedBeforeMinutes: ageMinutes,\n    pageSize: batchSize,\n  };\n  const res = await requestWithRetry.call(this, {\n    method: 'GET', url: `${gatewayUrl}/invoices`, headers: authHeaders(token), qs, json: true,\n  });\n  let items = res.items;\n  if (retailerFilter.length) {\n    items = items.filter((inv) => retailerFilter.includes(inv.retailerCode));\n  }\n  return items;\n}\n\nasync function payInvoice(token, invoice) {\n  const paymentReference = `PAY-${invoice.invoiceReference}`;\n  const body = {\n    paymentReference,\n    amount: { amount: invoice.totalAmount, currency: invoice.currency },\n    valueDate: new Date().toISOString(),\n    source: 'robot',\n  };\n  try {\n    const res = await requestWithRetry.call(this, {\n      method: 'POST',\n      url: `${gatewayUrl}/invoices/${invoice.invoiceId}/payments`,\n      headers: authHeaders(token),\n      body,\n      json: true,\n      returnFullResponse: true,\n    });\n    return {\n      outcome: res.statusCode === 201 ? 'paid' : 'duplicate',\n      status: res.statusCode,\n      invoiceReference: invoice.invoiceReference,\n      orderReference: invoice.orderReference,\n      paymentReference,\n    };\n  } catch (err) {\n    const status = err.status ?? err.response?.status;\n    if (status === 409 || status === 422) {\n      return { outcome: 'skipped', status, invoiceReference: invoice.invoiceReference, orderReference: invoice.orderReference, paymentReference };\n    }\n    if (status === 401) {\n      const freshToken = await login.call(this);\n      const res = await this.helpers.httpRequest({\n        method: 'POST', url: `${gatewayUrl}/invoices/${invoice.invoiceId}/payments`,\n        headers: authHeaders(freshToken), body, json: true, timeout: timeoutMs, returnFullResponse: true,\n      });\n      return { outcome: res.statusCode === 201 ? 'paid' : 'duplicate', status: res.statusCode, invoiceReference: invoice.invoiceReference, orderReference: invoice.orderReference, paymentReference };\n    }\n    throw err;\n  }\n}\n\nasync function run() {\n  const token = await login.call(this);\n  const invoices = await listDueInvoices.call(this, token);\n  const results = [];\n  for (const invoice of invoices) {\n    try {\n      results.push(await payInvoice.call(this, token, invoice));\n    } catch (err) {\n      results.push({ outcome: 'error', invoiceReference: invoice.invoiceReference, message: err.message, status: err.status ?? err.response?.status });\n    }\n  }\n  return results;\n}\n\nconst runResults = await run.call(this);\nif (runResults.length === 0) return [{ json: { paid: 0, duplicate: 0, skipped: 0, message: 'no invoices due' } }];\nreturn runResults.map((r) => ({ json: r }));\n"
+      },
+      "id": "code-1",
+      "name": "Pay overdue invoices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule trigger (PAYMENT_ROBOT_INTERVAL_SECONDS)": {
+      "main": [
+        [
+          {
+            "node": "Pay overdue invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

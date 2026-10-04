@@ -1,0 +1,56 @@
+{
+  "id": "otcStockReplenishment",
+  "name": "3 - Stock Replenishment (Order-To-Cash)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": "={{ Number($env.STOCK_REPLENISH_INTERVAL_SECONDS) || 300 }}"
+            }
+          ]
+        }
+      },
+      "id": "trigger-1",
+      "name": "Schedule trigger (STOCK_REPLENISH_INTERVAL_SECONDS)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stock replenishment \u2014 see specs/shared/n8n-workflows.md \u00a75.\n// Tops up on-hand units for every low-stock item, grouped by company.\n// No fact is emitted (\u00a75.1) \u2014 this is an operational act outside any saga.\n\nconst gatewayUrl = ($env.OTC_GATEWAY_URL || 'http://gateway:3001').replace(/\\/$/, '');\nconst username = $env.GATEWAY_OPERATOR_USERNAME;\nconst password = $env.GATEWAY_OPERATOR_PASSWORD;\nconst timeoutMs = Number($env.OTC_REQUEST_TIMEOUT_MS || 10000);\n\nconst enabled = ($env.STOCK_REPLENISH_ENABLED ?? 'true') !== 'false';\nconst topUpUnits = Number($env.STOCK_REPLENISH_TOP_UP_UNITS || 100);\nconst batchSize = Number($env.STOCK_REPLENISH_BATCH_SIZE || 50);\nconst companyFilter = ($env.STOCK_REPLENISH_COMPANIES || '').split(',').map((s) => s.trim()).filter(Boolean);\n\nif (!enabled) {\n  return [{ json: { skipped: true, reason: 'STOCK_REPLENISH_ENABLED=false' } }];\n}\n\nfunction sleep(ms) {\n  return new Promise((resolve) => setTimeout(resolve, ms));\n}\n\nasync function requestWithRetry(options, { retryOn5xxAndNetwork = true } = {}) {\n  const attempts = retryOn5xxAndNetwork ? 4 : 1;\n  let lastErr;\n  for (let attempt = 0; attempt < attempts; attempt += 1) {\n    try {\n      return await this.helpers.httpRequest({ timeout: timeoutMs, ...options });\n    } catch (err) {\n      lastErr = err;\n      const status = err.status ?? err.response?.status;\n      const isNetworkError = status === undefined;\n      const is5xx = typeof status === 'number' && status >= 500;\n      if (!retryOn5xxAndNetwork || !(isNetworkError || is5xx) || attempt === attempts - 1) {\n        throw err;\n      }\n      await sleep(2 ** attempt * 250);\n    }\n  }\n  throw lastErr;\n}\n\nasync function login() {\n  const res = await requestWithRetry.call(this, {\n    method: 'POST', url: `${gatewayUrl}/auth/login`, body: { username, password }, json: true,\n  });\n  return res.accessToken;\n}\n\nfunction authHeaders(token) {\n  return { Authorization: `Bearer ${token}` };\n}\n\nasync function listLowStock(token) {\n  const res = await requestWithRetry.call(this, {\n    method: 'GET', url: `${gatewayUrl}/stock`,\n    headers: authHeaders(token),\n    qs: { belowThreshold: true, pageSize: batchSize },\n    json: true,\n  });\n  let items = res.items;\n  if (companyFilter.length) items = items.filter((i) => companyFilter.includes(i.companyCode));\n  return items;\n}\n\nfunction groupByCompany(items) {\n  const groups = new Map();\n  for (const item of items) {\n    if (!groups.has(item.companyCode)) groups.set(item.companyCode, []);\n    groups.get(item.companyCode).push(item);\n  }\n  return groups;\n}\n\nasync function replenishCompany(token, companyCode, items) {\n  const body = {\n    companyCode,\n    lines: items.map((i) => ({ productCode: i.productCode, units: topUpUnits })),\n  };\n  const res = await requestWithRetry.call(this, {\n    method: 'POST', url: `${gatewayUrl}/stock/replenish`, headers: authHeaders(token), body, json: true,\n  });\n  return { companyCode, itemsToppedUp: res.items.length };\n}\n\nasync function run() {\n  const token = await login.call(this);\n  const lowItems = await listLowStock.call(this, token);\n  if (lowItems.length === 0) return [{ companyCode: null, itemsToppedUp: 0, message: 'no low-stock items' }];\n  const groups = groupByCompany(lowItems);\n  const results = [];\n  for (const [companyCode, items] of groups) {\n    try {\n      results.push(await replenishCompany.call(this, token, companyCode, items));\n    } catch (err) {\n      results.push({ companyCode, outcome: 'error', message: err.message, status: err.status ?? err.response?.status });\n    }\n  }\n  return results;\n}\n\nconst runResults = await run.call(this);\nreturn runResults.map((r) => ({ json: r }));\n"
+      },
+      "id": "code-1",
+      "name": "Replenish low stock",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule trigger (STOCK_REPLENISH_INTERVAL_SECONDS)": {
+      "main": [
+        [
+          {
+            "node": "Replenish low stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

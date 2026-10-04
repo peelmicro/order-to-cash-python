@@ -1,0 +1,1962 @@
+openapi: 3.1.0
+
+info:
+  title: Order-To-Cash — Gateway REST API
+  version: 1.0.0
+  summary: The single external entry point of the Order-To-Cash system.
+  description: |
+    **Stack-agnostic** REST contract of the Gateway / BFF, reused **verbatim**
+    by assessments **#7**, **#8** and **#9**. It is the only surface the outside
+    world may touch: the web application, the API tests, the end-to-end tests
+    and the demo automation workflows all speak this contract and nothing else.
+    Nothing outside the system connects to a database, to the fact stream or to
+    the RPC transport.
+
+    Companion documents: `domain-model.md`, `saga.md`, `requirements.md`
+    (`R1`–`R61`) and `asyncapi.yaml` — the messaging contract this gateway
+    translates into.
+
+    ## What the Gateway is, and is not
+
+    - It **owns no invariant and no aggregate.** It translates HTTP into
+      request-reply commands and queries over the RPC transport, and serves
+      list and detail queries from the **read model** (R54).
+    - **Command endpoints** (`POST /orders`, `POST /orders/{id}/cancel`,
+      `POST /invoices/{id}/payments`, `POST /stock/replenish`) are RPC calls to
+      the owning context. A 2xx here means *the command was accepted*, never
+      *the saga finished*.
+    - **Query endpoints** (`GET /orders`, `GET /orders/{id}`) read the
+      projected read model **only** — never a write model, never a
+      cross-context join.
+    - **Live progress** arrives on the server-sent-event stream, fed by the
+      projector's update signal (R55).
+
+    ## Eventual consistency, stated honestly
+
+    The order created by `POST /orders` **may not be queryable yet**: the fact
+    still has to travel from the outbox through the fact stream to the
+    projector. `GET /orders/{id}` therefore answers `202 Accepted` with an
+    explicit *projection pending* body rather than `404 Not Found` (R55).
+    Clients open the detail view in a waiting state and let the event stream
+    fill it in; they never poll in a tight loop and never treat the write as
+    instantly queryable.
+
+    ## Money
+
+    Every monetary value is an **integer count of minor units** plus an ISO 4217
+    alpha-3 currency code (R1). There is no decimal, floating-point or
+    major-unit amount anywhere in this contract — `€1,242.50` is `124250`. Two
+    shapes express it, identically to `asyncapi.yaml`:
+
+    - `Money` — an object `{ amount, currency }`, wherever an amount travels
+      **alone**;
+    - `MinorUnits` — a bare integer, wherever the **enclosing object already
+      declares** its `currency`.
+
+    Formatting for humans happens in the client, from the currency's ISO 4217
+    minor-unit exponent (EUR, GBP and USD are 2; JPY is 0; BHD is 3). No response
+    carries that exponent: it is a property of the currency code itself (SA-5).
+
+    ## Errors
+
+    Every non-2xx response is an RFC 9457 problem document
+    (`application/problem+json`) carrying a stable machine-readable `code` and
+    the `correlationId` under which the failure was logged (R58).
+  contact:
+    name: Order-To-Cash assessment trilogy
+  license:
+    name: Assessment material — not for redistribution
+    identifier: LicenseRef-Proprietary
+
+servers:
+  - url: http://localhost:3000
+    description: |
+      Local composed stack. **The demo automation workflows reach the system
+      through this base URL and nothing else** — which is why the same workflow
+      definitions serve #7, #8 and #9 with only this value changed.
+  - url: '{scheme}://{host}:{port}'
+    description: Any deployment.
+    variables:
+      scheme:
+        default: http
+        enum:
+          - http
+          - https
+      host:
+        default: localhost
+      port:
+        default: '3000'
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+    description: Session issue and introspection. The only unauthenticated command endpoint is the login itself.
+  - name: orders
+    description: Placing, listing, inspecting and cancelling orders.
+  - name: stream
+    description: Real-time saga progress over server-sent events.
+  - name: fulfillment
+    description: Stock view and replenishment.
+  - name: billing
+    description: Invoices, remittance intake and credit lines.
+  - name: catalog
+    description: Reference data for the place-order form.
+  - name: ops
+    description: Health probes and API documentation.
+
+paths:
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Issue a bearer token.
+      description: |
+        Exchanges operator credentials for a bearer token. A single operator
+        identity is assumed — the model is deliberately not multi-tenant
+        (`domain-model.md` §9).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Bad credentials.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentUser
+      summary: Describe the authenticated operator.
+      responses:
+        '200':
+          description: The current operator.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /orders:
+    post:
+      tags: [orders]
+      operationId: placeOrder
+      summary: Place an order.
+      description: |
+        Translates to the `orders.create` command. The Orders context validates
+        the lines, performs a **non-locking** availability check, computes the
+        totals inside the aggregate, and persists the order together with its
+        `order.placed.v1` outbox record in **one transaction** (R13). The saga
+        then advances on facts.
+
+        **201 means the order was accepted, not that it will complete.** The
+        response carries the order id — which is also the `correlationId` of
+        every fact this order will produce — and the caller subscribes to
+        `GET /orders/stream?orderId=…` to watch the saga.
+
+        **409** is returned when the availability check fails at acceptance;
+        the body names the short lines. Stock that disappears *after* a
+        successful check is not an error but the designed race: the order is
+        placed, `stock.rejected.v1` follows, and the saga cancels it (R26).
+
+        Idempotency: supply `Idempotency-Key`. A repeat with the same key
+        returns the original order instead of placing a second one.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceOrderRequest'
+            examples:
+              twoLineEurOrder:
+                summary: Two lines totalling 1 242,50 € (124250 minor units)
+                value:
+                  retailerCode: CarrefourEs
+                  companyCode: IBERFOODS
+                  currency: EUR
+                  lines:
+                    - productCode: PRD-0001
+                      quantity: 5
+                    - productCode: PRD-0007
+                      quantity: 25
+              compensationOrder:
+                summary: An order engineered to total .99, which the credit simulator refuses (R42)
+                value:
+                  retailerCode: CarrefourEs
+                  companyCode: IBERFOODS
+                  currency: EUR
+                  notes: demo — compensation path
+                  lines:
+                    - productCode: PRD-0001
+                      quantity: 5
+                      unitPrice: 24999
+      responses:
+        '201':
+          description: |
+            Order accepted and persisted in status `placed`. It is **not yet
+            queryable** — see `GET /orders/{id}` (R55).
+          headers:
+            Location:
+              description: Canonical URL of the new order.
+              schema:
+                type: string
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceOrderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The availability check failed at acceptance; no order was created.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/StockUnavailableProblem'
+        '422':
+          $ref: '#/components/responses/DomainError'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+    get:
+      tags: [orders]
+      operationId: listOrders
+      summary: List orders from the read model.
+      description: |
+        Served **exclusively** from the projected read model (R54) — never by
+        reading a write model and never by joining across bounded contexts.
+        Ordering is by `orderDate` descending.
+      parameters:
+        - name: status
+          in: query
+          description: Filter by order status. Repeat the parameter to accept several.
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/OrderStatus'
+          style: form
+          explode: true
+        - name: retailerCode
+          in: query
+          schema:
+            $ref: '#/components/schemas/PartyCode'
+        - name: companyCode
+          in: query
+          schema:
+            $ref: '#/components/schemas/PartyCode'
+        - name: orderReference
+          in: query
+          schema:
+            $ref: '#/components/schemas/OrderReference'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of order summaries.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderSummaryPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      tags: [orders]
+      operationId: getOrder
+      summary: Fetch one order with its full timeline.
+      description: |
+        Returns the read-model document: header, totals, lines, the references
+        picked up along the way, and the **complete event timeline** ordered by
+        `occurredAt` (R50) — which is where a reviewer sees both compensation
+        steps of a cancelled order, separately and in causal order (R28).
+
+        **202 Accepted** is returned while the projection has not yet produced a
+        document for an order id the caller has just been given. That is an
+        explicit *projection pending* answer, not a `404` (R55). A genuine
+        `404` means the identifier is unknown to the system.
+      responses:
+        '200':
+          description: The projected order document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetail'
+        '202':
+          description: |
+            The order exists but has not been projected yet. Retry, or subscribe
+            to the event stream and let it fill in.
+          headers:
+            Retry-After:
+              description: Suggested seconds to wait before retrying.
+              schema:
+                type: integer
+                minimum: 0
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectionPending'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /orders/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    post:
+      tags: [orders]
+      operationId: cancelOrder
+      summary: Operator cancellation, pre-despatched only.
+      description: |
+        Translates to the `orders.cancel` command. Legal only while the order is
+        `placed`, `stock_reserved`, `credit_approved` or `confirmed` (R8); from
+        `despatched` onwards the answer is `409` — goods have left, and
+        unwinding is a commercial matter that is out of scope.
+
+        **202, not 200.** Cancellation may require compensation — releasing what
+        the order had acquired (`saga.md` §4.3) — and those steps complete when
+        their **facts** arrive, not when this call returns. The response names the
+        compensation that was planned so a client can show it; the timeline is
+        the record of it actually happening.
+
+        **A `credit_approved` or `confirmed` order may still despatch.** Its
+        despatch was requested when it was confirmed, so the cancellation
+        releases the stock reservation first and Fulfillment decides between the
+        two. If the despatch consumed the stock first, the cancellation is
+        overtaken: nothing is released, no `order.cancelled.v1` follows, and the
+        timeline shows the despatch (`saga.md` §4.3).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelOrderRequest'
+      responses:
+        '202':
+          description: Cancellation accepted; compensation, if any, is under way. From `credit_approved` or `confirmed` it can still be overtaken by the despatch already requested.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelOrderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The order is `despatched` or later, or is already terminal.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /orders/stream:
+    get:
+      tags: [stream]
+      operationId: streamOrderEvents
+      summary: Live saga progress as server-sent events.
+      description: |
+        A **server-sent event stream** (`text/event-stream`), fed by the
+        projector's read-model update signal (R55). One-directional by design:
+        the client never sends anything back on it, which is why an SSE stream
+        rather than a bidirectional socket.
+
+        ### Frame format
+
+        Each frame is a standard SSE block:
+
+        ```
+        id: 1755511234567-17
+        event: order.updated
+        data: {"orderId":"…","status":"confirmed", …}
+
+        ```
+
+        - `event` names the event type. The types emitted are listed below.
+        - `data` is a single-line JSON document whose schema depends on `event`.
+        - `id` is an opaque, monotonically increasing cursor **on `order.updated`
+          and `timeline.appended` only** — the two event types the replay buffer
+          stores. **`ping` deliberately carries no `id` line.**
+
+          This is not an oversight: a browser's `EventSource` updates its
+          internal `lastEventId` from *any* dispatched event that carries one,
+          heartbeat or not. `ping` fires on a fixed interval and real content
+          fires rarely, so if `ping` carried an id, the client's remembered
+          resume point would almost always be a heartbeat's — and a heartbeat's
+          id is never in the replay buffer (there is nothing to replay), so
+          `Last-Event-ID` would name it and reconnection would answer
+          `resumed: false` on nearly every disconnect, forcing a re-fetch even
+          when nothing was actually missed. Omitting `id` from `ping` keeps a
+          client's remembered cursor pointed at real content, so reconnection
+          `resumed: false` means what §2 below says it means: the buffer
+          genuinely could not find that cursor, not "you happened to disconnect
+          between two heartbeats." `ping` still carries its documented `event`
+          and `data` (`StreamPing`) — only the `id` line is absent. Found by
+          hand-testing after feature 26 landed; `stream.ready`'s cursor has the
+          identical property (minted, never stored) for the same reason, but is
+          sent only once per connection so the interaction is not observable in
+          practice the way `ping`'s is.
+
+        ### Event types
+
+        | `event` | `data` schema | Carries `id`? | Meaning |
+        |---|---|---|---|
+        | `order.updated` | `OrderStreamUpdate` | Yes — resumable | A read-model document changed — status, references or totals |
+        | `timeline.appended` | `TimelineStreamEntry` | Yes — resumable | One fact was appended to an order's timeline |
+        | `stream.ready` | `StreamReady` | No | Sent once on connect, carrying the cursor the stream resumed from |
+        | `ping` | `StreamPing` | No | Keep-alive, sent on an idle interval so proxies do not close the connection |
+
+        ### Reconnection
+
+        On reconnect the client sends the id of the last frame it processed in
+        the `Last-Event-ID` request header (browsers do this automatically), and
+        the stream **resumes after that cursor** from a bounded replay buffer.
+        Two honest limitations, stated rather than hidden:
+
+        1. The buffer is bounded. If the client was away longer than the buffer
+           holds, the stream replies `stream.ready` with `resumed: false` and
+           the client must re-fetch `GET /orders/{id}` (or `GET /orders`) to
+           resynchronise. The stream is a *notification* channel; the read model
+           is the source of truth.
+        2. Delivery is at-least-once. A frame may repeat after a reconnect, so
+           clients deduplicate on the `eventId` inside `data` — the same
+           discipline every fact consumer applies (R51).
+      parameters:
+        - name: orderId
+          in: query
+          description: Restrict the stream to one order. Omit to receive updates for every order.
+          schema:
+            $ref: '#/components/schemas/UniqueId'
+        - name: Last-Event-ID
+          in: header
+          description: Cursor of the last frame the client processed. Sent automatically by browser EventSource implementations on reconnect.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: |
+            The event stream. It stays open until the client disconnects; there
+            is no terminal frame.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-cache
+            Connection:
+              schema:
+                type: string
+                const: keep-alive
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  A never-ending sequence of SSE frames. OpenAPI cannot model a
+                  stream's frames, so the payload is typed as the raw media
+                  type and the per-event `data` schemas are given in
+                  `x-sse-events` below and in `components.schemas`.
+              examples:
+                progression:
+                  summary: Two frames of a saga in progress
+                  value: |
+                    id: 1755511234567-17
+                    event: order.updated
+                    data: {"eventId":"5b7a0f1e-1f22-4c1f-9f2a-8c1a1f2b3c4d","orderId":"9f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f","orderReference":"ORD-000042","status":"stock_reserved","occurredAt":"2026-08-18T10:15:02.100Z"}
+
+                    id: 1755511234901-18
+                    event: timeline.appended
+                    data: {"eventId":"7d8e9f0a-1b2c-4d3e-8f4a-5b6c7d8e9f01","orderId":"9f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f","eventType":"credit.rejected.v1","occurredAt":"2026-08-18T10:15:04.120Z","summary":"Credit rejected (simulated_cents_rule)"}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      x-sse-events:
+        order.updated:
+          schema:
+            $ref: '#/components/schemas/OrderStreamUpdate'
+        timeline.appended:
+          schema:
+            $ref: '#/components/schemas/TimelineStreamEntry'
+        stream.ready:
+          schema:
+            $ref: '#/components/schemas/StreamReady'
+        ping:
+          schema:
+            $ref: '#/components/schemas/StreamPing'
+
+  /stock:
+    get:
+      tags: [fulfillment]
+      operationId: listStock
+      summary: On-hand and reserved units.
+      description: |
+        Translates to the `fulfillment.stock.list` query — a live read of the
+        Fulfillment write model, not the read model: stock is not part of an
+        order's timeline. `availableUnits` is `units − reservedUnits`, which
+        invariant F1 guarantees is never negative.
+
+        `belowThreshold=true` is the query the demo replenishment workflow runs.
+      parameters:
+        - name: companyCode
+          in: query
+          schema:
+            $ref: '#/components/schemas/PartyCode'
+        - name: productCode
+          in: query
+          schema:
+            $ref: '#/components/schemas/ProductCode'
+        - name: belowThreshold
+          in: query
+          description: Return only items whose available units are below `lowStockThreshold`.
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of stock items.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /stock/replenish:
+    post:
+      tags: [fulfillment]
+      operationId: replenishStock
+      summary: Add on-hand units.
+      description: |
+        Translates to the `fulfillment.stock.replenish` command. It adds to
+        `units` only: reservations and `reservedUnits` are untouched, so
+        invariant F1 cannot be broken by a replenishment, and **no fact is
+        emitted** — a stock top-up is an operational act outside any order's
+        saga and belongs in no order timeline.
+
+        `units` is a **delta**, not a target level, so repeating this call adds
+        again. It is deliberately **not** idempotent: "top up by 100" is the
+        operation the demo needs, and pretending otherwise would silently drop
+        legitimate repeats.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplenishStockRequest'
+      responses:
+        '200':
+          description: The affected stock items after replenishment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplenishStockResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /invoices:
+    get:
+      tags: [billing]
+      operationId: listInvoices
+      summary: List invoices.
+      description: |
+        Translates to the `billing.invoice.list` query. Each row links back to
+        its order by `orderReference` — the inter-context vocabulary — never by
+        another context's internal id.
+
+        `issuedBeforeMinutes` is how the demo payment robot selects invoices to
+        pay "within terms".
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/InvoiceStatus'
+        - name: retailerCode
+          in: query
+          schema:
+            $ref: '#/components/schemas/PartyCode'
+        - name: companyCode
+          in: query
+          schema:
+            $ref: '#/components/schemas/PartyCode'
+        - name: orderReference
+          in: query
+          schema:
+            $ref: '#/components/schemas/OrderReference'
+        - name: issuedBeforeMinutes
+          in: query
+          description: Return only invoices issued at least this many minutes ago.
+          schema:
+            type: integer
+            minimum: 0
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of invoices.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvoicePage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /invoices/{id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/InvoiceId'
+    post:
+      tags: [billing]
+      operationId: registerPayment
+      summary: Register a remittance against an invoice.
+      description: |
+        Translates to the `billing.payment.register` command. **This is the only
+        way an invoice becomes `paid`** — there is no internal payment timer;
+        payment always arrives from the outside world, whether that is the
+        operator's button, an API test or the demo payment robot.
+
+        On acceptance Billing records the payment, moves the invoice
+        `issued → paid`, appends a `release` ledger entry and emits
+        `payment.received.v1` **followed by** `credit.released.v1` in that order
+        and in the same transaction (R47). The saga then moves the order
+        `invoiced → paid → completed`.
+
+        ## Idempotency semantics — by `paymentReference`
+
+        `paymentReference` in the request body **is** the idempotency key
+        (invariant B10, R48). It is a property of the remittance itself — the
+        bank's reference — not a transport header, which is why it lives in the
+        body and why it works identically for the operator, a test and a robot.
+
+        | Situation | Status | Body |
+        |---|---|---|
+        | Unseen `paymentReference`, amount and currency match the invoice total | `201` | `outcome: accepted` |
+        | **Same** `paymentReference` replayed against the **same** invoice with the **same** amount | `200` | `outcome: duplicate` — the **original** outcome, byte-for-byte; no second payment recorded, **no second fact emitted** |
+        | Same `paymentReference` reused for a **different** invoice or a different amount | `409` | `PAYMENT_REFERENCE_REUSED` — the key is being used to mean two different things |
+        | Invoice already `paid`, remittance arrives under a **different** `paymentReference` | `409` | `INVOICE_ALREADY_PAID` — nothing changes (R49) |
+        | Amount or currency differs from the invoice total | `422` | `PAYMENT_MISMATCH` — partial and over-payment are out of scope; nothing changes (R49) |
+
+        A `200` and a `201` therefore differ only in whether *this* call was the
+        one that changed the world. Clients must treat both as success — a
+        retrying robot that saw a dropped connection will legitimately get
+        `200` for a payment it made itself.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterPaymentRequest'
+            examples:
+              bankRemittance:
+                summary: Settlement in full of INV-000027
+                value:
+                  paymentReference: PAY-2026-08-18-000019
+                  amount:
+                    amount: 124250
+                    currency: EUR
+                  valueDate: '2026-08-18T11:02:00.000Z'
+                  source: robot
+      responses:
+        '201':
+          description: Remittance accepted; the invoice is now `paid`.
+          headers:
+            X-Correlation-Id:
+              $ref: '#/components/headers/XCorrelationId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterPaymentResponse'
+        '200':
+          description: |
+            Idempotent replay of an already-recorded `paymentReference`. The
+            body is the original outcome; nothing changed and no fact was
+            emitted.
+          headers:
+            Idempotent-Replay:
+              description: Present and `true` on a replayed remittance.
+              schema:
+                type: boolean
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterPaymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The invoice is already paid under a different reference, or the reference is being reused for a different remittance.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: The remittance amount or currency does not equal the invoice total.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /credits:
+    get:
+      tags: [billing]
+      operationId: listCredits
+      summary: Credit limits and current exposure per retailer.
+      description: |
+        Translates to the `billing.credit.list` query. Shows the limit, the sum
+        of active holds, the open invoice exposure and what is left —
+        `availableCredit = creditLimit − activeHolds − openExposure`, which
+        invariant B1 keeps non-negative. This is the view that makes a genuine
+        over-limit rejection legible in a demo, as opposed to the simulator's
+        `.99` affordance.
+      parameters:
+        - name: retailerCode
+          in: query
+          schema:
+            $ref: '#/components/schemas/PartyCode'
+        - name: companyCode
+          in: query
+          schema:
+            $ref: '#/components/schemas/PartyCode'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: A page of credit lines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /catalog/products:
+    get:
+      tags: [catalog]
+      operationId: listProducts
+      summary: Catalogue products for the place-order form.
+      parameters:
+        - $ref: '#/components/parameters/IncludeDisabled'
+      responses:
+        '200':
+          description: The product catalogue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Product'
+                required: [items]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /catalog/retailers:
+    get:
+      tags: [catalog]
+      operationId: listRetailers
+      summary: Retailers (buyers) for the place-order form.
+      parameters:
+        - $ref: '#/components/parameters/IncludeDisabled'
+      responses:
+        '200':
+          description: The retailer list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Party'
+                required: [items]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /catalog/companies:
+    get:
+      tags: [catalog]
+      operationId: listCompanies
+      summary: Companies (suppliers) for the place-order form.
+      parameters:
+        - $ref: '#/components/parameters/IncludeDisabled'
+      responses:
+        '200':
+          description: The company list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Party'
+                required: [items]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/UpstreamUnavailable'
+
+  /health/live:
+    get:
+      tags: [ops]
+      operationId: healthLive
+      summary: Liveness probe.
+      description: |
+        Answers whether the process is running and able to serve. It is
+        **deliberately independent of dependencies** (R60): a gateway whose
+        broker is unreachable is *not ready*, but it is alive, and restarting it
+        would fix nothing.
+      security: []
+      responses:
+        '200':
+          description: The process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /health/ready:
+    get:
+      tags: [ops]
+      operationId: healthReady
+      summary: Readiness probe.
+      description: |
+        Answers whether this service can currently do its job — its write model,
+        the fact stream and the RPC transport are reachable. When any of them is
+        not, readiness reports `503` and the instance is withdrawn from traffic
+        **without being restarted** (R60).
+      security: []
+      responses:
+        '200':
+          description: Ready to serve.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Not ready — at least one dependency is unreachable. The body names which.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /docs:
+    get:
+      tags: [ops]
+      operationId: apiDocs
+      summary: Interactive API documentation.
+      description: |
+        Human-facing rendering of this document. Unauthenticated so a reviewer
+        can read the contract before obtaining a token.
+      security: []
+      responses:
+        '200':
+          description: The documentation page.
+          content:
+            text/html:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Bearer token obtained from `POST /auth/login`. Required on every
+        endpoint except `POST /auth/login`, `GET /health/live`,
+        `GET /health/ready` and `GET /docs`.
+
+        The demo automation workflows authenticate exactly like any other
+        client: they log in, then send the token. They hold no database
+        credential and no broker credential, because they never talk to either.
+
+  parameters:
+    OrderId:
+      name: id
+      in: path
+      required: true
+      description: The order identifier — also the `correlationId` of every fact in this order's saga.
+      schema:
+        $ref: '#/components/schemas/UniqueId'
+    InvoiceId:
+      name: id
+      in: path
+      required: true
+      description: The invoice identifier.
+      schema:
+        $ref: '#/components/schemas/UniqueId'
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 25
+    IncludeDisabled:
+      name: includeDisabled
+      in: query
+      description: Include soft-disabled reference records.
+      schema:
+        type: boolean
+        default: false
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Client-supplied key. A repeat with the same key returns the original
+        result instead of performing the operation twice.
+      schema:
+        $ref: '#/components/schemas/UniqueId'
+
+  headers:
+    XCorrelationId:
+      description: The correlation id under which this request was handled, and — for order commands — the order id itself. It appears on every log line produced while handling the request (R58).
+      schema:
+        $ref: '#/components/schemas/UniqueId'
+
+  responses:
+    BadRequest:
+      description: The request was malformed or failed schema validation.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblem'
+    Unauthorized:
+      description: Missing, expired or invalid bearer token.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: No such resource.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    DomainError:
+      description: |
+        A domain rule refused the request — an invariant of `domain-model.md`.
+        Nothing changed and no fact was emitted.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: |
+        The client exceeded the rate limit of the endpoint it called. The
+        request was **not** applied and no fact was emitted; the client may
+        retry once the interval named by `Retry-After` has elapsed.
+      headers:
+        Retry-After:
+          description: |
+            How long the client must wait before retrying, as a whole number of
+            **seconds**. Delta-seconds only: the HTTP-date form RFC 9110 also
+            permits is deliberately **not** used by this API, so a client may
+            parse this header as an integer without branching on its form. The
+            value is the remaining lifetime of the limiter's current window;
+            the window length itself is per-assessment configuration and is
+            deliberately not fixed by this contract.
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            examples:
+              - 60
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UpstreamUnavailable:
+      description: |
+        The owning context did not answer within the deadline, or the RPC
+        transport is unreachable. The command was **not** applied; the client
+        may retry.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    # ─────────────────────── shared kernel primitives ───────────────────────
+    UniqueId:
+      type: string
+      format: uuid
+      description: An opaque, globally unique identifier generated inside the domain, never by a store.
+      examples:
+        - 9f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f
+
+    Instant:
+      type: string
+      format: date-time
+      description: A UTC instant, ISO-8601.
+      examples:
+        - '2026-08-18T10:15:00.000Z'
+
+    CurrencyCode:
+      type: string
+      pattern: '^[A-Z]{3}$'
+      description: ISO 4217 alpha-3 code.
+      examples:
+        - EUR
+
+    MinorUnits:
+      type: integer
+      format: int64
+      description: |
+        An amount as a whole count of the currency's smallest denomination.
+        **Never** a decimal, float or major-unit value (R1) — `€1,242.50` is
+        `124250`. Used where the enclosing object already declares its
+        `currency`; where an amount travels alone, use `Money`.
+      examples:
+        - 124250
+
+    Money:
+      type: object
+      description: An amount that travels alone — integer minor units plus its currency.
+      properties:
+        amount:
+          $ref: '#/components/schemas/MinorUnits'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+      required: [amount, currency]
+      examples:
+        - amount: 124250
+          currency: EUR
+
+    Gln:
+      type: string
+      pattern: '^[0-9]{13}$'
+      description: Global Location Number — 13 digits whose last is the GS1 mod-10 check digit (R4).
+      examples:
+        - '8412345000013'
+
+    Quantity:
+      type: integer
+      minimum: 1
+      description: A strictly positive whole count of units (R3).
+
+    UnitCount:
+      type: integer
+      minimum: 0
+      description: A non-negative whole count of units.
+
+    PartyCode:
+      type: string
+      minLength: 1
+      maxLength: 20
+      examples:
+        - CarrefourEs
+
+    ProductCode:
+      type: string
+      minLength: 1
+      maxLength: 30
+      examples:
+        - PRD-0001
+
+    OrderReference:
+      type: string
+      pattern: '^ORD-[0-9]{6,}$'
+      examples:
+        - ORD-000042
+
+    DespatchReference:
+      type: string
+      pattern: '^DES-[0-9]{6,}$'
+      examples:
+        - DES-000031
+
+    InvoiceReference:
+      type: string
+      pattern: '^INV-[0-9]{6,}$'
+      examples:
+        - INV-000027
+
+    CreditCode:
+      type: string
+      pattern: '^CR-[0-9]{6,}$'
+
+    PaymentReference:
+      type: string
+      minLength: 1
+      maxLength: 30
+      description: The remittance's own reference — **the idempotency key** of `POST /invoices/{id}/payments` (R48).
+      examples:
+        - PAY-2026-08-18-000019
+
+    OrderStatus:
+      type: string
+      enum:
+        - placed
+        - stock_reserved
+        - credit_approved
+        - confirmed
+        - despatched
+        - invoiced
+        - paid
+        - completed
+        - cancelled
+      description: The order state machine, which is also the saga state. `completed` and `cancelled` are terminal.
+
+    CancellationReason:
+      type: string
+      enum:
+        - stock_rejected
+        - credit_rejected
+        - operator_cancelled
+
+    InvoiceStatus:
+      type: string
+      enum:
+        - issued
+        - paid
+
+    PaymentSource:
+      type: string
+      enum:
+        - operator
+        - robot
+        - test
+      description: Provenance of the remittance — an operator click, an external payment robot, or a test.
+
+    Party:
+      type: object
+      properties:
+        code:
+          $ref: '#/components/schemas/PartyCode'
+        name:
+          type: string
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        vat:
+          type: string
+        gln:
+          $ref: '#/components/schemas/Gln'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        enabled:
+          type: boolean
+      required: [code, name, country, gln, currency, enabled]
+
+    Product:
+      type: object
+      properties:
+        code:
+          $ref: '#/components/schemas/ProductCode'
+        ean:
+          type: string
+          pattern: '^[0-9]{13}$'
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          $ref: '#/components/schemas/MinorUnits'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        enabled:
+          type: boolean
+      required: [code, name, price, currency, enabled]
+
+    PageInfo:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+      required: [page, pageSize, total]
+
+    # ───────────────────────────── auth ─────────────────────────────────────
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+      required: [username, password]
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          const: Bearer
+        expiresIn:
+          type: integer
+          minimum: 1
+          description: Lifetime of the token in seconds.
+      required: [accessToken, tokenType, expiresIn]
+
+    CurrentUser:
+      type: object
+      properties:
+        username:
+          type: string
+        displayName:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+      required: [username, roles]
+
+    # ─────────────────────────── orders — commands ──────────────────────────
+    PlaceOrderRequest:
+      type: object
+      properties:
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          allOf:
+            - $ref: '#/components/schemas/CurrencyCode'
+          description: Every line price and discount is expressed in this currency. Mixing currencies inside one order is a domain error (invariant O2, R2).
+        lines:
+          type: array
+          minItems: 1
+          description: At least one line — an order with none cannot exist (invariant O1, R5).
+          items:
+            $ref: '#/components/schemas/PlaceOrderLine'
+        orderDiscount:
+          $ref: '#/components/schemas/MinorUnits'
+        notes:
+          type: string
+      required: [retailerCode, companyCode, currency, lines]
+
+    PlaceOrderLine:
+      type: object
+      properties:
+        productCode:
+          $ref: '#/components/schemas/ProductCode'
+        quantity:
+          $ref: '#/components/schemas/Quantity'
+        unitPrice:
+          allOf:
+            - $ref: '#/components/schemas/MinorUnits'
+          description: |
+            Optional. Omitted, the catalogue price is snapshotted onto the line
+            at order time. Supplied, it is used as given — which is how a demo
+            engineers a total ending in `99` to trigger the compensation path
+            (R42).
+        lineDiscount:
+          $ref: '#/components/schemas/MinorUnits'
+      required: [productCode, quantity]
+
+    PlaceOrderResponse:
+      type: object
+      properties:
+        orderId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: Also the `correlationId` of every fact this order will produce, and the key to subscribe with on the event stream.
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        status:
+          type: string
+          const: placed
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        initialAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        initialDiscount:
+          $ref: '#/components/schemas/MinorUnits'
+        totalAmount:
+          allOf:
+            - $ref: '#/components/schemas/MinorUnits'
+          description: '`initialAmount − initialDiscount`, computed inside the aggregate and never assigned by a caller (invariant O3, R6).'
+        orderDate:
+          $ref: '#/components/schemas/Instant'
+        projectionPending:
+          type: boolean
+          description: Always true at creation — the read model has not seen this order yet (R55).
+      required: [orderId, orderReference, status, currency, totalAmount, orderDate]
+
+    CancelOrderRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          description: Free-text operator note recorded on the timeline entry.
+
+    CancelOrderResponse:
+      type: object
+      properties:
+        orderId:
+          $ref: '#/components/schemas/UniqueId'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        status:
+          allOf:
+            - $ref: '#/components/schemas/OrderStatus'
+          description: |
+            The status **at the moment the command was accepted**. It is not
+            necessarily `cancelled` yet: when compensation is required the
+            order stays in its current status until the compensating facts
+            arrive (R27, R28).
+        cancellationReason:
+          type: string
+          const: operator_cancelled
+        compensationPlanned:
+          type: array
+          description: The acquisitions that will be unwound, in the order they are released (`saga.md` §4.3) — `stock_release` then `credit_release` from `credit_approved` or `confirmed`. Empty when nothing had been acquired.
+          items:
+            type: string
+            enum:
+              - credit_release
+              - stock_release
+      required: [orderId, orderReference, status, compensationPlanned]
+
+    # ─────────────────────────── orders — read model ────────────────────────
+    OrderSummary:
+      type: object
+      description: One row of the order list, projected from the read model.
+      properties:
+        orderId:
+          $ref: '#/components/schemas/UniqueId'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        orderDate:
+          $ref: '#/components/schemas/Instant'
+        retailer:
+          $ref: '#/components/schemas/PartyRef'
+        company:
+          $ref: '#/components/schemas/PartyRef'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        cancellationReason:
+          oneOf:
+            - $ref: '#/components/schemas/CancellationReason'
+            - type: 'null'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        totals:
+          $ref: '#/components/schemas/OrderTotals'
+        updatedAt:
+          $ref: '#/components/schemas/Instant'
+      required: [orderId, orderReference, orderDate, retailer, company, status, currency, totals, updatedAt]
+
+    OrderSummaryPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderSummary'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+      required: [items, page]
+
+    PartyRef:
+      type: object
+      properties:
+        code:
+          $ref: '#/components/schemas/PartyCode'
+        name:
+          type: string
+        gln:
+          $ref: '#/components/schemas/Gln'
+      required: [code, gln]
+
+    OrderTotals:
+      type: object
+      description: All three values are minor units in the order's `currency`, derived by the aggregate.
+      properties:
+        initialAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        initialDiscount:
+          $ref: '#/components/schemas/MinorUnits'
+        totalAmount:
+          $ref: '#/components/schemas/MinorUnits'
+      required: [initialAmount, initialDiscount, totalAmount]
+
+    OrderItem:
+      type: object
+      properties:
+        productCode:
+          $ref: '#/components/schemas/ProductCode'
+        name:
+          type: string
+        quantity:
+          $ref: '#/components/schemas/Quantity'
+        unitPrice:
+          allOf:
+            - $ref: '#/components/schemas/MinorUnits'
+          description: Snapshotted at order time — a later catalogue price change never rewrites an order.
+        lineDiscount:
+          $ref: '#/components/schemas/MinorUnits'
+      required: [productCode, quantity, unitPrice, lineDiscount]
+
+    OrderReferences:
+      type: object
+      description: Business references picked up as the saga progressed. Null until the corresponding fact has been projected.
+      properties:
+        despatchReference:
+          oneOf:
+            - $ref: '#/components/schemas/DespatchReference'
+            - type: 'null'
+        invoiceReference:
+          oneOf:
+            - $ref: '#/components/schemas/InvoiceReference'
+            - type: 'null'
+        paymentReference:
+          oneOf:
+            - $ref: '#/components/schemas/PaymentReference'
+            - type: 'null'
+
+    TimelineEntry:
+      type: object
+      description: |
+        One projected fact. The timeline is ordered by `occurredAt` ascending, never by
+        arrival order (R50). Two entries sharing one identical `occurredAt` (a tie group)
+        are then ordered so that a fact always follows the fact that caused it: within the
+        tie group, entry `p` is the cause of entry `c` exactly when `c.causationId` equals
+        `p.eventId`; where no such recorded edge exists between two tied entries (including
+        every document projected before this ordering existed), they fall back to `eventId`
+        ascending — a deterministic but causally arbitrary order (amendment A1).
+      properties:
+        eventId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: The idempotency key — an entry with this id is never appended twice (R51).
+        causationId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: >-
+            The `eventId` of the fact that caused this one; ties on `occurredAt` are ordered
+            so that a fact follows its cause. Absent on an entry projected before this field
+            existed.
+        eventType:
+          type: string
+          examples:
+            - stock.released.v1
+        occurredAt:
+          $ref: '#/components/schemas/Instant'
+        summary:
+          type: string
+          description: Human-readable one-liner, e.g. "5 units released back to stock".
+        detail:
+          type: object
+          description: Optional structured extract of the fact payload for the UI — shortages, amounts, references.
+      required: [eventId, eventType, occurredAt, summary]
+
+    OrderDetail:
+      type: object
+      description: |
+        The read-model document for one order: the answer to "what happened to
+        order X and when". It is written **only** by the projector (R54).
+      properties:
+        orderId:
+          $ref: '#/components/schemas/UniqueId'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        orderDate:
+          $ref: '#/components/schemas/Instant'
+        retailer:
+          $ref: '#/components/schemas/PartyRef'
+        company:
+          $ref: '#/components/schemas/PartyRef'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        cancellationReason:
+          oneOf:
+            - $ref: '#/components/schemas/CancellationReason'
+            - type: 'null'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        totals:
+          $ref: '#/components/schemas/OrderTotals'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        references:
+          $ref: '#/components/schemas/OrderReferences'
+        events:
+          type: array
+          description: |
+            Every fact projected for this order, in `occurredAt` order. A
+            cancelled order shows its compensation steps here separately and in
+            causal order — `credit.rejected.v1`, then `stock.released.v1`, then
+            `order.cancelled.v1` (R28).
+          items:
+            $ref: '#/components/schemas/TimelineEntry'
+        headerComplete:
+          type: boolean
+          description: |
+            False while the document is a placeholder created by a fact that
+            outran `order.placed.v1` (R53) — the timeline is real, the header
+            fields are not filled in yet.
+        updatedAt:
+          $ref: '#/components/schemas/Instant'
+      required: [orderId, status, events, updatedAt]
+
+    ProjectionPending:
+      type: object
+      description: Returned by `GET /orders/{id}` with `202` while no read-model document exists yet (R55).
+      properties:
+        orderId:
+          $ref: '#/components/schemas/UniqueId'
+        status:
+          type: string
+          const: projection_pending
+        message:
+          type: string
+          examples:
+            - The order was accepted and is not projected yet. Subscribe to /orders/stream or retry.
+        retryAfterMs:
+          type: integer
+          minimum: 0
+      required: [orderId, status]
+
+    # ──────────────────────────── SSE payloads ──────────────────────────────
+    OrderStreamUpdate:
+      type: object
+      description: '`data` of an `order.updated` frame — a read-model document changed.'
+      properties:
+        eventId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: The fact that caused the update. Clients deduplicate on it, because stream delivery is at-least-once.
+        orderId:
+          $ref: '#/components/schemas/UniqueId'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        cancellationReason:
+          oneOf:
+            - $ref: '#/components/schemas/CancellationReason'
+            - type: 'null'
+        references:
+          $ref: '#/components/schemas/OrderReferences'
+        totals:
+          $ref: '#/components/schemas/OrderTotals'
+        occurredAt:
+          $ref: '#/components/schemas/Instant'
+      required: [eventId, orderId, status, occurredAt]
+
+    TimelineStreamEntry:
+      type: object
+      description: '`data` of a `timeline.appended` frame — one fact was appended to an order timeline.'
+      properties:
+        eventId:
+          $ref: '#/components/schemas/UniqueId'
+        causationId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: Same field as `TimelineEntry.causationId`, carried onto the stream frame.
+        orderId:
+          $ref: '#/components/schemas/UniqueId'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        eventType:
+          type: string
+        occurredAt:
+          $ref: '#/components/schemas/Instant'
+        summary:
+          type: string
+      required: [eventId, orderId, eventType, occurredAt, summary]
+
+    StreamReady:
+      type: object
+      description: '`data` of the `stream.ready` frame sent once on connect.'
+      properties:
+        cursor:
+          type: string
+          description: The cursor the stream is resuming from.
+        resumed:
+          type: boolean
+          description: |
+            True when a `Last-Event-ID` was honoured from the replay buffer.
+            **False** when it was too old — the client must re-fetch the
+            affected orders to resynchronise; the stream is a notification
+            channel, the read model is the source of truth.
+        orderId:
+          oneOf:
+            - $ref: '#/components/schemas/UniqueId'
+            - type: 'null'
+          description: Present when the subscription is restricted to one order.
+      required: [cursor, resumed]
+
+    StreamPing:
+      type: object
+      description: '`data` of a `ping` keep-alive frame.'
+      properties:
+        at:
+          $ref: '#/components/schemas/Instant'
+      required: [at]
+
+    # ───────────────────────────── fulfillment ──────────────────────────────
+    StockItem:
+      type: object
+      properties:
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        productCode:
+          $ref: '#/components/schemas/ProductCode'
+        productName:
+          type: string
+        units:
+          $ref: '#/components/schemas/UnitCount'
+        reservedUnits:
+          $ref: '#/components/schemas/UnitCount'
+        availableUnits:
+          allOf:
+            - $ref: '#/components/schemas/UnitCount'
+          description: '`units − reservedUnits`. Derived, never stored; invariant F1 keeps it non-negative.'
+        lowStockThreshold:
+          $ref: '#/components/schemas/UnitCount'
+      required: [companyCode, productCode, units, reservedUnits, availableUnits, lowStockThreshold]
+
+    StockPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockItem'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+      required: [items, page]
+
+    ReplenishStockRequest:
+      type: object
+      properties:
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              productCode:
+                $ref: '#/components/schemas/ProductCode'
+              units:
+                allOf:
+                  - $ref: '#/components/schemas/Quantity'
+                description: Units to **add** to on-hand stock — a delta, not a target level.
+            required: [productCode, units]
+      required: [companyCode, lines]
+
+    ReplenishStockResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockItem'
+      required: [items]
+
+    # ─────────────────────────────── billing ────────────────────────────────
+    Invoice:
+      type: object
+      properties:
+        invoiceId:
+          $ref: '#/components/schemas/UniqueId'
+        invoiceReference:
+          $ref: '#/components/schemas/InvoiceReference'
+        invoiceDate:
+          $ref: '#/components/schemas/Instant'
+        orderReference:
+          allOf:
+            - $ref: '#/components/schemas/OrderReference'
+          description: The link back to the order — a business reference, never another context's internal id.
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        amount:
+          $ref: '#/components/schemas/MinorUnits'
+        discount:
+          $ref: '#/components/schemas/MinorUnits'
+        totalAmount:
+          $ref: '#/components/schemas/MinorUnits'
+        status:
+          $ref: '#/components/schemas/InvoiceStatus'
+        paidAt:
+          oneOf:
+            - $ref: '#/components/schemas/Instant'
+            - type: 'null'
+          description: Set exactly when the status becomes `paid`, null while `issued` (invariant B9).
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              productCode:
+                $ref: '#/components/schemas/ProductCode'
+              units:
+                $ref: '#/components/schemas/Quantity'
+              unitPrice:
+                $ref: '#/components/schemas/MinorUnits'
+            required: [productCode, units, unitPrice]
+      required: [invoiceId, invoiceReference, invoiceDate, orderReference, retailerCode, companyCode, currency, amount, discount, totalAmount, status]
+
+    InvoicePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Invoice'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+      required: [items, page]
+
+    RegisterPaymentRequest:
+      type: object
+      properties:
+        paymentReference:
+          allOf:
+            - $ref: '#/components/schemas/PaymentReference'
+          description: '**The idempotency key** (R48). It is the remittance''s own reference, so a replay is recognisable no matter who sends it.'
+        amount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: Must equal the invoice `totalAmount` and currency exactly — partial and over-payment are out of scope (invariant B10, R49).
+        valueDate:
+          $ref: '#/components/schemas/Instant'
+        source:
+          $ref: '#/components/schemas/PaymentSource'
+      required: [paymentReference, amount, valueDate, source]
+
+    RegisterPaymentResponse:
+      type: object
+      properties:
+        outcome:
+          type: string
+          enum:
+            - accepted
+            - duplicate
+          description: '`duplicate` accompanies `200` — the original outcome replayed; no second payment, no second fact.'
+        paymentReference:
+          $ref: '#/components/schemas/PaymentReference'
+        invoiceReference:
+          $ref: '#/components/schemas/InvoiceReference'
+        orderReference:
+          $ref: '#/components/schemas/OrderReference'
+        invoiceStatus:
+          $ref: '#/components/schemas/InvoiceStatus'
+        paidAt:
+          $ref: '#/components/schemas/Instant'
+      required: [outcome, paymentReference, invoiceReference, invoiceStatus]
+
+    Credit:
+      type: object
+      properties:
+        creditCode:
+          $ref: '#/components/schemas/CreditCode'
+        retailerCode:
+          $ref: '#/components/schemas/PartyCode'
+        companyCode:
+          $ref: '#/components/schemas/PartyCode'
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        creditLimit:
+          $ref: '#/components/schemas/MinorUnits'
+        activeHolds:
+          $ref: '#/components/schemas/MinorUnits'
+        openExposure:
+          allOf:
+            - $ref: '#/components/schemas/MinorUnits'
+          description: Invoices issued and not yet paid. A hold becomes exposure at invoice issue, which leaves `availableCredit` numerically unchanged (R40).
+        availableCredit:
+          allOf:
+            - $ref: '#/components/schemas/MinorUnits'
+          description: '`creditLimit − activeHolds − openExposure`, never negative (invariant B1).'
+      required: [creditCode, retailerCode, companyCode, currency, creditLimit, activeHolds, openExposure, availableCredit]
+
+    CreditPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Credit'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+      required: [items, page]
+
+    # ──────────────────────────────── ops ───────────────────────────────────
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - up
+            - down
+        checks:
+          type: object
+          description: Per-dependency result — write model, fact stream, RPC transport, read model. Present on the readiness probe.
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+                enum:
+                  - up
+                  - down
+              detail:
+                type: string
+            required: [status]
+      required: [status]
+
+    # ─────────────────────────────── errors ─────────────────────────────────
+    Problem:
+      type: object
+      description: |
+        RFC 9457 problem document. `code` is stable and machine-readable and is
+        what tests assert on; `title` and `detail` are for humans and must never
+        be parsed.
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 100
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+          description: Stable machine-readable error code.
+          examples:
+            - ORDER_NOT_CANCELLABLE
+            - INVOICE_ALREADY_PAID
+            - PAYMENT_MISMATCH
+            - PAYMENT_REFERENCE_REUSED
+            - STOCK_UNAVAILABLE
+            - VALIDATION_FAILED
+            - DOMAIN_ERROR
+            - UPSTREAM_TIMEOUT
+        correlationId:
+          allOf:
+            - $ref: '#/components/schemas/UniqueId'
+          description: The id this failure was logged under (R58).
+        occurredAt:
+          $ref: '#/components/schemas/Instant'
+      required: [title, status, code]
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+                required: [field, message]
+
+    StockUnavailableProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          description: |
+            Returned by `POST /orders` when the acceptance-time availability
+            check fails. No order was created, so there is nothing to cancel and
+            nothing to compensate.
+          properties:
+            shortages:
+              type: array
+              items:
+                type: object
+                properties:
+                  productCode:
+                    $ref: '#/components/schemas/ProductCode'
+                  requested:
+                    $ref: '#/components/schemas/Quantity'
+                  available:
+                    $ref: '#/components/schemas/UnitCount'
+                required: [productCode, requested, available]

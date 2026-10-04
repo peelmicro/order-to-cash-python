@@ -61,7 +61,7 @@ Entry format:
 **#7 baseline:** 1 session, ~1.5h
 **#8 baseline:** 1 session, ~1h
 **Spec:** n/a (sdd: false)
-**Tests:** `init.sh` exits 0 on the fresh tree and **exits 1 on all 15 break cases** (#8 tested 8), each restore confirmed with `cmp`: two features `in_progress`; an invalid status; a duplicate id; an `sdd` feature past `pending` without its triple-doc; invalid JSON; a missing harness file; six agents; an agent that neither pins nor documents its model; `current.md` naming the wrong feature; a superseded rule reintroduced; a feature id disappearing and a `done` reverting (tripwire); `.python-version` pinning an unavailable interpreter; a shared-spec file edited; a sibling's spec file missing here. The installed `commit-msg` hook rejects "closes all four Billing features" without a `counted:` line and accepts it with one.
+**Tests:** `init.sh` exits 0 on the fresh tree and **exits 1 on all 15 break cases** (#8 tested 8), each restore confirmed with `cmp`: two features `in_progress`; an invalid status; a duplicate id; an `sdd` feature past `pending` without its triple-doc; invalid JSON; a missing harness file; six agents; an agent that neither pins nor documents its model; `current.md` naming the wrong feature; a superseded rule reintroduced; a feature id disappearing and a `done` reverting (tripwire); `.python-version` pinning an unavailable interpreter; a shared-spec file edited; a sibling's spec file missing here. The installed `commit-msg` hook rejects "closes all four Billing features" without a `counted:` line and accepts it with one. **Addendum (phase 3 commit):** a 16th case was armed during phase 2's wrap-up, after the commit above had been written — the tracked `scripts/git-hooks/commit-msg` missing → exit 1 (*"the tracked copy of the commit-message guard"*); the installed hook missing is reinstalled with a WARN, by design, and is not a failure case.
 **Inherited #8 findings:** the empty-population comparison (#8's parity guard over a population of one) → **avoided**: `init.sh` §5d warns instead of passing when there is nothing to compare
 
 **What was built:**
@@ -100,3 +100,37 @@ Measured by diffing each file against #8's original (lines new or changed in the
 **Saved:** the same split #8 measured — orchestration ports almost free (1–26%), conventions do not (30–41%) — but `CLAUDE.md` cost **41% against #8's 68%**. The plausible reason, stated as a reading and not a measurement: #8's `CLAUDE.md` had already been cut down and separated into stack-agnostic rules (kept verbatim here) and stack rules (replaced), so a second port touched only the second half.
 
 **Did not save:** the cost moved rather than disappeared. Nearly all the thinking went into the parts that are new by construction — the three-column ledger, C7, init.sh's two-sibling parity check — and into deciding which of #8's ~70 findings become #9 acceptance criteria, which #8 never had to do. And the wall-clock figure needs its caveat: **an agent-driven phase's wall-clock measures throughput, not difficulty** — the same is true of #8's ~1h and #7's ~1.5h, so the comparison is fair across the three, but none of the three numbers is human effort.
+
+## shared_spec (id 3, phase 3) — 2026-10-04
+
+**Effort:** 1 session, ~0.2h wall-clock (≈05:18 → 05:30, including the end-to-end re-read of `requirements.md`, `domain-model.md` and `saga.md`) — process: light, closed by the leader
+**#7 baseline:** 1 session, ~2.5h (authoring)
+**#8 baseline:** 1 session, ~0.75h (copy)
+**Spec:** this feature *is* the spec copy — `specs/shared/` from #8 at `a9a2f8d`
+**Tests:** six files `cmp`-identical to #8's **and** to #7's (same SHA-256 in all three); the four n8n workflow JSONs identical to both; `test-matrix.md` columns 1–4 identical on 63/63 rows against both, by script, **armed** (altering R7's requirement text drops it to 62/63); `init.sh` §5d → OK against both siblings across 6 files each
+**Inherited #8 findings:** #8's SA-1 (a reset recipe that described one copy's paragraphs) → **avoided** — the recipe as amended was followed, and the paragraphs to remove were found by diffing #7's and #8's final matrices rather than by reading
+
+**What was built:**
+
+The seven files of `specs/shared/` and the four `n8n/workflows/*.json` copied from #8 byte for byte. `test-matrix.md` reset by its own four-step recipe: all 63 Status cells → `TODO`; coverage counts → 0 / 0 / 63; no per-assessment aside to delete (#8's copy carries none — the two "per-assessment aside" hits are the rule that defines them); the two paragraphs under the coverage table that narrate #8's own realisation record deleted. The result differs from #8's file only in the counts and those two paragraphs — the same shape #8's own reset left (`b6c6506`: nothing after the Total row).
+
+**Leak sweep, as an enumeration** — `grep -noiE` over the seven files with #7's, #8's and #9's stack terms (NestJS…, .NET…, Python, FastAPI, SQLAlchemy, Postgres, Angular, Analog, Pydantic, pytest, asyncpg, aiokafka, `uv`, file extensions, `apps/`, `packages/`, `src/`): **13 hits, 0 leaks** — 9 × `nest` in `honest`/`honesty`/`honestly`, 3 × `neSt` in `TimelineStreamEntry` (a false-positive class new to this sweep, because it is case-insensitive), 1 × `react` in `reacted` (from a term #9 added). Sentinel: a planted "implemented with FastAPI" line is caught.
+
+**Deviations from the spec/plan:**
+
+- Copied from #8's current HEAD `a9a2f8d`, not the harness's `79dc89b`: the only change between them is three lines of #8's README, so the spec is the same.
+- No per-assessment aside existed to delete — recorded rather than assumed, by diffing the prose of #7's and #8's final matrices.
+
+**Rejections:** none (light process, no reviewer)
+
+**Notes for later phases (from the re-read):**
+
+- **Phase 12:** `R50`, `domain-model.md` §7.1 and `saga.md` §6 all say the timeline is ordered by `occurredAt`; #7's amendment A1 (folded into #8's first projector draft) orders by the recorded causal edge. A1 therefore lives in the projector's per-feature design, not in `specs/shared/` — the phase 12 design must read #8's and state how the two reconcile.
+- The spec catalogues **fourteen** facts (`order.saga_failed.v1` included); the Task's Part A still says thirteen. The spec wins.
+- `domain-model.md` M3: *"Division is not offered — it would reintroduce rounding"* — the shared-kernel rule behind #9's `/` guard is in the spec itself.
+
+**What the reuse saved — and what it did not:**
+
+**Saved:** a second copy costs about what the first did minus its learning — #8 spent most of its 0.75h reading; #9's 0.2h included the same reading, made faster because the recipe was already correct (`SA-1`) and #8's own reset was available as a reference shape.
+
+**Did not save:** the reading itself, which the plan requires and which surfaced the three notes above. And the recipe still needed judgement where it claims to need none: "delete every per-assessment aside" can only be executed by first finding them, and the reliable way was a diff of two assessments' copies, not the recipe's prose.
