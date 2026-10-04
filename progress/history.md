@@ -155,3 +155,41 @@ The seven files of `specs/shared/` and the four `n8n/workflows/*.json` copied fr
 **What the reuse saved — and what it did not:** #8's early README was the template, so the structure cost nothing; the content is new by construction (the second-reuse question, the inherited amendments table).
 
 **Also filed this phase — backlog id 201** (`live_timeline_causation_names_commands_not_facts`, attached to `projector_read_model`): the "caused by" gap in #7's and #8's live timelines, diagnosed from the LinkedIn y Web plan's observation. R12 lets a responder fact cite the command that produced it, and the command is never in the timeline; #8's seed cites the triggering fact instead (*"one link shorter than a live saga's causal chain"*, `SagaFixtures.cs`), which is why seeded orders link and live ones do not. Disposition: decided at the phase 12 gate.
+
+## infra_compose (id 4, phase 4) — 2026-10-04
+
+**Effort:** 1 session, ~0.2h wall-clock (≈06:33 → 06:47, shared session with `messaging_topology`) — process: light, implemented and closed by the leader (compose and `infra/` are leader-editable)
+**#7 baseline:** 1 session, ~4h (implementation ~1.5h, then two review rounds)
+**#8 baseline:** 1 session, ~1.25h
+**Spec:** n/a (sdd: false)
+**Tests:** no code yet. The running stack, cold-started twice from empty volumes, plus four armed guards — the PostgreSQL healthcheck (init-window probe: rc=1 *connection refused* until init completes; sibling database name → rc=1), n8n's role isolation (`GRANT CONNECT … TO PUBLIC` → `otc_n8n` gets in; restored → *permission denied*), and the n8n-init hazard the shared anchor prevents (`DB_TYPE=sqlite` → imports 4 workflows into a fresh SQLite, rc=0). Detail in `progress/impl_infra_compose.md`
+**Inherited #8 findings:**
+- healthcheck that passes before the bootstrap (#7's MySQL socket, #8's MS-SQL `SELECT 1`) → **avoided**, and the plan's "less likely here" was probed rather than trusted: PostgreSQL's init server refuses TCP but accepts the socket, so the default `pg_isready` *does* pass during init — the trap applies
+- `retries` copied from another repository's shape (#8, 30 → 10) → **avoided**: start measured (1.8 s / 2.15 s), `start_period` set from it
+- unidentifiable image tag (#8, `2022-latest`) → **avoided**: `postgres:18.6` pinned, digest recorded
+- n8n pointed at an application database (Retail Order Tracker) / an n8n database nothing connects to (#7 D4) → **avoided**, and made structural: own role, `CONNECT` revoked from `PUBLIC`
+
+**What was built:**
+
+`docker-compose.infra.yml` derived from #8's by targeted edits — 15 services, `name: otcpy` — with `postgres:18.6` (volume at `/var/lib/postgresql`, server timezone UTC, TCP-and-count healthcheck) in place of MS-SQL, and n8n on PostgreSQL through one YAML anchor shared by `n8n` and `n8n-init`. `infra/postgres/init/01-create-databases.sh`: four `otc_*` databases owned by `otc_app`, `n8n` owned by `otc_n8n`, `CONNECT` revoked from `PUBLIC`, all names from the environment as psql variables, idempotent via `\gexec`. Nine files copied `cmp`-identical from #8 (eight also identical to #7; the Grafana dashboard is #8's phase-22 version). `.env.example` scoped to phase 4, complete by enumeration (73 variables read, all declared except the documented `OTC_GATEWAY_URL` override).
+
+**Deviations from the spec/plan:**
+
+- A dedicated `otc_n8n` role (the plan names only `otc_app`): without it n8n logs in as a role that can create tables in every `otc_*` database.
+- `otc_app` **owns** its databases instead of being granted privileges — on PostgreSQL ≥15 only the owner may create in `public`, so ownership is the equivalent of #7's `GRANT ALL`.
+- Server `timezone=UTC` (one `command:` line, not in the plan).
+
+**Rejections:** none (light process, no reviewer)
+
+**What the reuse saved — and what it did not:**
+
+| | #7 | #8 | #9 |
+|---|---|---|---|
+| Cold start to all-healthy | 35–42 s | 36 s | **39.3 s / 44.0 s** |
+| Database container RAM | MySQL ~400 MB | MS-SQL 1.04 GiB | **PostgreSQL 47.8 MiB** |
+| Stack RAM | — | 2 492 MiB / 12 | **1 277 MiB / 12** |
+| Engine to bootstrapped | — | 4–9 s + ~3 s | **1.8–2.15 s** |
+
+**Saved:** #8's note held — PostgreSQL has `/docker-entrypoint-initdb.d`, so the piece that cost #8 most of its 1.25h (an entrypoint for an engine with no hook) did not exist here. The nine reused files, the topic script's self-check and every comment carrying #7's review defects cost nothing.
+
+**Did not save:** the engine-specific questions are new each time, and three of them needed a probe that #8's file could not answer: whether the init server listens on TCP (it does not, but the socket does), what `pg_hba` trusts inside the container (127.0.0.1 — so a password in the healthcheck would have been decoration), and who may create in `public` on PostgreSQL ≥15 (only the owner). And two of this session's own probes **failed for the wrong reason before they failed for the right one** — the init-window arm ran in a container without `POSTGRES_DB_*` (counted empty names), then without `POSTGRES_USER` (connected as `root`). Printing stderr in the third run is what made the failure name its claim. The lesson is already in `CLAUDE.md` ("its message must name the claim"); this is a second instance of it, recorded rather than smoothed over.

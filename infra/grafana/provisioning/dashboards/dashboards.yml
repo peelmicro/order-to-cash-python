@@ -1,0 +1,24 @@
+# Order-To-Cash — Grafana dashboard provisioning (phase 22,
+# observability_dashboards).
+#
+# Loads every dashboard JSON under infra/grafana/dashboards (mounted
+# read-only into the container by docker-compose.infra.yml, the same
+# `./infra/grafana/provisioning:/etc/grafana/provisioning:ro` mount already
+# provisions datasources from — this file adds a second bind mount for the
+# dashboard JSON itself, since `type: file` providers read from the
+# filesystem, not from `provisioning/`). `allowUiUpdates: false` — this
+# dashboard is a build artefact of the repo, not something an operator edits
+# in the UI and expects to survive the next `docker compose up`.
+apiVersion: 1
+
+providers:
+  - name: order-to-cash
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

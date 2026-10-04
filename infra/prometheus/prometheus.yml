@@ -1,0 +1,39 @@
+# Order-To-Cash — Prometheus scrape configuration.
+#
+# Every service's spans AND metrics reach this stack over OTLP-push to the
+# already-provisioned OpenTelemetry Collector (`infra/otel-collector`) —
+# never a per-service Prometheus-format scrape endpoint (observability_
+# reliability design.md §4.5/§6, OR5). The Collector's own `metrics`
+# pipeline (`infra/otel-collector/otel-collector-config.yaml`) exports to
+# its `:8889` Prometheus exporter, scraped by the single job below;
+# individual services are differentiated by the OTel `service.name`
+# resource attribute on each metric, not by a separate scrape target.
+#
+# A per-application `static_configs` block used to sit here, commented out,
+# targeting a `docker-compose.apps.yml` that has never existed in this
+# repository (services run via `pnpm dev:*` against `docker-compose.
+# infra.yml`'s containers) and naming a `catalog` service that does not
+# exist under `apps/` (six real services: gateway, orders, fulfillment,
+# billing, notifications, projector — `catalog` was a stale placeholder
+# from before the projector was named). Removed rather than revived,
+# per observability_reliability design.md §4.5's own open point.
+#
+# observability_dashboards (phase 22) adds the SECOND (and, deliberately,
+# only other) scrape target: `kafka-exporter:9308`'s `kafka_consumergroup_*`
+# metrics — the real broker's own consumer-group offsets/lag, not something
+# any service pushes over OTLP (see docker-compose.infra.yml's own comment
+# on the container for the consumer-lag instrumentation decision this
+# closes).
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
+
+  - job_name: kafka-exporter
+    static_configs:
+      - targets: ["kafka-exporter:9308"]

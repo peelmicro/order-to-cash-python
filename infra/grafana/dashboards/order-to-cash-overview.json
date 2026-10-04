@@ -1,0 +1,188 @@
+{
+  "id": null,
+  "uid": "otc-overview",
+  "title": "Order To Cash \u2014 Overview",
+  "description": "observability_dashboards (phase 22). Five panels, each proven against real Prometheus data before being committed here: saga duration, per-service latency, consumer lag, outbox lag and DLQ depth. See progress/impl_observability_dashboards.md for the verified PromQL and the consumer-lag instrumentation decision (danielqsj/kafka-exporter, real broker consumer-group offsets \u2014 no service under apps/ computes its own lag).",
+  "tags": [
+    "order-to-cash",
+    "observability"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Saga duration (order.placed \u2192 completed/cancelled)",
+      "description": "otc_saga_completion_ms \u2014 p50/p95, by outcome (completed vs cancelled). Recorded once per closed saga (SagaFactHandler), so this fills in as real orders complete or are cancelled.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.95, sum(otc_saga_completion_ms_bucket) by (le, outcome))",
+          "legendFormat": "{{outcome}} p95",
+          "refId": "A"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.50, sum(otc_saga_completion_ms_bucket) by (le, outcome))",
+          "legendFormat": "{{outcome}} p50",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Per-service latency (Gateway request / Orders fact-consume)",
+      "description": "otc_request_latency_ms (Gateway, per REST endpoint) and otc_fact_processing_latency_ms (Orders, per Kafka consumer) \u2014 the two OTel Meter bootstraps this repo currently runs (design.md \u00a74.5 scoped metrics to Orders/Gateway only). p95, by service + endpoint/consumer.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.95, sum(otc_request_latency_ms_bucket) by (le, exported_job, endpoint))",
+          "legendFormat": "{{exported_job}} \u2014 {{endpoint}}",
+          "refId": "A"
+        },
+        {
+          "datasource": "Prometheus",
+          "expr": "histogram_quantile(0.95, sum(otc_fact_processing_latency_ms_bucket) by (le, exported_job, consumer))",
+          "legendFormat": "{{exported_job}} \u2014 consumer={{consumer}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Kafka consumer lag (by consumer group / topic)",
+      "description": "kafka_consumergroup_lag, from danielqsj/kafka-exporter querying the REAL broker consumer-group offsets vs each topic's high-water mark (docker-compose.infra.yml's kafka-exporter service) \u2014 no service under apps/ instruments its own consumer lag, so this is the broker's own truth rather than an in-app proxy. 0 means fully caught up; a positive value is genuine unconsumed backlog.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(kafka_consumergroup_lag) by (consumergroup, topic)",
+          "legendFormat": "{{consumergroup}} \u2014 {{topic}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Outbox lag (oldest unpublished fact)",
+      "description": "otc_outbox_lag_ms \u2014 OutboxRelay.recordOutboxLag(), the age of the oldest row still awaiting publish, measured before every poll. 0 when fully caught up.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "max by (exported_job) (otc_outbox_lag_ms)",
+          "legendFormat": "{{exported_job}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "DLQ depth (by topic)",
+      "description": "otc_dlq_depth \u2014 KafkaDlqDepth, a real broker admin-client \u03a3(high\u2212low) partition-offset query per .dlq topic, polled on the same interval as the outbox relay. A non-zero, non-decreasing value is a genuine parked-message backlog that R16's DLQ contract expects an operator to drain.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "otc_dlq_depth",
+          "legendFormat": "{{topic}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

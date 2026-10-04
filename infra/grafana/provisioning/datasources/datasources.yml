@@ -1,0 +1,40 @@
+# Order-To-Cash — Grafana datasource provisioning.
+#
+# Provisions Prometheus (metrics) and Jaeger (traces) so Grafana is
+# verifiable immediately after `docker compose up`. Dashboards ARRIVE in
+# phase 22 (observability_dashboards) — see
+# `infra/grafana/provisioning/dashboards/`.
+#
+# No `uid` pinned here (tried once, reverted): the failure was NOT
+# "Grafana assigns arbitrary UIDs" — a zero-state cold start on a fresh,
+# empty volume (progress/review_observability_dashboards.md, D4)
+# reproduced the IDENTICAL UIDs (`PBFA97CFB590B2093` for Prometheus,
+# `PC9A941E8F2E49454` for Jaeger) every time, proving Grafana derives them
+# deterministically from the datasource `name`, not at random per install.
+# The actual cause: this environment's `grafana_data` named volume already
+# carried persisted datasource rows from earlier phases' runs, and the
+# literal `uid` this file once pinned did not match the UID Grafana had
+# already deterministically assigned and stored for that SAME `name` — an
+# update-vs-insert identity mismatch against existing state, which made the
+# file provisioner fail outright at boot ("Datasource provisioning error:
+# data source not found"). The committed dashboard
+# (`infra/grafana/dashboards/order-to-cash-overview.json`) references this
+# datasource by NAME ("Prometheus") instead, which resolves correctly
+# regardless of whatever UID Grafana already assigned it — robust whether
+# the volume is fresh or already carries earlier state.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+
+  - name: Jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    editable: true

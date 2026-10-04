@@ -1,0 +1,547 @@
+# Order-To-Cash (Python) — infrastructure-only compose file (phase 4).
+#
+# Brings up PostgreSQL, MongoDB, Kafka (KRaft), Redpanda Console, NATS
+# (core-only), Mailpit, the OTel Collector, Jaeger v2, Prometheus, Grafana and
+# n8n so later phases have somewhere to connect. NO application containers here
+# — those arrive in phase 23 (docker-compose.apps.yml). SonarQube is behind the
+# `sonar` profile because it costs ~1.5 GB RAM and is not needed every session.
+#
+# Derived from #8's (order-to-cash-dotnet) file: the engine changed, and n8n
+# moved onto it; everything else is #8's, image for image.
+#
+# ── Why `name: otcpy` ───────────────────────────────────────────────────────
+# #7 (order-to-cash-nestjs) uses `name: otc` and #8 uses `name: otcnet`. A
+# shared project name would make this stack silently adopt the other's
+# volumes — its Grafana database, MongoDB read model and Kafka log directory —
+# and corrupt the comparison the trilogy exists to make. The LOGICAL database
+# names stay `otc_orders`, `otc_fulfillment`, `otc_billing`,
+# `otc_notifications` and `otc_read_model`: those are shared-spec parity.
+# Host ports are #8's, so only one trilogy stack runs at a time.
+#
+# Usage:
+#   docker compose -f docker-compose.infra.yml --profile n8n up -d
+#   docker compose -f docker-compose.infra.yml --profile n8n --profile sonar down
+
+name: otcpy
+
+networks:
+  otcpy-net:
+    name: otcpy-net
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  kafka_data:
+  n8n_data:
+  grafana_data:
+  prometheus_data:
+  sonarqube_data:
+  sonarqube_logs:
+  sonarqube_extensions:
+
+# n8n's PostgreSQL connection, merged into BOTH n8n and n8n-init. One anchor,
+# because the failure it prevents is silent: an n8n-init without these
+# variables falls back to SQLite in the shared volume, imports the four
+# workflows there, exits 0 — and the server, reading PostgreSQL, has none.
+x-n8n-database: &n8n-database
+  DB_TYPE: postgresdb
+  DB_POSTGRESDB_HOST: postgres
+  DB_POSTGRESDB_PORT: 5432
+  DB_POSTGRESDB_DATABASE: ${POSTGRES_DB_N8N:-n8n}
+  DB_POSTGRESDB_USER: ${POSTGRES_N8N_USER:-otc_n8n}
+  DB_POSTGRESDB_PASSWORD: ${POSTGRES_N8N_PASSWORD:-otc_n8n_db_dev_password}
+
+services:
+  # ── PostgreSQL — one instance, four logical databases plus n8n's ────────
+  #    (database-per-service: otc_orders, otc_fulfillment, otc_billing and
+  #    otc_notifications — no cross-database joins, no foreign key crossing a
+  #    service boundary; see CLAUDE.md § Database per service.)
+  #
+  #    Bootstrap is infra/postgres/init/01-create-databases.sh through the
+  #    image's /docker-entrypoint-initdb.d — #7's mechanism, which #8's MS-SQL
+  #    image lacked. Runs once, against an empty data directory.
+  #
+  #    The volume is mounted at /var/lib/postgresql, NOT /var/lib/postgresql/data:
+  #    the 18 image moved PGDATA to /var/lib/postgresql/18/docker (a
+  #    major-versioned subdirectory, so a future pg_upgrade --link can see both
+  #    clusters on one mount). Mounting the old path leaves the cluster in the
+  #    container's anonymous layer.
+  #
+  #    The server's default `timezone` is UTC: the tables use timestamptz and
+  #    the driver returns aware datetimes either way, but anything rendered by
+  #    the server itself (psql, now()::text) should read as the wire does.
+  postgres:
+    image: postgres:18.6
+    container_name: otcpy-postgres
+    restart: unless-stopped
+    command: ["postgres", "-c", "timezone=UTC", "-c", "log_timezone=UTC"]
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-otc_pg_dev_password}
+      # Read by infra/postgres/init/01-create-databases.sh and handed to psql
+      # as variables, so these names have exactly one source of truth (#7's
+      # reason for a .sh init rather than a .sql one, its review defect D5).
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:-otc_app}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-otc_app_dev_password}
+      POSTGRES_N8N_USER: ${POSTGRES_N8N_USER:-otc_n8n}
+      POSTGRES_N8N_PASSWORD: ${POSTGRES_N8N_PASSWORD:-otc_n8n_db_dev_password}
+      POSTGRES_DB_ORDERS: ${POSTGRES_DB_ORDERS:-otc_orders}
+      POSTGRES_DB_FULFILLMENT: ${POSTGRES_DB_FULFILLMENT:-otc_fulfillment}
+      POSTGRES_DB_BILLING: ${POSTGRES_DB_BILLING:-otc_billing}
+      POSTGRES_DB_NOTIFICATIONS: ${POSTGRES_DB_NOTIFICATIONS:-otc_notifications}
+      POSTGRES_DB_N8N: ${POSTGRES_DB_N8N:-n8n}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - otcpy-net
+    healthcheck:
+      # MUST be TCP and MUST count the four databases — both halves armed on
+      # 18.6 in phase 4, not assumed. During first init the entrypoint runs a
+      # temporary server that refuses TCP but ACCEPTS Unix-socket connections:
+      # a plain `pg_isready` (socket by default) reports "accepting
+      # connections" for the whole init window — #7's MySQL trap, same shape.
+      # Counting alone is not enough either: over the socket the count already
+      # reads 4 while LATER init scripts are still running. TCP over
+      # 127.0.0.1 is refused until the real server starts; the count then
+      # proves the bootstrap ran, which no liveness probe can.
+      #
+      # No password: the image's pg_hba.conf trusts 127.0.0.1 inside the
+      # container (measured — a wrong PGPASSWORD still passes), so passing one
+      # would be decoration.
+      test:
+        - "CMD-SHELL"
+        - >-
+          psql -h 127.0.0.1 -U "$$POSTGRES_USER" -d postgres -tAc
+          "SELECT count(*) FROM pg_database WHERE datname IN
+          ('$$POSTGRES_DB_ORDERS', '$$POSTGRES_DB_FULFILLMENT', '$$POSTGRES_DB_BILLING', '$$POSTGRES_DB_NOTIFICATIONS')"
+          | grep -qx 4
+      interval: 5s
+      timeout: 5s
+      # MEASURED: from container start to bootstrap done and the TCP listener
+      # up is ~1.8s from empty volumes on this machine (initdb plus the init
+      # script). start_period 15s is ~8x headroom for a slow disk; failures
+      # inside it do not count, so `retries` is purely steady-state detection:
+      # 10 x 5s = 50s for a dead engine to be marked unhealthy (#8's figure).
+      retries: 10
+      start_period: 15s
+
+  # ── MongoDB — read model (otc_read_model.order_timeline) ─────────────────
+  mongodb:
+    image: mongo:8.3.8
+    container_name: otcpy-mongodb
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-otc_mongo_root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-otc_mongo_dev_password}
+    ports:
+      - "${MONGO_HOST_PORT:-27017}:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - otcpy-net
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'db.adminCommand(\"ping\")' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # ── Kafka — KRaft mode, single node, no ZooKeeper ────────────────────────
+  #    Dual listener: PLAINTEXT (internal, kafka:29092) and EXTERNAL (host
+  #    access on localhost:9092). CONTROLLER is KRaft-only, never exposed.
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: otcpy-kafka
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: "PLAINTEXT://:${KAFKA_INTERNAL_PORT:-29092},CONTROLLER://:${KAFKA_CONTROLLER_PORT:-9093},EXTERNAL://:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_INTERNAL_PORT:-29092},EXTERNAL://localhost:${KAFKA_HOST_PORT:-9092}"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_CONTROLLER_PORT:-9093}"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # Declared explicitly rather than relying on the image default: the
+      # mount below MUST match exactly or the broker persists nothing to the
+      # named volume. apache/kafka is NOT the Confluent cp-kafka image and
+      # does not use /tmp/kraft-combined-logs (#7 review defect D1).
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports:
+      - "${KAFKA_HOST_PORT:-9092}:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - otcpy-net
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:${KAFKA_INTERNAL_PORT:-29092} >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  # ── kafka-init — one-shot: creates the fact topics + .dlq companions
+  #    declared in specs/shared/asyncapi.yaml. The topic list is PARSED from
+  #    that spec at run time (infra/kafka/create-topics.sh), never retyped
+  #    here. Script and Dockerfile are REUSED BYTE-IDENTICALLY from #8 (and #7): they
+  #    read the shared spec and speak only to Kafka, so nothing in them is
+  #    stack-specific. Idempotent; re-running re-asserts the topology.
+  kafka-init:
+    build:
+      context: ./infra/kafka
+      dockerfile: Dockerfile
+    image: otcpy-kafka-init:4.3.1
+    pull_policy: build
+    container_name: otcpy-kafka-init
+    restart: "no"
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      ASYNCAPI_SPEC_PATH: /specs/asyncapi.yaml
+      KAFKA_BOOTSTRAP_SERVER: "${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_INTERNAL_PORT:-29092}"
+      KAFKA_TOPIC_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-6}
+      KAFKA_TOPIC_REPLICATION_FACTOR: ${KAFKA_TOPIC_REPLICATION_FACTOR:-1}
+    volumes:
+      - ./specs/shared/asyncapi.yaml:/specs/asyncapi.yaml:ro
+    networks:
+      - otcpy-net
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # ── Redpanda Console — Kafka UI, points at the internal listener ─────────
+  kafka-console:
+    image: redpandadata/console:v3.10.0
+    container_name: otcpy-kafka-console
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      KAFKA_BROKERS: "${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_INTERNAL_PORT:-29092}"
+    ports:
+      - "${REDPANDA_CONSOLE_HOST_PORT:-8080}:8080"
+    networks:
+      - otcpy-net
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/admin/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # ── kafka-exporter — the broker's own consumer-lag truth, scraped by
+  #    Prometheus. `kafka_consumergroup_lag` is real committed offsets against
+  #    real high-water marks via the Kafka admin API, not a proxy metric. #7
+  #    added this in its phase 22 after finding no service reported its own
+  #    lag; #8 inherits the conclusion and wires it from the start. It is what
+  #    makes the REUSED Grafana dashboard's lag panels read live data.
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.9.0
+    container_name: otcpy-kafka-exporter
+    restart: unless-stopped
+    command: ["--kafka.server=${KAFKA_INTERNAL_HOST:-kafka}:${KAFKA_INTERNAL_PORT:-29092}"]
+    ports:
+      - "${KAFKA_EXPORTER_HOST_PORT:-9308}:9308"
+    networks:
+      - otcpy-net
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9308/metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # ── NATS — RPC transport, core-only. NO JetStream: durability is Kafka's
+  #    job (specs/shared/asyncapi.yaml). Monitoring on 8222. ────────────────
+  nats:
+    image: nats:2.14.5-alpine
+    container_name: otcpy-nats
+    restart: unless-stopped
+    command: ["-p", "4222", "-m", "8222"]
+    ports:
+      - "${NATS_CLIENT_HOST_PORT:-4222}:4222"
+      - "${NATS_MONITOR_HOST_PORT:-8222}:8222"
+    networks:
+      - otcpy-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # ── Mailpit — SMTP sink + inbox UI for the notification emails.
+  #    #7's operational lesson, inherited rather than relearned: a cloud SMTP
+  #    sandbox rate-limited a topic replay and silently dead-lettered facts.
+  mailpit:
+    image: axllent/mailpit:v1.27.5
+    container_name: otcpy-mailpit
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      MP_MAX_MESSAGES: ${MAILPIT_MAX_MESSAGES:-500}
+    ports:
+      - "${MAILPIT_SMTP_HOST_PORT:-1025}:1025"
+      - "${MAILPIT_UI_HOST_PORT:-8025}:8025"
+    networks:
+      - otcpy-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8025/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # ── OTel Collector — OTLP in, Jaeger (traces) + Prometheus (metrics) out.
+  #    Config and Dockerfile REUSED BYTE-IDENTICALLY from #8 (and #7): the collector
+  #    speaks OTLP, which is language-neutral by construction.
+  otel-collector:
+    build:
+      context: ./infra/otel-collector
+      dockerfile: Dockerfile
+    image: otcpy-otel-collector:0.159.0
+    pull_policy: build
+    container_name: otcpy-otel-collector
+    restart: unless-stopped
+    command: ["--config", "/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./infra/otel-collector/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "${OTEL_COLLECTOR_GRPC_HOST_PORT:-4317}:4317"
+      - "${OTEL_COLLECTOR_HTTP_HOST_PORT:-4318}:4318"
+    networks:
+      - otcpy-net
+    depends_on:
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # ── Jaeger — trace visualisation ─────────────────────────────────────────
+  jaeger:
+    image: jaegertracing/jaeger:2.20.0
+    container_name: otcpy-jaeger
+    restart: unless-stopped
+    ports:
+      - "${JAEGER_UI_HOST_PORT:-16686}:16686"
+    networks:
+      - otcpy-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # ── Prometheus — scrapes the collector and kafka-exporter.
+  #    prometheus.yml REUSED BYTE-IDENTICALLY from #8 (and #7). ─────────────────────
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    container_name: otcpy-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+    networks:
+      - otcpy-net
+    depends_on:
+      otel-collector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # ── Grafana — the dashboard JSON and provisioning are REUSED
+  #    BYTE-IDENTICALLY from #8 (whose phase 22 changed #7's dashboard). Whether
+  #    they read live data against a Python stack is Phase 22's question: the
+  #    panels query metric names, and #9 must emit the same ones.
+  grafana:
+    image: grafana/grafana:13.2.0
+    container_name: otcpy-grafana
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-otc_grafana_dev_password}
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_HOST_PORT:-3030}:3000"
+    networks:
+      - otcpy-net
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # ── n8n — the four demo workflows, REUSED UNCHANGED from #8 (and #7).
+  #
+  #    On PostgreSQL, in its own `n8n` database owned by its own role
+  #    (infra/postgres/init/01-create-databases.sh). #7 and #8 both ended on
+  #    SQLite by opposite routes — #7 because n8n 2.x dropped MySQL, #8
+  #    because n8n never supported MS-SQL — so #9 is the first of the three to
+  #    run n8n on the application's RDBMS. Its workflow state is demo-only
+  #    either way.
+  n8n:
+    image: n8nio/n8n:2.36.2
+    container_name: otcpy-n8n
+    restart: unless-stopped
+    profiles: ["n8n"]
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      GENERIC_TIMEZONE: ${TZ:-Europe/Madrid}
+      <<: *n8n-database
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-otc_n8n_dev_encryption_key_change_me}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-false}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-otc_n8n_dev_password}
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:${N8N_HOST_PORT:-5678}/
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # The workflows speak ONLY the Gateway's REST API — never a database,
+      # never a broker. That is why the same JSON files serve #7, #8 and #9
+      # with nothing but this base URL changing.
+      #
+      # Default is "http://gateway:${GATEWAY_PORT}" — the hostname the
+      # `gateway` service will have on this network once docker-compose.apps.yml
+      # exists (phase 23). Until then the Gateway runs as a HOST process, which
+      # this container reaches by overriding
+      # `OTC_GATEWAY_URL=http://host.docker.internal:${GATEWAY_PORT}` — see
+      # `extra_hosts` below (#8's phase 20 route).
+      OTC_GATEWAY_URL: ${OTC_GATEWAY_URL:-http://gateway:${GATEWAY_PORT:-3001}}
+      OTC_REQUEST_TIMEOUT_MS: ${OTC_REQUEST_TIMEOUT_MS:-10000}
+      GATEWAY_OPERATOR_USERNAME: ${GATEWAY_OPERATOR_USERNAME:-operator}
+      GATEWAY_OPERATOR_PASSWORD: ${GATEWAY_OPERATOR_PASSWORD:-otc_operator_dev_password_change_me}
+      N8N_WORKFLOWS_ENABLED: ${N8N_WORKFLOWS_ENABLED:-true}
+      ORDER_GENERATOR_ENABLED: ${ORDER_GENERATOR_ENABLED:-true}
+      ORDER_GENERATOR_INTERVAL_SECONDS: ${ORDER_GENERATOR_INTERVAL_SECONDS:-45}
+      ORDER_GENERATOR_ORDERS_PER_RUN: ${ORDER_GENERATOR_ORDERS_PER_RUN:-1}
+      ORDER_GENERATOR_COMPENSATION_RATIO: ${ORDER_GENERATOR_COMPENSATION_RATIO:-0.15}
+      ORDER_GENERATOR_MAX_LINES: ${ORDER_GENERATOR_MAX_LINES:-4}
+      ORDER_GENERATOR_MAX_UNITS: ${ORDER_GENERATOR_MAX_UNITS:-10}
+      ORDER_GENERATOR_RETAILERS: ${ORDER_GENERATOR_RETAILERS:-}
+      ORDER_GENERATOR_COMPANIES: ${ORDER_GENERATOR_COMPANIES:-}
+      ORDER_GENERATOR_CATALOG_TTL_SECONDS: ${ORDER_GENERATOR_CATALOG_TTL_SECONDS:-600}
+      PAYMENT_ROBOT_ENABLED: ${PAYMENT_ROBOT_ENABLED:-true}
+      PAYMENT_ROBOT_INTERVAL_SECONDS: ${PAYMENT_ROBOT_INTERVAL_SECONDS:-120}
+      PAYMENT_AGE_MINUTES: ${PAYMENT_AGE_MINUTES:-2}
+      PAYMENT_ROBOT_BATCH_SIZE: ${PAYMENT_ROBOT_BATCH_SIZE:-10}
+      PAYMENT_ROBOT_RETAILERS: ${PAYMENT_ROBOT_RETAILERS:-}
+      STOCK_REPLENISH_ENABLED: ${STOCK_REPLENISH_ENABLED:-true}
+      STOCK_REPLENISH_INTERVAL_SECONDS: ${STOCK_REPLENISH_INTERVAL_SECONDS:-300}
+      STOCK_REPLENISH_TOP_UP_UNITS: ${STOCK_REPLENISH_TOP_UP_UNITS:-100}
+      STOCK_REPLENISH_BATCH_SIZE: ${STOCK_REPLENISH_BATCH_SIZE:-50}
+      STOCK_REPLENISH_COMPANIES: ${STOCK_REPLENISH_COMPANIES:-}
+      BURST_ENABLED: ${BURST_ENABLED:-true}
+      BURST_ORDER_COUNT: ${BURST_ORDER_COUNT:-20}
+      BURST_CONCURRENCY: ${BURST_CONCURRENCY:-5}
+      BURST_COMPENSATION_RATIO: ${BURST_COMPENSATION_RATIO:-0.20}
+      BURST_WEBHOOK_PATH: ${BURST_WEBHOOK_PATH:-otc-burst}
+    ports:
+      - "${N8N_HOST_PORT:-5678}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/home/node/workflows
+    networks:
+      - otcpy-net
+    # Lets this container resolve `host.docker.internal` to the Docker host on
+    # Linux (where that name is not built in, unlike Docker Desktop) while the
+    # Gateway runs as a host process; unused once phase 23 makes `gateway` a
+    # container hostname on this network.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz/readiness"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ── n8n-init — one-shot: imports the four workflow JSONs. Script REUSED
+  #    BYTE-IDENTICALLY from #8 (and #7). ─────────────────────────────────────────────
+  n8n-init:
+    image: n8nio/n8n:2.36.2
+    container_name: otcpy-n8n-init
+    restart: "no"
+    profiles: ["n8n"]
+    environment:
+      <<: *n8n-database
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-otc_n8n_dev_encryption_key_change_me}
+      N8N_WORKFLOWS_ENABLED: ${N8N_WORKFLOWS_ENABLED:-true}
+    entrypoint: ["/bin/sh", "/import-workflows-on-startup.sh"]
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/home/node/workflows:ro
+      - ./infra/n8n/import-workflows-on-startup.sh:/import-workflows-on-startup.sh:ro
+    networks:
+      - otcpy-net
+    depends_on:
+      n8n:
+        condition: service_healthy
+
+  # ── SonarQube — optional, ~1.5 GB RAM. Coverage gates are enforced by
+  #    ./quality.sh regardless, so quality never depends on this running. ───
+  sonarqube:
+    image: sonarqube:26.8.0.126808-community
+    container_name: otcpy-sonarqube
+    restart: unless-stopped
+    profiles: ["sonar"]
+    environment:
+      TZ: ${TZ:-Europe/Madrid}
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+    ports:
+      - "${SONARQUBE_HOST_PORT:-9000}:9000"
+    networks:
+      - otcpy-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s

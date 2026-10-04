@@ -93,7 +93,7 @@
       "phase": 4,
       "title": "docker-compose.infra.yml: PostgreSQL, MongoDB, Kafka, Redpanda Console, NATS, Mailpit, n8n, OTel, Jaeger, Prometheus, Grafana",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "all infra containers healthy from empty volumes; COMPOSE_PROJECT_NAME=otcpy",
         "four otc_* databases, the n8n database and the otc_app role created by /docker-entrypoint-initdb.d; volume mounted at /var/lib/postgresql (postgres 18 layout)",

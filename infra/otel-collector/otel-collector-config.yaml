@@ -1,0 +1,54 @@
+# Order-To-Cash — OpenTelemetry Collector (contrib) configuration.
+#
+# Receives OTLP (gRPC + HTTP) from every service, forwards traces to Jaeger v2
+# over OTLP, and exposes a Prometheus scrape endpoint for metrics. Kept
+# minimal but correct for collector 0.159.0 — no exotic processors.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  # Jaeger v2 is itself an OTel Collector distribution and accepts spans over
+  # OTLP on its internal (non-host-mapped) gRPC port. See docker-compose.infra.yml.
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Scraped by Prometheus (see infra/prometheus/prometheus.yml).
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+  # Kept declared but NOT wired into the live pipelines below — useful for
+  # local troubleshooting (`exporters: [otlp/jaeger, debug]`) but pure noise
+  # in dc:logs:otel-collector once every service is emitting telemetry from
+  # phase 23 onwards (see progress/review defect D6).
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+  telemetry:
+    logs:
+      level: info
