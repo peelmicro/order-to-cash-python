@@ -134,3 +134,24 @@ The seven files of `specs/shared/` and the four `n8n/workflows/*.json` copied fr
 **Saved:** a second copy costs about what the first did minus its learning — #8 spent most of its 0.75h reading; #9's 0.2h included the same reading, made faster because the recipe was already correct (`SA-1`) and #8's own reset was available as a reference shape.
 
 **Did not save:** the reading itself, which the plan requires and which surfaced the three notes above. And the recipe still needed judgement where it claims to need none: "delete every per-assessment aside" can only be executed by first finding them, and the reliable way was a diff of two assessments' copies, not the recipe's prose.
+
+## public_readme (id 200, phase 3) — 2026-10-04
+
+**Effort:** 1 session, ~0.1h wall-clock (≈05:22 → 05:30) — process: light, closed by the leader
+**#7 baseline:** no counterpart (README grew from phase 1)
+**#8 baseline:** no counterpart (minimal README written in phase 1)
+**Spec:** n/a (sdd: false)
+**Tests:** n/a — documentation. Every claim in the README checked against this session's own verification (phase table, amendment summaries against #8's README registry, prerequisites against the installed versions)
+**Inherited #8 findings:** README naming a licence with no `LICENSE` file (#8, closed late in `79dc89b`) → **avoided** — `LICENSE` ships in the same commit
+
+**What was built:**
+
+`README.md` for a public repository: what the system is, the trilogy table (#9 in progress), the second-reuse question, the inherited `SA-1`…`SA-5` table with one line each, the tech stack, prerequisites with the verified versions, the repository layout (what exists now and what arrives later), how it is being built, the 25-row phase table with phases 1–3 done, and the licence. `LICENSE` (MIT) copied from #8. The #9 row in #7's and #8's READMEs updated with the link, the current stack versions and "in progress" — one commit in each sibling.
+
+**Deviations from the spec/plan:** none.
+
+**Rejections:** none (light process, no reviewer)
+
+**What the reuse saved — and what it did not:** #8's early README was the template, so the structure cost nothing; the content is new by construction (the second-reuse question, the inherited amendments table).
+
+**Also filed this phase — backlog id 201** (`live_timeline_causation_names_commands_not_facts`, attached to `projector_read_model`): the "caused by" gap in #7's and #8's live timelines, diagnosed from the LinkedIn y Web plan's observation. R12 lets a responder fact cite the command that produced it, and the command is never in the timeline; #8's seed cites the triggering fact instead (*"one link shorter than a live saga's causal chain"*, `SagaFixtures.cs`), which is why seeded orders link and live ones do not. Disposition: decided at the phase 12 gate.

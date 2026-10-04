@@ -79,13 +79,13 @@
       "phase": 3,
       "title": "Initial public README + the #9 row in #7's and #8's READMEs",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "README: what the system is, trilogy table (#9 in progress), the second-reuse thesis, inherited amendments table SA-1..SA-5, tech stack, prerequisites with verified versions, layout, a 25-row phase table",
         "an 'in progress' notice above everything; nothing described that does not exist",
         "the #9 row in #7's and #8's READMEs links this repository, each as its own approved commit"
       ],
-      "note": "New in #9: #8 wrote its first README in phase 1; #9's prompt makes it a step of its own after the spec copy. No #7/#8 counterpart row in the benchmark."
+      "note": "New in #9: #8 wrote its first README in phase 1; #9's prompt makes it a step of its own after the spec copy. No #7/#8 counterpart row in the benchmark. Closed by the leader as a LIGHT change (docs): every README claim checked against this session's own verification; LICENSE added in the same commit as the README that names it (#8 shipped 'MIT' for a whole build before adding its file, 79dc89b)."
     },
     {
       "id": 4,
@@ -644,6 +644,21 @@
         "spec commits precede implementation commits for every sdd feature, from git alone",
         "Stack Comparison's Python column entirely real"
       ]
+    },
+    {
+      "id": 201,
+      "name": "live_timeline_causation_names_commands_not_facts",
+      "phase": 12,
+      "title": "Live order timelines link 'caused by' only for facts Orders emits; responder facts cite the command id, so the link is missing (inherited from #7 and #8)",
+      "sdd": false,
+      "status": "pending",
+      "attached_to": "projector_read_model (id 24); also affects web_app (id 29) and seed_job (id 12)",
+      "acceptance": [
+        "the phase 12 gate decides, with evidence, between (a) resolving a responder fact's command causationId to the fact that triggered the command — likely an SA-6, applied to #7, #8 and #9, since the RPC requests carry no triggering-fact id today — and (b) keeping R12's semantics and rendering only what a live timeline can show",
+        "whichever is chosen, README and UI claims about 'caused by' describe live behaviour, not only seeded data",
+        "seed_job keeps #8's seeded causal chain unchanged (dataset parity), and the difference between seeded and live chains is stated where the seed is documented"
+      ],
+      "note": "Found 2026-10-04 while reviewing the LinkedIn y Web plan (section 3 observation: in the live demo GIFs of #7 and #8 only the last timeline entry shows 'caused by'). Diagnosis: the web is not at fault — both timeline schemas carry causationId and #8's web (apps/web/src/lib/order-detail.ts:101-104) links an entry only when causationId equals another fact's eventId. R12 lets a fact's causationId name the triggering fact OR the command; facts emitted by RPC responders cite the command, which is never in the timeline. #8's own seed documents the divergence: src/Seed/Domain/Sagas/SagaFixtures.cs — 'one link shorter than a live saga's causal chain'. Disposition: decide at the phase 12 gate; not fixed in phase 3."
     }
   ]
 }

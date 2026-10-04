@@ -224,6 +224,10 @@ Every process artifact in this repository: what it is for, and where it came fro
 | `progress/current.md` | Working memory of the active session | Updated at every status transition, in lockstep with the backlog — `init.sh` checks this | Template from #8, content fresh | Phase 2 | every session |
 | `progress/history.md` | Append-only log + **per-feature effort records** | Carries a `#7 baseline`, a `#8 baseline` and an `Inherited #8 findings` field per entry; this is the benchmark | Template from #8, extended to three columns; **only #9's own records** | Phase 2 | every feature close |
 | `docs/PROCESS.md` | This document | Updated at the end of every phase — registry + status | Copied from #8, re-pointed; §10–11 reset | Phase 2 | Phase 2 |
+| `specs/shared/` (7 files) | The system's definition, before the code | **Read-only.** A change is a spec amendment (`SA-n`): explicit, human-gated, applied to all three repositories in the same session | **Copied verbatim from #8** — six files byte-identical to #8's **and** #7's, `cmp`-proven, and kept so by `init.sh` §5d | Phase 3 | never (amendments only) |
+| `specs/shared/test-matrix.md` | Requirement → test traceability | Columns 1–4 are the trilogy's; column 5 (Status) and the coverage counts are this assessment's | Copied; reset by its own `SA-1` recipe — 63 rows to `TODO`, counts 0/0/63, #8's narration removed; columns 1–4 identical on all 63 rows against both siblings | Phase 3 | as features land |
+| `n8n/workflows/*.json` | The demo's "external world" | Gateway REST API only — which is why they port at all | **Reused unchanged** — byte-identical to #8's and #7's | Phase 3 | never |
+| `README.md` + `LICENSE` | Honest front door at every commit | Grows each phase; never describes software that does not exist yet. `LICENSE` arrived in the same commit as the README that names it | Written here (shape of #8's early README) | Phase 3 | every phase |
 | `.gitignore` / `.editorconfig` / `.python-version` / `.nvmrc` | Toolchain and style pins | `.python-version` is resolved by uv on every run; no bare `data/`, `lib/`, `build/` or `dist/` entries, verified both ways with `git check-ignore` | Written here (`.editorconfig` keeps #7/#8's baseline) | Phase 1 | Phase 1 |
 
 ---
@@ -232,13 +236,13 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 2 complete — 2 of 43 features done.** The repository holds its toolchain pins and its agent harness, and nothing else: no specification yet, no application code, no infrastructure. The git history must read **harness → specification → code**, because a process claimed after the fact is not evidence.
+**Position: Phase 3 complete — 4 of 44 features done** (43 planned plus one finding filed by this run). The repository holds its toolchain pins, its agent harness, the shared specification and the public README — and no application code or infrastructure yet. The git history reads **harness → specification → code**, because a process claimed after the fact is not evidence.
 
 | Phase | What | State |
 |---|---|---|
 | 1 | Environment & repository — Python 3.14 via uv, the backend set and an Analog probe verified, account-explicit remote, `.gitignore` proven both ways | ✅ |
 | 2 | Harness layer — copied from #8 and re-pointed to Python; backlog reset with #8's findings as criteria; C7 rewritten | ✅ |
-| 3 | Shared specification — copied **verbatim** from #8, `cmp`-proven against #8 and #7; public README | ⬜ |
+| 3 | Shared specification — copied **verbatim** from #8, `cmp`-proven against #8 and #7; public README | ✅ |
 | 4 | Infrastructure compose (PostgreSQL) + spec-derived Kafka topology | ⬜ |
 | 5 | `uv` workspace scaffold, shared kernel, contracts, import-linter contracts, `apps/web` scaffold | ⬜ |
 | 6 | SQLAlchemy models + Alembic migrations for the four write databases | ⬜ |
@@ -283,3 +287,5 @@ Every process artifact in this repository: what it is for, and where it came fro
 | A recorded claim that PostgreSQL's `jsonb` reorders keys "differently from MySQL" was false: the outputs are byte-identical | Running the same document through both engines in throwaway containers, instead of reasoning about it — it decided the payload column type (`json`) |
 | The spartan/ui generator exits 0 having generated nothing when its config file is missing | Checking the generated files after a green exit code, not the exit code (Phase 1 probe) |
 | pnpm fails the install outright on undecided dependency build scripts | Running the install under the pnpm version actually adopted, before adopting it |
+| The live timelines of #7 and #8 show "caused by" only on facts Orders emits: responder facts cite the **command** that produced them (R12 allows it), and the command is never in the timeline. Seeded orders link everywhere because the seed's chain is "one link shorter than a live saga's" — #8's own comment | Following an observation in the publication plan (a demo GIF looked different from the screenshots) into the contract and both repositories' code, instead of filing it as a UI bug. Backlog id 201, decided at the phase 12 gate |
+| A case-insensitive leak sweep of the spec finds `neSt` inside `TimelineStreamEntry` — a false-positive class #8's sweep never had | Classifying every hit by the word it sits in, rather than assuming every `nest` is inside `honest` |
