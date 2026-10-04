@@ -79,9 +79,33 @@ n8n/workflows/       the four demo workflows — copied unchanged
 progress/            the agent harness's external memory, including the effort records
 .claude/agents/      the seven subagents (leader, spec author, implementer, reviewer, …)
 docs/PROCESS.md      how this project is built — the process guide
-                     — from phase 4: infra/ and the compose files
+docker-compose.infra.yml   the infrastructure stack (15 services, compose project `otcpy`)
+infra/               PostgreSQL bootstrap, Kafka topic script, OTel Collector, Prometheus, Grafana, n8n import
+.env.example         every variable the compose file reads, with dev defaults
                      — from phase 5: pyproject.toml (uv workspace), packages/, services/, apps/web/
 ```
+
+## Running what exists so far
+
+The infrastructure runs today; the services arrive from phase 8.
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.infra.yml --profile n8n up -d
+docker compose -f docker-compose.infra.yml --profile n8n ps      # 12 healthy; kafka-init and n8n-init exit 0
+```
+
+| What | Where |
+|---|---|
+| PostgreSQL 18 — `otc_orders`, `otc_fulfillment`, `otc_billing`, `otc_notifications`, plus n8n's own `n8n` database | `localhost:5432` |
+| MongoDB (read model) | `localhost:27017` |
+| Kafka (KRaft) — 3 fact topics + 3 `.dlq`, created from `asyncapi.yaml` | `localhost:9092`; Redpanda Console at http://localhost:8080 |
+| NATS, core only (no JetStream) | `localhost:4222`; monitoring at http://localhost:8222 |
+| Mailpit | SMTP `localhost:1025`; inbox at http://localhost:8025 |
+| Jaeger / Prometheus / Grafana | http://localhost:16686 · http://localhost:9090 · http://localhost:3030 |
+| n8n (the four workflows, imported inactive) | http://localhost:5678 |
+
+The stack uses #8's host ports, so only one of the three trilogy stacks can run at a time. `down -v` wipes it.
 
 ## How this is being built
 
@@ -94,7 +118,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 1 | Environment & repository | ✅ Python 3.14 via uv; the whole backend dependency set and an Analog web stack verified in throwaway probes; account-explicit remote; `.gitignore` proven both ways |
 | 2 | Harness layer, copied from #8 and re-pointed | ✅ 43-feature backlog with #8's review findings as acceptance criteria; `init.sh` verified to exit 1 on 16 break cases; copy cost measured per file |
 | 3 | Shared specification, copied verbatim from #8 | ✅ six of seven files byte-identical to #8's **and** #7's (`cmp`-proven); `test-matrix.md` reset by the `SA-1` recipe, columns 1–4 identical on all 63 rows; zero stack leaks |
-| 4 | Infrastructure compose + Kafka topics & NATS subjects | ⬜ |
+| 4 | Infrastructure compose + Kafka topics & NATS subjects | ✅ PostgreSQL 18.6 replaces MS-SQL; healthy from empty volumes in 39–44 s; the database healthcheck proven unable to pass during bootstrap; n8n isolated in its own database by permissions; 6 Kafka topics and 15 NATS subjects verified against the spec |
 | 5 | uv workspace scaffold, shared kernel, contracts, architecture contracts, web scaffold | ⬜ |
 | 6 | SQLAlchemy models + Alembic migrations for the four write databases | ⬜ |
 | 7 | Deterministic seed job | ⬜ |

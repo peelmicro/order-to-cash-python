@@ -110,7 +110,7 @@
       "phase": 4,
       "title": "Kafka fact topics + .dlq companions and the NATS subject registry",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "3 fact topics + 3 dlq topics created idempotently by the reused script",
         "topics match asyncapi.yaml exactly, by enumeration",

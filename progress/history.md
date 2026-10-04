@@ -193,3 +193,26 @@ The seven files of `specs/shared/` and the four `n8n/workflows/*.json` copied fr
 **Saved:** #8's note held — PostgreSQL has `/docker-entrypoint-initdb.d`, so the piece that cost #8 most of its 1.25h (an entrypoint for an engine with no hook) did not exist here. The nine reused files, the topic script's self-check and every comment carrying #7's review defects cost nothing.
 
 **Did not save:** the engine-specific questions are new each time, and three of them needed a probe that #8's file could not answer: whether the init server listens on TCP (it does not, but the socket does), what `pg_hba` trusts inside the container (127.0.0.1 — so a password in the healthcheck would have been decoration), and who may create in `public` on PostgreSQL ≥15 (only the owner). And two of this session's own probes **failed for the wrong reason before they failed for the right one** — the init-window arm ran in a container without `POSTGRES_DB_*` (counted empty names), then without `POSTGRES_USER` (connected as `root`). Printing stderr in the third run is what made the failure name its claim. The lesson is already in `CLAUDE.md` ("its message must name the claim"); this is a second instance of it, recorded rather than smoothed over.
+
+## messaging_topology (id 5, phase 4) — 2026-10-04
+
+**Effort:** 1 session, ~0.1h wall-clock (≈06:47 → 06:51, shared session) — process: light, closed by the leader
+**#7 baseline:** 1 session, ~3h (implementation ~1h, then two review rounds)
+**#8 baseline:** 1 session, ~0.25h
+**Spec:** n/a (sdd: false) — the topology is `specs/shared/asyncapi.yaml`
+**Tests:** `kafka-init`'s exact-set assertion armed (planted `otc.orders.facts.v2` → rc=1 `FATAL: the broker's topic set does not match the spec exactly.`; removed → rc=0); NATS core-only verified by refusal (`nats stream add` → `no responders available`) and the check armed against a throwaway `-js` server (`Stream PROBE was created`), with a core request/reply round trip as the control. Detail in `progress/impl_messaging_topology.md`
+**Inherited #8 findings:**
+- `/varz | grep jetstream` as proof of core-only (matches either way; caught at #8's human gate) → **avoided**
+- the plan's NATS table with 14 subjects (#8) → **avoided**: 15/15 by set difference, both directions
+
+**What was built:** nothing new — the reused script created the 3 fact topics and 3 `.dlq` companions; spec, broker and Redpanda Console agree on the same 6.
+
+**Deviations from the spec/plan:** none.
+
+**Rejections:** none (light process, no reviewer)
+
+**What the reuse saved — and what it did not:**
+
+**Saved:** as #8 predicted, "the topic script ports untouched — budget nothing for it". The verification commands came from #8's finding, already in their corrected form.
+
+**Did not save:** the enumeration of the spec is not a reused artifact, and its first version was wrong in an instructive way — it classified channels by `bindings`, which only the Kafka channels carry, so all 30 NATS channels landed in an unclassified bucket and the request count read 0. The spec declares transport through each channel's `servers` reference. Listing the unclassified bucket instead of dropping it is what exposed it (defeat-list row 11: the instrument did not recognise the form).

@@ -228,6 +228,10 @@ Every process artifact in this repository: what it is for, and where it came fro
 | `specs/shared/test-matrix.md` | Requirement → test traceability | Columns 1–4 are the trilogy's; column 5 (Status) and the coverage counts are this assessment's | Copied; reset by its own `SA-1` recipe — 63 rows to `TODO`, counts 0/0/63, #8's narration removed; columns 1–4 identical on all 63 rows against both siblings | Phase 3 | as features land |
 | `n8n/workflows/*.json` | The demo's "external world" | Gateway REST API only — which is why they port at all | **Reused unchanged** — byte-identical to #8's and #7's | Phase 3 | never |
 | `README.md` + `LICENSE` | Honest front door at every commit | Grows each phase; never describes software that does not exist yet. `LICENSE` arrived in the same commit as the README that names it | Written here (shape of #8's early README) | Phase 3 | every phase |
+| `docker-compose.infra.yml` | The infrastructure every later phase connects to | 15 services, project `otcpy` so no volume collides with #7 (`otc`) or #8 (`otcnet`); the PostgreSQL healthcheck connects over TCP **and** counts the four databases, both halves armed; one YAML anchor gives `n8n` and `n8n-init` the same database | **Derived from #8's** by targeted edits — `postgres:18.6` replaces MS-SQL, n8n moves from SQLite to PostgreSQL | Phase 4 | Phase 4 |
+| `infra/postgres/init/01-create-databases.sh` | Database-per-service, created before anything connects | Four `otc_*` owned by `otc_app`, `n8n` owned by `otc_n8n`, `CONNECT` revoked from `PUBLIC` — n8n's role cannot open an application database at all (armed) | Written here — #7's `/docker-entrypoint-initdb.d` mechanism, which #8's engine lacked | Phase 4 | Phase 4 |
+| `infra/{kafka,otel-collector,prometheus,grafana,n8n}/` (9 files) | Topic creation from the spec, telemetry pipeline, dashboard, workflow import | The topic script parses `asyncapi.yaml` and fails unless the broker's set is exactly the spec's (armed with a planted topic) | **Copied from #8, `cmp`-identical** (eight also identical to #7; the dashboard is #8's phase-22 version) | Phase 4 | never |
+| `.env.example` | Every variable the compose file reads, with a dev default | Complete by enumeration: 73 read, all declared except the documented `OTC_GATEWAY_URL` override; grows with the services | Shape of #8's phase-4 file; PostgreSQL section new | Phase 4 | as services land |
 | `.gitignore` / `.editorconfig` / `.python-version` / `.nvmrc` | Toolchain and style pins | `.python-version` is resolved by uv on every run; no bare `data/`, `lib/`, `build/` or `dist/` entries, verified both ways with `git check-ignore` | Written here (`.editorconfig` keeps #7/#8's baseline) | Phase 1 | Phase 1 |
 
 ---
@@ -236,14 +240,14 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 3 complete — 4 of 44 features done** (43 planned plus one finding filed by this run). The repository holds its toolchain pins, its agent harness, the shared specification and the public README — and no application code or infrastructure yet. The git history reads **harness → specification → code**, because a process claimed after the fact is not evidence.
+**Position: Phase 4 complete — 6 of 44 features done** (43 planned plus one finding filed by this run). The repository holds its toolchain pins, its agent harness, the shared specification, the public README and a running infrastructure stack — and no application code yet. The git history reads **harness → specification → code**, because a process claimed after the fact is not evidence.
 
 | Phase | What | State |
 |---|---|---|
 | 1 | Environment & repository — Python 3.14 via uv, the backend set and an Analog probe verified, account-explicit remote, `.gitignore` proven both ways | ✅ |
 | 2 | Harness layer — copied from #8 and re-pointed to Python; backlog reset with #8's findings as criteria; C7 rewritten | ✅ |
 | 3 | Shared specification — copied **verbatim** from #8, `cmp`-proven against #8 and #7; public README | ✅ |
-| 4 | Infrastructure compose (PostgreSQL) + spec-derived Kafka topology | ⬜ |
+| 4 | Infrastructure compose (PostgreSQL) + spec-derived Kafka topology | ✅ |
 | 5 | `uv` workspace scaffold, shared kernel, contracts, import-linter contracts, `apps/web` scaffold | ⬜ |
 | 6 | SQLAlchemy models + Alembic migrations for the four write databases | ⬜ |
 | 7 | Deterministic seed job, row-diffed against #8's dataset | ⬜ |
@@ -279,6 +283,9 @@ Every process artifact in this repository: what it is for, and where it came fro
 | Two GitHub accounts on one machine, `credential.helper=store` serving the wrong token for a `peelmicro` repo | #7: a failed first push (HTTP 403) and the investigation behind it | One account-explicit remote URL before the first push, which succeeded first time (as in #8) |
 | A bare `data/` in `.gitignore` silently matching a source directory | #7: 11 source files untracked, undetected until its Phase 8 | `/data/` anchored, the same reasoning extended to GitHub's Python template (`lib/`, `build/`, `parts/` not copied), verified both ways with `git check-ignore` |
 | A comparison check reporting OK over an empty population | #8: a parity guard compared one copy with itself for three phases | `init.sh` §5d warns instead of passing when `specs/shared/` has nothing to compare, and compares against both siblings |
+| A database healthcheck that passes before the bootstrap has run | #7 (MySQL socket ping) and #8 (MS-SQL `SELECT 1`): services released onto a server with no databases | Probed on PostgreSQL before trusting the plan's "less likely here" — the trap applies (see 11.2); the healthcheck connects over TCP and counts the databases, armed both ways |
+| `/varz \| grep jetstream` offered as proof that NATS runs core-only — it matches with JetStream on and off | #8: caught by the human at the gate, not by the agent that wrote it | Verified by asking for the refused operation (`stream add` → *no responders*), and that check itself armed against a throwaway JetStream server |
+| A plan table listing 14 NATS subjects where the spec declares 15 | #8: found only by checking against the spec | 15/15 by set difference in both directions, against a literal list |
 
 ### 11.2 Found here
 
@@ -288,4 +295,8 @@ Every process artifact in this repository: what it is for, and where it came fro
 | The spartan/ui generator exits 0 having generated nothing when its config file is missing | Checking the generated files after a green exit code, not the exit code (Phase 1 probe) |
 | pnpm fails the install outright on undecided dependency build scripts | Running the install under the pnpm version actually adopted, before adopting it |
 | The live timelines of #7 and #8 show "caused by" only on facts Orders emits: responder facts cite the **command** that produced them (R12 allows it), and the command is never in the timeline. Seeded orders link everywhere because the seed's chain is "one link shorter than a live saga's" — #8's own comment | Following an observation in the publication plan (a demo GIF looked different from the screenshots) into the contract and both repositories' code, instead of filing it as a UI bug. Backlog id 201, decided at the phase 12 gate |
+| PostgreSQL's temporary init server refuses TCP but **accepts socket connections**, so the default `pg_isready` reports "accepting connections" throughout the bootstrap — and over the socket the four databases already count as present while later init scripts still run. #7's MySQL trap, same shape, on the engine the plan called safer | A throwaway container with a deliberately slow init script, polled every 2 s over TCP and over the socket |
+| An `n8n-init` without the database variables falls back to SQLite, imports all four workflows there and **exits 0**, while the server reads PostgreSQL and sees none | Running the importer with the variable removed — which is why one YAML anchor now feeds both containers |
+| A first enumeration of `asyncapi.yaml` keyed on `bindings` counted **0** NATS subjects: only Kafka channels carry bindings; transport is declared by each channel's `servers` reference | Printing the unclassified bucket instead of dropping it (defeat-list row 11) |
+| Two arming probes failed **for the wrong reason** before failing for the right one — a probe container without `POSTGRES_DB_*` counted empty names, then one without `POSTGRES_USER` connected as `root` | Printing stderr, so the failure named its cause; only the third run is recorded as the arm |
 | A case-insensitive leak sweep of the spec finds `neSt` inside `TimelineStreamEntry` — a false-positive class #8's sweep never had | Classifying every hit by the word it sits in, rather than assuming every `nest` is inside `honest` |
