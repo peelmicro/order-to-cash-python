@@ -1,0 +1,316 @@
+# Root of the uv workspace. The root is itself a (non-packaged) project so that a bare
+# `uv run` / `uv sync` installs every member; members are listed once, below.
+[project]
+name = "order-to-cash"
+version = "0.1.0"
+description = "Order To Cash (#9, Python): workspace root"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "otc-shared-kernel",
+    "otc-contracts",
+    "otc-cqrs",
+    "otc-gateway",
+    "otc-orders",
+    "otc-fulfillment",
+    "otc-billing",
+    "otc-notifications",
+    "otc-projector",
+    "otc-seed",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*", "services/*"]
+
+[tool.uv.sources]
+otc-shared-kernel = { workspace = true }
+otc-contracts = { workspace = true }
+otc-cqrs = { workspace = true }
+otc-gateway = { workspace = true }
+otc-orders = { workspace = true }
+otc-fulfillment = { workspace = true }
+otc-billing = { workspace = true }
+otc-notifications = { workspace = true }
+otc-projector = { workspace = true }
+otc-seed = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "testcontainers==4.15.0",
+    "httpx==0.28.1",
+    "ruff==0.16.10",
+    "mypy==2.4.0",
+    "import-linter==2.15",
+    "datamodel-code-generator==0.83.0",
+    "asyncpg-stubs==0.31.3",
+]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["packages/*/src", "services/*/src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "S", "RUF", "SIM", "C4", "PT"]
+
+[tool.ruff.lint.per-file-ignores]
+# asserts and hard-coded values are what tests are made of
+"**/tests/**" = ["S101", "S105", "S106"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+strict = true
+python_version = "3.14"
+mypy_path = [
+    "packages/shared_kernel/src",
+    "packages/contracts/src",
+    "packages/cqrs/src",
+    "services/gateway/src",
+    "services/orders/src",
+    "services/fulfillment/src",
+    "services/billing/src",
+    "services/notifications/src",
+    "services/projector/src",
+    "services/seed/src",
+]
+explicit_package_bases = true
+namespace_packages = true
+files = ["packages", "services", "tests"]
+# NO global ignore_missing_imports. The ONLY override is the one library that ships no stubs.
+
+[[tool.mypy.overrides]]
+module = ["aiokafka.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages", "services"]
+# importlib mode: service test directories are not packages, so identical basenames cannot collide.
+addopts = "--import-mode=importlib -ra --strict-markers --strict-config"
+asyncio_mode = "auto"
+# Loop scope is chosen deliberately: "function" (a fresh loop per test) is the default so that no
+# engine, pool or client can silently outlive the loop it was created on (#8's captive-DbContext
+# analogue; Retail Order Tracker's "Future attached to a different loop"). An integration fixture
+# that needs a wider scope must say so with @pytest_asyncio.fixture(loop_scope=...) next to it
+# and dispose its engine in that same scope.
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+filterwarnings = [
+    "error::DeprecationWarning",
+    # The one targeted exception: testcontainers 4.15.0's own `testcontainers.community.nats`
+    # applies its deprecated @wait_container_is_ready decorator at import time (measured under
+    # -W error::DeprecationWarning). It is the library's own warning, not ours. Remove this line
+    # once a testcontainers release stops emitting it; tests/architecture/test_warning_policy.py
+    # proves the filter is effective (it fails with the line removed).
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers",
+    "error::pytest.PytestUnraisableExceptionWarning",
+]
+
+# ---------------------------------------------------------------- coverage
+[tool.coverage.run]
+branch = true
+# `source` (directories), NOT `source_pkgs`: with directories, a module no test imports is still
+# reported (at 0%) instead of silently dropping out of the denominator.
+source = [
+    "packages/shared_kernel/src",
+    "packages/contracts/src",
+    "packages/cqrs/src",
+    "services/gateway/src",
+    "services/orders/src",
+    "services/fulfillment/src",
+    "services/billing/src",
+    "services/notifications/src",
+    "services/projector/src",
+    "services/seed/src",
+]
+
+[tool.coverage.report]
+# Overall gate (CLAUDE.md: >=60% overall). The >=80% domain gate is run by quality.sh.
+fail_under = 60
+show_missing = true
+skip_empty = false
+
+# ---------------------------------------------------------------- import-linter
+# Encodings (decisions):
+#  * forbidden: one contract for every service `otc_<name>.domain` (listed explicitly, import-linter
+#    wildcards cannot match "otc_*"; a source module includes every nested subpackage; a test
+#    asserts the list covers every directory under services/)
+#    and one for `otc_shared_kernel`. `include_external_packages` makes third-party imports visible
+#    to the graph, otherwise a forbidden *external* module is silently never matched.
+#    `otc_cqrs` is internal, so it is forbidden in the same list.
+#  * layers: presentation > infrastructure > application > domain, per service. Infrastructure sits
+#    BELOW presentation (presentation reaches adapters only through the composition root, which
+#    lives outside the layers) and ABOVE application (it implements application ports), so
+#    application -> infrastructure, application -> presentation, infrastructure -> presentation and
+#    domain -> anything-above are all forbidden. Indirect chains count (import-linter default).
+#  * independence: the seven service packages may not import each other, directly or indirectly.
+[tool.importlinter]
+root_packages = [
+    "otc_shared_kernel",
+    "otc_contracts",
+    "otc_cqrs",
+    "otc_gateway",
+    "otc_orders",
+    "otc_fulfillment",
+    "otc_billing",
+    "otc_notifications",
+    "otc_projector",
+    "otc_seed",
+]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+id = "domain-purity"
+name = "Every service domain (nested subpackages included) imports no framework and not otc_cqrs"
+type = "forbidden"
+source_modules = [
+    "otc_gateway.domain",
+    "otc_orders.domain",
+    "otc_fulfillment.domain",
+    "otc_billing.domain",
+    "otc_notifications.domain",
+    "otc_projector.domain",
+    "otc_seed.domain",
+]
+forbidden_modules = [
+    "sqlalchemy",
+    "asyncpg",
+    "alembic",
+    "aiokafka",
+    "nats",
+    "pymongo",
+    "bson",
+    "gridfs",
+    "fastapi",
+    "starlette",
+    "pydantic",
+    "pydantic_settings",
+    "httpx",
+    "structlog",
+    "opentelemetry",
+    "otc_cqrs",
+]
+
+[[tool.importlinter.contracts]]
+id = "shared-kernel-purity"
+name = "otc_shared_kernel imports no framework and not otc_cqrs"
+type = "forbidden"
+source_modules = ["otc_shared_kernel"]
+forbidden_modules = [
+    "sqlalchemy",
+    "asyncpg",
+    "alembic",
+    "aiokafka",
+    "nats",
+    "pymongo",
+    "bson",
+    "gridfs",
+    "fastapi",
+    "starlette",
+    "pydantic",
+    "pydantic_settings",
+    "httpx",
+    "structlog",
+    "opentelemetry",
+    "otc_cqrs",
+]
+
+[[tool.importlinter.contracts]]
+id = "layers-gateway"
+name = "otc_gateway: presentation > infrastructure > application > domain"
+type = "layers"
+layers = [
+    "otc_gateway.presentation",
+    "otc_gateway.infrastructure",
+    "otc_gateway.application",
+    "otc_gateway.domain",
+]
+
+[[tool.importlinter.contracts]]
+id = "layers-orders"
+name = "otc_orders: presentation > infrastructure > application > domain"
+type = "layers"
+layers = [
+    "otc_orders.presentation",
+    "otc_orders.infrastructure",
+    "otc_orders.application",
+    "otc_orders.domain",
+]
+
+[[tool.importlinter.contracts]]
+id = "layers-fulfillment"
+name = "otc_fulfillment: presentation > infrastructure > application > domain"
+type = "layers"
+layers = [
+    "otc_fulfillment.presentation",
+    "otc_fulfillment.infrastructure",
+    "otc_fulfillment.application",
+    "otc_fulfillment.domain",
+]
+
+[[tool.importlinter.contracts]]
+id = "layers-billing"
+name = "otc_billing: presentation > infrastructure > application > domain"
+type = "layers"
+layers = [
+    "otc_billing.presentation",
+    "otc_billing.infrastructure",
+    "otc_billing.application",
+    "otc_billing.domain",
+]
+
+[[tool.importlinter.contracts]]
+id = "layers-notifications"
+name = "otc_notifications: presentation > infrastructure > application > domain"
+type = "layers"
+layers = [
+    "otc_notifications.presentation",
+    "otc_notifications.infrastructure",
+    "otc_notifications.application",
+    "otc_notifications.domain",
+]
+
+[[tool.importlinter.contracts]]
+id = "layers-projector"
+name = "otc_projector: presentation > infrastructure > application > domain"
+type = "layers"
+layers = [
+    "otc_projector.presentation",
+    "otc_projector.infrastructure",
+    "otc_projector.application",
+    "otc_projector.domain",
+]
+
+[[tool.importlinter.contracts]]
+id = "layers-seed"
+name = "otc_seed: presentation > infrastructure > application > domain"
+type = "layers"
+layers = [
+    "otc_seed.presentation",
+    "otc_seed.infrastructure",
+    "otc_seed.application",
+    "otc_seed.domain",
+]
+
+[[tool.importlinter.contracts]]
+id = "service-independence"
+name = "The seven services do not import each other"
+type = "independence"
+modules = [
+    "otc_gateway",
+    "otc_orders",
+    "otc_fulfillment",
+    "otc_billing",
+    "otc_notifications",
+    "otc_projector",
+    "otc_seed",
+]

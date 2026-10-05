@@ -124,7 +124,7 @@
       "phase": 5,
       "title": "uv workspace scaffold: services, packages, import-linter contracts, quality script, apps/web (Analog) scaffold",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "uv workspace with uv.lock committed; ruff, mypy --strict (only aiokafka.* overridden), pytest and coverage configured at the root",
         "import-linter forbidden, layers and independence contracts each seen failing on a planted violation, including a nested domain subpackage and shared_kernel",
@@ -133,7 +133,7 @@
         "apps/web scaffolded with Analog under pnpm 12.8.1: nested .git removed, allowBuilds decided per entry, resolve.tsconfigPaths on, builds and one Vitest test green",
         "./quality.sh runs ruff format --check, ruff check, mypy, lint-imports, pytest with coverage and the web gates"
       ],
-      "note": "#9 scaffolds apps/web here rather than in phase 16 (approved departure from #8): Analog is the least proven piece of the stack."
+      "note": "#9 scaffolds apps/web here rather than in phase 16 (approved departure from #8): Analog is the least proven piece of the stack. Closed by the leader 2026-10-05 as a LIGHT change after reading the diff and re-running ./quality.sh (exit 0, 75 tests, 10 contracts kept); one leader fix round (domain-purity deny-list missed bson → allowlist added; pnpm age-gate bypass removed; comment count). Detail: progress/impl_monorepo_scaffold.md."
     },
     {
       "id": 7,

@@ -216,3 +216,33 @@ The seven files of `specs/shared/` and the four `n8n/workflows/*.json` copied fr
 **Saved:** as #8 predicted, "the topic script ports untouched — budget nothing for it". The verification commands came from #8's finding, already in their corrected form.
 
 **Did not save:** the enumeration of the spec is not a reused artifact, and its first version was wrong in an instructive way — it classified channels by `bindings`, which only the Kafka channels carry, so all 30 NATS channels landed in an unclassified bucket and the request count read 0. The spec declares transport through each channel's `servers` reference. Listing the unclassified bucket instead of dropping it is what exposed it (defeat-list row 11: the instrument did not recognise the form).
+
+## monorepo_scaffold (id 6, phase 5) — 2026-10-05
+
+**Effort:** 1 session, ~0.25h wall-clock (05:29 → 05:44: implementation ~10 min, leader review + one fix round ~5 min) — process: **light** (scaffold/config), every guard armed; closed by the leader after reading the diff and re-running `./quality.sh`
+**#7 baseline:** 1 session, ~3.5h (a ~1h TypeScript-7 spike, approved first pass)
+**#8 baseline:** 1 session, ~3h (one rejection: the domain-purity selector missed nested namespaces)
+**Spec:** n/a (sdd: false)
+**Tests:** 75 pytest (architecture guards, dependency-freedom, mypy and warning policies, seven health/CLI smoke tests), 10 import-linter contracts, 1 Vitest; `./quality.sh` exit 0, overall coverage 91%. Arming table in `progress/impl_monorepo_scaffold.md`.
+**Inherited #8 findings:**
+- domain-purity selector scoped to flat namespaces (#8 `monorepo_scaffold` D1) → **avoided**: nested `domain.value_objects` packages exist in all seven services from the start and every guard is armed there
+- purity and no-`decimal` rules never scanned `SharedKernel` (#8 `shared_kernel` reopen) → **avoided**: `shared_kernel` is in both the import-linter contract and the AST walk, armed in each
+- `typeof(decimal)` only, `double`/`float` missed (#8 `shared_kernel` D1) → **avoided**: six shapes armed (`float` literal, `float(...)`, `/`, `/=`, `import decimal`, `from decimal import`) plus `operator.truediv` and dynamic imports
+- selector-based rule without a non-vacuity test (#8 note) → **avoided**: the walked population is asserted against a literal expected set
+- coverage printed beside a green tick without gating (#8 note) → **avoided**: overall gate armed; the domain gate is a marked TODO owned by `shared_kernel`, because it passes vacuously on zero statements (measured)
+- **recurred, in a new form:** the guard lost scope in translation again. import-linter forbids *module* names, and a deny-list of distributions does not cover the top-level modules a distribution installs under another name: `from bson import ObjectId` (PyMongo's) in a nested domain left all 10 contracts kept — the exact probe #8's reviewer used. Caught by the leader before close; fixed with an allowlist (stdlib + `otc_shared_kernel` + own domain tree) on the money guard's walker.
+
+**What was built:** root `pyproject.toml` (uv workspace, dev group at the plan's pinned versions, ruff, `mypy --strict` with only `aiokafka.*` overridden, pytest with `function` loop scope written beside it and one measured DeprecationWarning filter for `testcontainers.community.nats`, coverage, import-linter), `uv.lock`; `packages/{shared_kernel,contracts,cqrs}` placeholders; seven services with four layers, a nested domain subpackage and a FastAPI lifespan app with `/health/live` (seed: a CLI); `tests/architecture/`; `apps/web` (Analog 2.8.0, Angular 22.2.1, pnpm 12.8.1, four build scripts denied with reasons, `resolve.tsconfigPaths`, jsdom 30.1.1 within pnpm's release-age gate); `quality.sh`.
+
+**Deviations from the spec/plan:**
+- `quality.sh` runs pnpm as `npx pnpm@<packageManager version> -C apps/web`: the global corepack pnpm 11.22.0 refuses the project, so the plan's `pnpm -C apps/web` fails on this machine (`init.sh`'s hint updated to name `quality.sh`).
+- The layers contract is `presentation > infrastructure > application > domain`, so presentation may import infrastructure; the composition root sits outside the layers. To be revisited by `orders_acceptance` if presentation should reach adapters only through `composition.py`.
+- The web lint step is `--if-present`: the Analog template ships no lint script.
+
+**Rejections:** none (light process); one leader fix round (allowlist, a comment that counted five build scripts above four, and a `minimumReleaseAgeExclude` block that bypassed pnpm's supply-chain age gate for a jsdom published the day before).
+
+**What the reuse saved — and what it did not:**
+
+**Saved:** almost the whole of #8's ~3h. The defect #8 paid a rejection round for (nested scope) and the two #8 found one feature later (kernel not scanned, `float` missed) were written into this feature's brief as acceptance criteria, so they cost an arm each instead of a review round. The Phase 1 Analog probe had already found every scaffolder trap (nested `.git`, build-script gate, tsconfig paths), so `apps/web` took minutes.
+
+**Did not save:** the instrument is new, so the scope question is new. #7's glob and #8's namespace predicate both matched *where the code is*; import-linter matches *what is imported, by module name*, and a distribution's module names are not its package name. No inherited finding could name `bson`. What found it was asking the #8 reviewer's question again in the new instrument's terms — the finding transferred as a *probe*, not as a rule.

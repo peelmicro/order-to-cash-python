@@ -374,7 +374,9 @@ else
 fi
 
 if [ -f apps/web/package.json ]; then
-  warn "apps/web present — run 'pnpm -C apps/web test' before closing a web feature"
+  # The global pnpm (corepack, 11.22.0) refuses apps/web's packageManager pin; quality.sh section 7
+  # runs the pinned pnpm through npx, so it is the one command to name here.
+  warn "apps/web present — './quality.sh' section 7 runs its install, test and build with the pinned pnpm"
 fi
 
 # ─────────────────────────────────────────────────────────────

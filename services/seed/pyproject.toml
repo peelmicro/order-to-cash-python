@@ -1,0 +1,17 @@
+[project]
+name = "otc-seed"
+version = "0.1.0"
+description = "otc-seed"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "otc-shared-kernel",
+    "otc-contracts",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.22,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+otc-shared-kernel = { workspace = true }
+otc-contracts = { workspace = true }

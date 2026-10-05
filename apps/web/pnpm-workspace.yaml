@@ -1,0 +1,16 @@
+# apps/web is a standalone pnpm project (the backend has no Node dependency), so this file
+# carries only install policy, no `packages:` list.
+#
+# pnpm 12 fails the install (ERR_PNPM_IGNORED_BUILDS) until every dependency build script is
+# decided. All four entries that appeared are DENIED (@parcel/watcher, esbuild, lmdb,
+# msgpackr-extract; esbuild is listed once for both of its versions). Install, build and Vitest
+# are verified without them.
+allowBuilds:
+  # file-watching native addon, optional: Vite/Analog fall back to their own watcher; dev-only.
+  '@parcel/watcher': false
+  # postinstall only validates the prebuilt platform binary, which ships as an optional dependency.
+  esbuild: false
+  # lmdb ships prebuilt binaries per platform; its install script only attempts a rebuild fallback.
+  lmdb: false
+  # optional native accelerator for msgpackr; falls back to pure JS.
+  msgpackr-extract: false
