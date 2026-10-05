@@ -1,0 +1,23 @@
+{
+  "collection": "order_timeline",
+  "timelineOrderVersion": 2,
+  "statusRank": {
+    "placed": 1,
+    "stock_reserved": 2,
+    "credit_approved": 3,
+    "confirmed": 4,
+    "despatched": 5,
+    "invoiced": 6,
+    "paid": 7,
+    "completed": 98,
+    "cancelled": 99
+  },
+  "processedEventKeyPrefix": "projector:",
+  "orderReferenceIndex": {
+    "name": "uq_order_reference",
+    "key": { "orderReference": 1 },
+    "unique": true,
+    "partialFilterExpression": { "orderReference": { "$type": "string" } }
+  },
+  "_note": "The projector-owned read-model constants, once. The seed (services/seed) is pinned to this file by test_read_model_constants.py; the projector (feature 24, projector_read_model) is pinned to the same file by its acceptance item. Values come from #7's oracle (services/seed/tests/fixtures/order_timeline_from_number7.json); never edit one side alone."
+}

@@ -2,12 +2,7 @@
 
 import sys
 
-from otc_seed.application import run_seed
-
-
-def main() -> int:
-    return run_seed()
-
+from otc_seed.presentation.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())

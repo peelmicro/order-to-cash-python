@@ -1,0 +1,32 @@
+billing.credit_items.jsonl: 15 rows identical
+billing.credits.jsonl: 154 rows identical
+billing.invoice_items.jsonl: 10 rows identical
+billing.invoices.jsonl: 5 rows identical
+billing.outbox.jsonl: 21 rows identical
+billing.payments.jsonl: 5 rows identical
+fulfillment.despatch_items.jsonl: 10 rows identical
+fulfillment.despatches.jsonl: 5 rows identical
+fulfillment.outbox.jsonl: 12 rows identical
+fulfillment.reservations.jsonl: 11 rows identical
+fulfillment.stock.jsonl: 215 rows identical
+fulfillment.stock.live.jsonl: LIVE-STATE DIFFERENCE (informational) (215 vs 215 rows)
+    --- left
+    +++ right
+    @@ -104 +104 @@
+    -{"company_code":"LONDONTOOLS","id":"522c2afe-4589-4382-abc3-c2792e5884c9","product_code":"PRD-0010","reserved_units":0,"units":115,"updated_at":"2026-09-18T14:56:40.196Z"}
+    +{"company_code":"LONDONTOOLS","id":"522c2afe-4589-4382-abc3-c2792e5884c9","product_code":"PRD-0010","reserved_units":0,"units":500,"updated_at":"2026-01-01T00:00:00.000Z"}
+    @@ -152 +152 @@
+    -{"company_code":"OUTILFRANCE","id":"0d095f21-c9ef-42e4-8359-689de234a89a","product_code":"PRD-0007","reserved_units":0,"units":492,"updated_at":"2026-09-18T14:58:40.840Z"}
+    +{"company_code":"OUTILFRANCE","id":"0d095f21-c9ef-42e4-8359-689de234a89a","product_code":"PRD-0007","reserved_units":0,"units":500,"updated_at":"2026-01-01T00:00:00.000Z"}
+    @@ -159 +159 @@
+    -{"company_code":"OUTILFRANCE","id":"c8f2e55b-6237-41ce-81ac-ef28d76d68db","product_code":"PRD-0004","reserved_units":0,"units":496,"updated_at":"2026-09-18T14:58:40.840Z"}
+    +{"company_code":"OUTILFRANCE","id":"c8f2e55b-6237-41ce-81ac-ef28d76d68db","product_code":"PRD-0004","reserved_units":0,"units":500,"updated_at":"2026-01-01T00:00:00.000Z"}
+    @@ -162,2 +162,2 @@
+mongo.order_timeline.jsonl: 6 rows identical
+orders.companies.jsonl: 22 rows identical
+orders.currencies.jsonl: 3 rows identical
+orders.order_items.jsonl: 11 rows identical
+orders.orders.jsonl: 6 rows identical
+orders.outbox.jsonl: 17 rows identical
+orders.products.jsonl: 12 rows identical
+orders.retailers.jsonl: 7 rows identical

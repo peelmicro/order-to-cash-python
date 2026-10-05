@@ -1,0 +1,720 @@
+[
+  {
+    "_id": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+    "orderId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+    "orderReference": "ORD-000001",
+    "orderDate": "2026-06-01T09:00:00.000Z",
+    "retailer": {
+      "code": "CarrefourEs",
+      "name": "Carrefour España",
+      "gln": "5400000000010"
+    },
+    "company": {
+      "code": "IBERFOODS",
+      "name": "Iberian Foods Distribution SA",
+      "gln": "5400000000218"
+    },
+    "status": "completed",
+    "cancellationReason": null,
+    "currency": "EUR",
+    "totals": {
+      "initialAmount": 16130,
+      "initialDiscount": 0,
+      "totalAmount": 16130
+    },
+    "items": [
+      {
+        "productCode": "PRD-0002",
+        "name": "Pasta 500g Case (24u)",
+        "quantity": 5,
+        "unitPrice": 1849,
+        "lineDiscount": 0
+      },
+      {
+        "productCode": "PRD-0003",
+        "name": "Olive Oil 1L Case (12u)",
+        "quantity": 3,
+        "unitPrice": 2295,
+        "lineDiscount": 0
+      }
+    ],
+    "references": {
+      "despatchReference": "DES-000001",
+      "invoiceReference": "INV-000001",
+      "paymentReference": "PAY-SEED-000001"
+    },
+    "events": [
+      {
+        "eventId": "f6cf96e0-6291-427a-9cac-992fe7d1e245",
+        "eventType": "order.placed.v1",
+        "occurredAt": "2026-06-01T09:00:00.000Z",
+        "summary": "Order ORD-000001 placed for CarrefourEs",
+        "causationId": "0914f64b-f91e-4af3-927c-f9227fb92077"
+      },
+      {
+        "eventId": "07931069-003f-4cae-bde3-df5e37eed326",
+        "eventType": "stock.reserved.v1",
+        "occurredAt": "2026-06-01T09:01:00.000Z",
+        "summary": "Stock reserved for 2 line(s)",
+        "causationId": "f6cf96e0-6291-427a-9cac-992fe7d1e245"
+      },
+      {
+        "eventId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8",
+        "eventType": "credit.approved.v1",
+        "occurredAt": "2026-06-01T09:02:00.000Z",
+        "summary": "Credit hold of 161.30 EUR approved",
+        "causationId": "07931069-003f-4cae-bde3-df5e37eed326"
+      },
+      {
+        "eventId": "8611cdde-9dcd-417d-b459-1dda1d8ed53f",
+        "eventType": "order.confirmed.v1",
+        "occurredAt": "2026-06-01T09:02:30.000Z",
+        "summary": "Order confirmed (ORDRSP)",
+        "causationId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8"
+      },
+      {
+        "eventId": "8a0fd807-222e-4b5f-af0f-c91119bdb645",
+        "eventType": "order.despatched.v1",
+        "occurredAt": "2026-06-01T09:03:00.000Z",
+        "summary": "Despatch DES-000001 created",
+        "causationId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8"
+      },
+      {
+        "eventId": "ab4b676e-ac01-4187-a448-5cce44dc21bc",
+        "eventType": "invoice.issued.v1",
+        "occurredAt": "2026-06-01T09:04:00.000Z",
+        "summary": "Invoice INV-000001 issued",
+        "causationId": "8a0fd807-222e-4b5f-af0f-c91119bdb645"
+      },
+      {
+        "eventId": "639a1fd2-feba-4c47-8e79-8756febfbdc9",
+        "eventType": "payment.received.v1",
+        "occurredAt": "2026-06-02T09:00:00.000Z",
+        "summary": "Payment PAY-SEED-000001 received",
+        "causationId": "93fb70d9-41c5-41c6-a9f4-fa5cc6349ab4"
+      },
+      {
+        "eventId": "a9c7a128-aa91-43b7-91c7-699f8248806e",
+        "eventType": "credit.released.v1",
+        "occurredAt": "2026-06-02T09:00:05.000Z",
+        "summary": "Credit exposure released — invoice paid",
+        "causationId": "639a1fd2-feba-4c47-8e79-8756febfbdc9"
+      },
+      {
+        "eventId": "3fbb3aee-cebe-49a5-a71a-27fe16e9306d",
+        "eventType": "order.completed.v1",
+        "occurredAt": "2026-06-02T09:00:10.000Z",
+        "summary": "Order ORD-000001 completed",
+        "causationId": "a9c7a128-aa91-43b7-91c7-699f8248806e"
+      }
+    ],
+    "headerComplete": true,
+    "updatedAt": "2026-06-02T09:00:10.000Z",
+    "statusRank": 98,
+    "timelineOrderVersion": 2,
+    "processedEventKeys": [
+      "projector:07931069-003f-4cae-bde3-df5e37eed326",
+      "projector:3fbb3aee-cebe-49a5-a71a-27fe16e9306d",
+      "projector:639a1fd2-feba-4c47-8e79-8756febfbdc9",
+      "projector:8611cdde-9dcd-417d-b459-1dda1d8ed53f",
+      "projector:8a0fd807-222e-4b5f-af0f-c91119bdb645",
+      "projector:a9c7a128-aa91-43b7-91c7-699f8248806e",
+      "projector:ab4b676e-ac01-4187-a448-5cce44dc21bc",
+      "projector:bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8",
+      "projector:f6cf96e0-6291-427a-9cac-992fe7d1e245"
+    ]
+  },
+  {
+    "_id": "cf826257-6521-4471-9292-d5a81919eba6",
+    "orderId": "cf826257-6521-4471-9292-d5a81919eba6",
+    "orderReference": "ORD-000002",
+    "orderDate": "2026-06-02T09:00:00.000Z",
+    "retailer": {
+      "code": "CarrefourFr",
+      "name": "Carrefour France",
+      "gln": "5400000000027"
+    },
+    "company": {
+      "code": "FRESHFR",
+      "name": "Fraîcheur de France SARL",
+      "gln": "5400000000256"
+    },
+    "status": "completed",
+    "cancellationReason": null,
+    "currency": "EUR",
+    "totals": {
+      "initialAmount": 10374,
+      "initialDiscount": 0,
+      "totalAmount": 10374
+    },
+    "items": [
+      {
+        "productCode": "PRD-0002",
+        "name": "Pasta 500g Case (24u)",
+        "quantity": 4,
+        "unitPrice": 1849,
+        "lineDiscount": 0
+      },
+      {
+        "productCode": "PRD-0008",
+        "name": "Laundry Detergent 5L",
+        "quantity": 2,
+        "unitPrice": 1489,
+        "lineDiscount": 0
+      }
+    ],
+    "references": {
+      "despatchReference": "DES-000002",
+      "invoiceReference": "INV-000002",
+      "paymentReference": "PAY-SEED-000002"
+    },
+    "events": [
+      {
+        "eventId": "a73d1bb2-4f89-4f21-afa1-629abe406f6d",
+        "eventType": "order.placed.v1",
+        "occurredAt": "2026-06-02T09:00:00.000Z",
+        "summary": "Order ORD-000002 placed for CarrefourFr",
+        "causationId": "b8270991-81fd-44ab-8b3c-20b3cced5d08"
+      },
+      {
+        "eventId": "5651f5e0-c836-450c-8337-0c89c2e88f58",
+        "eventType": "stock.reserved.v1",
+        "occurredAt": "2026-06-02T09:01:00.000Z",
+        "summary": "Stock reserved for 2 line(s)",
+        "causationId": "a73d1bb2-4f89-4f21-afa1-629abe406f6d"
+      },
+      {
+        "eventId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19",
+        "eventType": "credit.approved.v1",
+        "occurredAt": "2026-06-02T09:02:00.000Z",
+        "summary": "Credit hold of 103.74 EUR approved",
+        "causationId": "5651f5e0-c836-450c-8337-0c89c2e88f58"
+      },
+      {
+        "eventId": "7085fa96-f796-46fe-ad1b-a9c459f60e13",
+        "eventType": "order.confirmed.v1",
+        "occurredAt": "2026-06-02T09:02:30.000Z",
+        "summary": "Order confirmed (ORDRSP)",
+        "causationId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19"
+      },
+      {
+        "eventId": "d3799173-5363-4d0a-bfc1-284eed0ddf76",
+        "eventType": "order.despatched.v1",
+        "occurredAt": "2026-06-02T09:03:00.000Z",
+        "summary": "Despatch DES-000002 created",
+        "causationId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19"
+      },
+      {
+        "eventId": "dcb43496-b571-4a1d-9f8b-af691dbaa0bb",
+        "eventType": "invoice.issued.v1",
+        "occurredAt": "2026-06-02T09:04:00.000Z",
+        "summary": "Invoice INV-000002 issued",
+        "causationId": "d3799173-5363-4d0a-bfc1-284eed0ddf76"
+      },
+      {
+        "eventId": "ed6ad86a-ccb8-4ff5-9c36-7e201b6629c3",
+        "eventType": "payment.received.v1",
+        "occurredAt": "2026-06-03T09:00:00.000Z",
+        "summary": "Payment PAY-SEED-000002 received",
+        "causationId": "cef05760-aabc-43ac-a778-549442d8122a"
+      },
+      {
+        "eventId": "1c0df4c2-b1a6-4db6-b793-cb4899935214",
+        "eventType": "credit.released.v1",
+        "occurredAt": "2026-06-03T09:00:05.000Z",
+        "summary": "Credit exposure released — invoice paid",
+        "causationId": "ed6ad86a-ccb8-4ff5-9c36-7e201b6629c3"
+      },
+      {
+        "eventId": "29776eab-6612-4d7f-a824-e969cddd0cc7",
+        "eventType": "order.completed.v1",
+        "occurredAt": "2026-06-03T09:00:10.000Z",
+        "summary": "Order ORD-000002 completed",
+        "causationId": "1c0df4c2-b1a6-4db6-b793-cb4899935214"
+      }
+    ],
+    "headerComplete": true,
+    "updatedAt": "2026-06-03T09:00:10.000Z",
+    "statusRank": 98,
+    "timelineOrderVersion": 2,
+    "processedEventKeys": [
+      "projector:1c0df4c2-b1a6-4db6-b793-cb4899935214",
+      "projector:29776eab-6612-4d7f-a824-e969cddd0cc7",
+      "projector:5651f5e0-c836-450c-8337-0c89c2e88f58",
+      "projector:7085fa96-f796-46fe-ad1b-a9c459f60e13",
+      "projector:a73d1bb2-4f89-4f21-afa1-629abe406f6d",
+      "projector:aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19",
+      "projector:d3799173-5363-4d0a-bfc1-284eed0ddf76",
+      "projector:dcb43496-b571-4a1d-9f8b-af691dbaa0bb",
+      "projector:ed6ad86a-ccb8-4ff5-9c36-7e201b6629c3"
+    ]
+  },
+  {
+    "_id": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+    "orderId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+    "orderReference": "ORD-000003",
+    "orderDate": "2026-06-03T09:00:00.000Z",
+    "retailer": {
+      "code": "LeroyMerlinEs",
+      "name": "Leroy Merlin España",
+      "gln": "5400000000034"
+    },
+    "company": {
+      "code": "TOOLIBERIA",
+      "name": "Herramientas Ibéricas SA",
+      "gln": "5400000000232"
+    },
+    "status": "completed",
+    "cancellationReason": null,
+    "currency": "EUR",
+    "totals": {
+      "initialAmount": 19450,
+      "initialDiscount": 0,
+      "totalAmount": 19450
+    },
+    "items": [
+      {
+        "productCode": "PRD-0004",
+        "name": "Claw Hammer 16oz",
+        "quantity": 10,
+        "unitPrice": 1450,
+        "lineDiscount": 0
+      },
+      {
+        "productCode": "PRD-0005",
+        "name": "Screwdriver Set 6pc",
+        "quantity": 6,
+        "unitPrice": 825,
+        "lineDiscount": 0
+      }
+    ],
+    "references": {
+      "despatchReference": "DES-000003",
+      "invoiceReference": "INV-000003",
+      "paymentReference": "PAY-SEED-000003"
+    },
+    "events": [
+      {
+        "eventId": "c8a25b42-6a3d-4642-a962-a8ac1a84a9d1",
+        "eventType": "order.placed.v1",
+        "occurredAt": "2026-06-03T09:00:00.000Z",
+        "summary": "Order ORD-000003 placed for LeroyMerlinEs",
+        "causationId": "742165bd-48b7-45cd-becc-75d57e82bfc3"
+      },
+      {
+        "eventId": "1c07c725-460a-46b6-8de2-7ec4cfd604b0",
+        "eventType": "stock.reserved.v1",
+        "occurredAt": "2026-06-03T09:01:00.000Z",
+        "summary": "Stock reserved for 2 line(s)",
+        "causationId": "c8a25b42-6a3d-4642-a962-a8ac1a84a9d1"
+      },
+      {
+        "eventId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f",
+        "eventType": "credit.approved.v1",
+        "occurredAt": "2026-06-03T09:02:00.000Z",
+        "summary": "Credit hold of 194.50 EUR approved",
+        "causationId": "1c07c725-460a-46b6-8de2-7ec4cfd604b0"
+      },
+      {
+        "eventId": "3de5828b-885c-4f65-b2c7-9f423db09032",
+        "eventType": "order.confirmed.v1",
+        "occurredAt": "2026-06-03T09:02:30.000Z",
+        "summary": "Order confirmed (ORDRSP)",
+        "causationId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f"
+      },
+      {
+        "eventId": "0e53f361-0646-4cba-b5f3-64873ddd707c",
+        "eventType": "order.despatched.v1",
+        "occurredAt": "2026-06-03T09:03:00.000Z",
+        "summary": "Despatch DES-000003 created",
+        "causationId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f"
+      },
+      {
+        "eventId": "fe6a193a-8afa-4181-af78-48590d741451",
+        "eventType": "invoice.issued.v1",
+        "occurredAt": "2026-06-03T09:04:00.000Z",
+        "summary": "Invoice INV-000003 issued",
+        "causationId": "0e53f361-0646-4cba-b5f3-64873ddd707c"
+      },
+      {
+        "eventId": "a134c6eb-d309-45d3-95a9-06060a1a55b3",
+        "eventType": "payment.received.v1",
+        "occurredAt": "2026-06-04T09:00:00.000Z",
+        "summary": "Payment PAY-SEED-000003 received",
+        "causationId": "da9da8f1-2ca1-44e1-937e-338d9f590873"
+      },
+      {
+        "eventId": "ca671a1f-9de7-4b48-a964-0ac5ca1a0254",
+        "eventType": "credit.released.v1",
+        "occurredAt": "2026-06-04T09:00:05.000Z",
+        "summary": "Credit exposure released — invoice paid",
+        "causationId": "a134c6eb-d309-45d3-95a9-06060a1a55b3"
+      },
+      {
+        "eventId": "b3119a96-8611-4718-bd8d-9fb9c7106c63",
+        "eventType": "order.completed.v1",
+        "occurredAt": "2026-06-04T09:00:10.000Z",
+        "summary": "Order ORD-000003 completed",
+        "causationId": "ca671a1f-9de7-4b48-a964-0ac5ca1a0254"
+      }
+    ],
+    "headerComplete": true,
+    "updatedAt": "2026-06-04T09:00:10.000Z",
+    "statusRank": 98,
+    "timelineOrderVersion": 2,
+    "processedEventKeys": [
+      "projector:0e53f361-0646-4cba-b5f3-64873ddd707c",
+      "projector:1c07c725-460a-46b6-8de2-7ec4cfd604b0",
+      "projector:3de5828b-885c-4f65-b2c7-9f423db09032",
+      "projector:5bbc9cfc-d9b5-4290-8427-e3199091ec5f",
+      "projector:a134c6eb-d309-45d3-95a9-06060a1a55b3",
+      "projector:b3119a96-8611-4718-bd8d-9fb9c7106c63",
+      "projector:c8a25b42-6a3d-4642-a962-a8ac1a84a9d1",
+      "projector:ca671a1f-9de7-4b48-a964-0ac5ca1a0254",
+      "projector:fe6a193a-8afa-4181-af78-48590d741451"
+    ]
+  },
+  {
+    "_id": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+    "orderId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+    "orderReference": "ORD-000004",
+    "orderDate": "2026-06-04T09:00:00.000Z",
+    "retailer": {
+      "code": "AldiDe",
+      "name": "Aldi Deutschland",
+      "gln": "5400000000065"
+    },
+    "company": {
+      "code": "GERMANFOODS",
+      "name": "Deutsche Lebensmittel GmbH",
+      "gln": "5400000000287"
+    },
+    "status": "completed",
+    "cancellationReason": null,
+    "currency": "EUR",
+    "totals": {
+      "initialAmount": 23972,
+      "initialDiscount": 0,
+      "totalAmount": 23972
+    },
+    "items": [
+      {
+        "productCode": "PRD-0002",
+        "name": "Pasta 500g Case (24u)",
+        "quantity": 8,
+        "unitPrice": 1849,
+        "lineDiscount": 0
+      },
+      {
+        "productCode": "PRD-0003",
+        "name": "Olive Oil 1L Case (12u)",
+        "quantity": 4,
+        "unitPrice": 2295,
+        "lineDiscount": 0
+      }
+    ],
+    "references": {
+      "despatchReference": "DES-000004",
+      "invoiceReference": "INV-000004",
+      "paymentReference": "PAY-SEED-000004"
+    },
+    "events": [
+      {
+        "eventId": "dbd42414-04f2-4444-a8b0-24d37b85fffd",
+        "eventType": "order.placed.v1",
+        "occurredAt": "2026-06-04T09:00:00.000Z",
+        "summary": "Order ORD-000004 placed for AldiDe",
+        "causationId": "13317f21-37a5-406b-9e40-9e6082f552d9"
+      },
+      {
+        "eventId": "fcd71b31-7de9-48d8-973d-2182dd516fbe",
+        "eventType": "stock.reserved.v1",
+        "occurredAt": "2026-06-04T09:01:00.000Z",
+        "summary": "Stock reserved for 2 line(s)",
+        "causationId": "dbd42414-04f2-4444-a8b0-24d37b85fffd"
+      },
+      {
+        "eventId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e",
+        "eventType": "credit.approved.v1",
+        "occurredAt": "2026-06-04T09:02:00.000Z",
+        "summary": "Credit hold of 239.72 EUR approved",
+        "causationId": "fcd71b31-7de9-48d8-973d-2182dd516fbe"
+      },
+      {
+        "eventId": "75679d7c-165f-4f01-839a-4dcd135b2db3",
+        "eventType": "order.confirmed.v1",
+        "occurredAt": "2026-06-04T09:02:30.000Z",
+        "summary": "Order confirmed (ORDRSP)",
+        "causationId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e"
+      },
+      {
+        "eventId": "4695bec9-4953-4edf-9a3a-22669db52f24",
+        "eventType": "order.despatched.v1",
+        "occurredAt": "2026-06-04T09:03:00.000Z",
+        "summary": "Despatch DES-000004 created",
+        "causationId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e"
+      },
+      {
+        "eventId": "658626cc-07f9-4403-9f95-db5245308676",
+        "eventType": "invoice.issued.v1",
+        "occurredAt": "2026-06-04T09:04:00.000Z",
+        "summary": "Invoice INV-000004 issued",
+        "causationId": "4695bec9-4953-4edf-9a3a-22669db52f24"
+      },
+      {
+        "eventId": "ac3e1c92-a048-410a-a6f8-d1d129582109",
+        "eventType": "payment.received.v1",
+        "occurredAt": "2026-06-05T09:00:00.000Z",
+        "summary": "Payment PAY-SEED-000004 received",
+        "causationId": "284f21af-59e5-4adc-80f0-c42b8b288dd3"
+      },
+      {
+        "eventId": "d075e58b-0055-4c9f-b480-dec84ab82225",
+        "eventType": "credit.released.v1",
+        "occurredAt": "2026-06-05T09:00:05.000Z",
+        "summary": "Credit exposure released — invoice paid",
+        "causationId": "ac3e1c92-a048-410a-a6f8-d1d129582109"
+      },
+      {
+        "eventId": "dd3b8de6-a688-419b-8409-486935921867",
+        "eventType": "order.completed.v1",
+        "occurredAt": "2026-06-05T09:00:10.000Z",
+        "summary": "Order ORD-000004 completed",
+        "causationId": "d075e58b-0055-4c9f-b480-dec84ab82225"
+      }
+    ],
+    "headerComplete": true,
+    "updatedAt": "2026-06-05T09:00:10.000Z",
+    "statusRank": 98,
+    "timelineOrderVersion": 2,
+    "processedEventKeys": [
+      "projector:4695bec9-4953-4edf-9a3a-22669db52f24",
+      "projector:658626cc-07f9-4403-9f95-db5245308676",
+      "projector:75679d7c-165f-4f01-839a-4dcd135b2db3",
+      "projector:ac3e1c92-a048-410a-a6f8-d1d129582109",
+      "projector:d075e58b-0055-4c9f-b480-dec84ab82225",
+      "projector:dbd42414-04f2-4444-a8b0-24d37b85fffd",
+      "projector:dd3b8de6-a688-419b-8409-486935921867",
+      "projector:ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e",
+      "projector:fcd71b31-7de9-48d8-973d-2182dd516fbe"
+    ]
+  },
+  {
+    "_id": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+    "orderId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+    "orderReference": "ORD-000005",
+    "orderDate": "2026-06-05T09:00:00.000Z",
+    "retailer": {
+      "code": "AldiGb",
+      "name": "Aldi UK",
+      "gln": "5400000000072"
+    },
+    "company": {
+      "code": "UKDISTRIB",
+      "name": "British Isles Distribution Ltd",
+      "gln": "5400000000317"
+    },
+    "status": "completed",
+    "cancellationReason": null,
+    "currency": "GBP",
+    "totals": {
+      "initialAmount": 10055,
+      "initialDiscount": 0,
+      "totalAmount": 10055
+    },
+    "items": [
+      {
+        "productCode": "PRD-0009",
+        "name": "English Breakfast Tea 250g",
+        "quantity": 20,
+        "unitPrice": 379,
+        "lineDiscount": 0
+      },
+      {
+        "productCode": "PRD-0010",
+        "name": "Digestive Biscuits 400g",
+        "quantity": 15,
+        "unitPrice": 165,
+        "lineDiscount": 0
+      }
+    ],
+    "references": {
+      "despatchReference": "DES-000005",
+      "invoiceReference": "INV-000005",
+      "paymentReference": "PAY-SEED-000005"
+    },
+    "events": [
+      {
+        "eventId": "5a8a2ffb-9e12-446c-bbd6-c1778bead192",
+        "eventType": "order.placed.v1",
+        "occurredAt": "2026-06-05T09:00:00.000Z",
+        "summary": "Order ORD-000005 placed for AldiGb",
+        "causationId": "6141621e-a478-4a25-998b-230deaa388ee"
+      },
+      {
+        "eventId": "839ccae2-cfe1-4447-9cbc-e53f919eb594",
+        "eventType": "stock.reserved.v1",
+        "occurredAt": "2026-06-05T09:01:00.000Z",
+        "summary": "Stock reserved for 2 line(s)",
+        "causationId": "5a8a2ffb-9e12-446c-bbd6-c1778bead192"
+      },
+      {
+        "eventId": "45a832c1-2c42-45e5-bb59-82632d452d49",
+        "eventType": "credit.approved.v1",
+        "occurredAt": "2026-06-05T09:02:00.000Z",
+        "summary": "Credit hold of 100.55 GBP approved",
+        "causationId": "839ccae2-cfe1-4447-9cbc-e53f919eb594"
+      },
+      {
+        "eventId": "01d44238-1e09-4f1c-a578-8df796155111",
+        "eventType": "order.confirmed.v1",
+        "occurredAt": "2026-06-05T09:02:30.000Z",
+        "summary": "Order confirmed (ORDRSP)",
+        "causationId": "45a832c1-2c42-45e5-bb59-82632d452d49"
+      },
+      {
+        "eventId": "33e87954-5774-43ac-bc72-320d56f765cb",
+        "eventType": "order.despatched.v1",
+        "occurredAt": "2026-06-05T09:03:00.000Z",
+        "summary": "Despatch DES-000005 created",
+        "causationId": "45a832c1-2c42-45e5-bb59-82632d452d49"
+      },
+      {
+        "eventId": "a99944e7-9cae-48b8-9411-27a7d847431f",
+        "eventType": "invoice.issued.v1",
+        "occurredAt": "2026-06-05T09:04:00.000Z",
+        "summary": "Invoice INV-000005 issued",
+        "causationId": "33e87954-5774-43ac-bc72-320d56f765cb"
+      },
+      {
+        "eventId": "de6b1750-cb7b-4456-87bf-7dbdfcd7c34a",
+        "eventType": "payment.received.v1",
+        "occurredAt": "2026-06-06T09:00:00.000Z",
+        "summary": "Payment PAY-SEED-000005 received",
+        "causationId": "c9ae9194-b17f-44da-911c-bf623cf56737"
+      },
+      {
+        "eventId": "7e963c20-42c5-4d2b-9306-029d368979c8",
+        "eventType": "credit.released.v1",
+        "occurredAt": "2026-06-06T09:00:05.000Z",
+        "summary": "Credit exposure released — invoice paid",
+        "causationId": "de6b1750-cb7b-4456-87bf-7dbdfcd7c34a"
+      },
+      {
+        "eventId": "2b9bc00c-77eb-4ce7-8a64-6a270d939211",
+        "eventType": "order.completed.v1",
+        "occurredAt": "2026-06-06T09:00:10.000Z",
+        "summary": "Order ORD-000005 completed",
+        "causationId": "7e963c20-42c5-4d2b-9306-029d368979c8"
+      }
+    ],
+    "headerComplete": true,
+    "updatedAt": "2026-06-06T09:00:10.000Z",
+    "statusRank": 98,
+    "timelineOrderVersion": 2,
+    "processedEventKeys": [
+      "projector:01d44238-1e09-4f1c-a578-8df796155111",
+      "projector:2b9bc00c-77eb-4ce7-8a64-6a270d939211",
+      "projector:33e87954-5774-43ac-bc72-320d56f765cb",
+      "projector:45a832c1-2c42-45e5-bb59-82632d452d49",
+      "projector:5a8a2ffb-9e12-446c-bbd6-c1778bead192",
+      "projector:7e963c20-42c5-4d2b-9306-029d368979c8",
+      "projector:839ccae2-cfe1-4447-9cbc-e53f919eb594",
+      "projector:a99944e7-9cae-48b8-9411-27a7d847431f",
+      "projector:de6b1750-cb7b-4456-87bf-7dbdfcd7c34a"
+    ]
+  },
+  {
+    "_id": "d8324836-41a0-44ab-8128-75b63039eda2",
+    "orderId": "d8324836-41a0-44ab-8128-75b63039eda2",
+    "orderReference": "ORD-000006",
+    "orderDate": "2026-06-06T09:00:00.000Z",
+    "retailer": {
+      "code": "CarrefourEs",
+      "name": "Carrefour España",
+      "gln": "5400000000010"
+    },
+    "company": {
+      "code": "IBERFOODS",
+      "name": "Iberian Foods Distribution SA",
+      "gln": "5400000000218"
+    },
+    "status": "cancelled",
+    "cancellationReason": "credit_rejected",
+    "currency": "EUR",
+    "totals": {
+      "initialAmount": 24999,
+      "initialDiscount": 0,
+      "totalAmount": 24999
+    },
+    "items": [
+      {
+        "productCode": "PRD-0001",
+        "name": "Ration Pack Bundle",
+        "quantity": 1,
+        "unitPrice": 24999,
+        "lineDiscount": 0
+      }
+    ],
+    "references": {
+      "despatchReference": null,
+      "invoiceReference": null,
+      "paymentReference": null
+    },
+    "events": [
+      {
+        "eventId": "2ad39a10-d4bb-49fb-9df2-cc99d8e0f727",
+        "eventType": "order.placed.v1",
+        "occurredAt": "2026-06-06T09:00:00.000Z",
+        "summary": "Order ORD-000006 placed for CarrefourEs",
+        "causationId": "9f39157c-2a97-4e88-9cee-0dffaaf49a95"
+      },
+      {
+        "eventId": "3d395fda-0e19-4d6c-927f-c5c0e7938006",
+        "eventType": "stock.reserved.v1",
+        "occurredAt": "2026-06-06T09:01:00.000Z",
+        "summary": "Stock reserved for 1 line(s)",
+        "causationId": "2ad39a10-d4bb-49fb-9df2-cc99d8e0f727"
+      },
+      {
+        "eventId": "5cd7556e-6db2-414c-8910-2fe851c7db47",
+        "eventType": "credit.rejected.v1",
+        "occurredAt": "2026-06-06T09:02:00.000Z",
+        "summary": "Credit hold of 249.99 EUR rejected (simulated_cents_rule)",
+        "detail": {
+          "reason": "simulated_cents_rule",
+          "requestedAmount": 24999
+        },
+        "causationId": "3d395fda-0e19-4d6c-927f-c5c0e7938006"
+      },
+      {
+        "eventId": "4e201450-6f77-450b-8d0d-868bddf146bc",
+        "eventType": "stock.released.v1",
+        "occurredAt": "2026-06-06T09:03:00.000Z",
+        "summary": "1 unit(s) released back to stock (compensation)",
+        "causationId": "5cd7556e-6db2-414c-8910-2fe851c7db47"
+      },
+      {
+        "eventId": "fa91097d-adb4-49ec-8bc2-1a4c4acc52cb",
+        "eventType": "order.cancelled.v1",
+        "occurredAt": "2026-06-06T09:03:30.000Z",
+        "summary": "Order ORD-000006 cancelled (credit_rejected)",
+        "detail": {
+          "cancellationReason": "credit_rejected"
+        },
+        "causationId": "4e201450-6f77-450b-8d0d-868bddf146bc"
+      }
+    ],
+    "headerComplete": true,
+    "updatedAt": "2026-06-06T09:03:30.000Z",
+    "statusRank": 99,
+    "timelineOrderVersion": 2,
+    "processedEventKeys": [
+      "projector:2ad39a10-d4bb-49fb-9df2-cc99d8e0f727",
+      "projector:3d395fda-0e19-4d6c-927f-c5c0e7938006",
+      "projector:4e201450-6f77-450b-8d0d-868bddf146bc",
+      "projector:5cd7556e-6db2-414c-8910-2fe851c7db47",
+      "projector:fa91097d-adb4-49ec-8bc2-1a4c4acc52cb"
+    ]
+  }
+]

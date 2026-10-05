@@ -19,6 +19,14 @@ a container (seconds).
   migration (seconds). Tests that exercise the migration itself keep using `fresh_database` (an
   empty database) and run Alembic on it. The template is never handed to a test and has no open
   connection, so a test's writes cannot reach the next test: `tests/database_templates/` pins it.
+* MongoDB (feature 12, `seed_job`, the first MongoDB writer; the projector reuses it): ONE
+  Docker-held `mongo:8.3.8` per session (`mongo_server`, sync, no loop), and a uniquely named
+  database per test (`fresh_mongo_database`, function loop, dropped by the fixture that created
+  it). It lives here for the same reason the Postgres fixtures do: a root conftest reaches
+  `tests/`, `packages/` and `services/` without any service importing another. Same rules: the
+  port is assigned by Docker and held by it, the suite passes with the developer stack down and
+  never talks to the composed mongo on 27017, and a test builds (and closes) its own
+  `AsyncMongoClient` from `uri` in its own loop.
 * Loop scopes (pytest's default here is `function`): `postgres_server` is a plain sync fixture, so
   it has no loop at all; `fresh_database` is a function-scoped async fixture, its asyncpg
   connection is created and closed in that same function loop, and any SQLAlchemy engine a test
@@ -36,9 +44,12 @@ import pytest
 import pytest_asyncio
 from alembic import command
 from alembic.config import Config
+from pymongo import AsyncMongoClient
+from testcontainers.community.mongodb import MongoDbContainer
 from testcontainers.community.postgres import PostgresContainer
 
 POSTGRES_IMAGE = "postgres:18.6"
+MONGO_IMAGE = "mongo:8.3.8"  # the compose pin (docker-compose.infra.yml)
 _USER = "postgres"
 _PASSWORD = "otc_test_password"  # noqa: S105 - a throwaway container's superuser password
 
@@ -150,3 +161,51 @@ async def migrated_database_from_template(
     finally:
         for name in created:
             await _admin_execute(postgres_server, f'DROP DATABASE "{name}" WITH (FORCE)')
+
+
+_MONGO_USER = "otc_test"
+_MONGO_PASSWORD = "otc_test_password"  # noqa: S105 - a throwaway container's root password
+
+
+@dataclass(frozen=True)
+class MongoServer:
+    host: str
+    port: int
+
+    def uri(self) -> str:
+        return (
+            f"mongodb://{_MONGO_USER}:{_MONGO_PASSWORD}@{self.host}:{self.port}/?authSource=admin"
+        )
+
+
+@dataclass(frozen=True)
+class FreshMongoDatabase:
+    """A database name nobody else has used, on the shared server."""
+
+    name: str
+    uri: str
+
+
+@pytest.fixture(scope="session")
+def mongo_server() -> Iterator[MongoServer]:
+    # port=27017 is the CONTAINER port; the host port is assigned and held by Docker.
+    container = MongoDbContainer(MONGO_IMAGE, username=_MONGO_USER, password=_MONGO_PASSWORD)
+    with container:
+        yield MongoServer(
+            host=container.get_container_host_ip(),
+            port=int(container.get_exposed_port(27017)),
+        )
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def fresh_mongo_database(mongo_server: MongoServer) -> AsyncIterator[FreshMongoDatabase]:
+    # Function loop: the client that drops the database opens and closes inside this fixture.
+    name = f"otc_test_{uuid.uuid4().hex}"
+    try:
+        yield FreshMongoDatabase(name=name, uri=mongo_server.uri())
+    finally:
+        client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(mongo_server.uri())
+        try:
+            await client.drop_database(name)
+        finally:
+            await client.close()

@@ -1,1 +1,1 @@
-"""otc_seed presentation layer (placeholder)."""
+"""otc_seed presentation: the command line (`python -m otc_seed`)."""

@@ -1,0 +1,5709 @@
+{
+  "currencies": [
+    {
+      "id": "8a2ac568-0944-4507-872a-38acbce9724c",
+      "code": "USD",
+      "isoNumber": "840",
+      "symbol": "$",
+      "decimalPoints": 2
+    },
+    {
+      "id": "23ab1a2b-bce4-4b83-8304-6b5a1084990c",
+      "code": "EUR",
+      "isoNumber": "978",
+      "symbol": "€",
+      "decimalPoints": 2
+    },
+    {
+      "id": "ac45711f-e2ac-456b-975f-8aef85070564",
+      "code": "GBP",
+      "isoNumber": "826",
+      "symbol": "£",
+      "decimalPoints": 2
+    }
+  ],
+  "products": [
+    {
+      "code": "PRD-0001",
+      "name": "Ration Pack Bundle",
+      "description": "Mixed grocery ration pack, 1 unit",
+      "price": 24999,
+      "currencyCode": "EUR",
+      "id": "1164d610-b1d9-493c-980e-1b4a37d00e1e",
+      "ean": "5901000000012"
+    },
+    {
+      "code": "PRD-0002",
+      "name": "Pasta 500g Case (24u)",
+      "description": "Case of 24 x 500g dried pasta",
+      "price": 1849,
+      "currencyCode": "EUR",
+      "id": "bf0ab906-55b0-45c7-bfe0-5c389c27ac4d",
+      "ean": "5901000000029"
+    },
+    {
+      "code": "PRD-0003",
+      "name": "Olive Oil 1L Case (12u)",
+      "description": "Case of 12 x 1L extra virgin olive oil",
+      "price": 2295,
+      "currencyCode": "EUR",
+      "id": "d9a2f371-890d-4baf-84f7-87073005f57a",
+      "ean": "5901000000036"
+    },
+    {
+      "code": "PRD-0004",
+      "name": "Claw Hammer 16oz",
+      "description": "Forged steel claw hammer, 16oz head",
+      "price": 1450,
+      "currencyCode": "EUR",
+      "id": "8a3b4b1b-b54c-483e-9b07-94cc11d8f40e",
+      "ean": "5901000000043"
+    },
+    {
+      "code": "PRD-0005",
+      "name": "Screwdriver Set 6pc",
+      "description": "6-piece flathead/Phillips screwdriver set",
+      "price": 825,
+      "currencyCode": "EUR",
+      "id": "428b7716-1cef-4546-b817-ec8b82cb6344",
+      "ean": "5901000000050"
+    },
+    {
+      "code": "PRD-0006",
+      "name": "Paint Roller Kit",
+      "description": "Roller, tray and 2 refill sleeves",
+      "price": 645,
+      "currencyCode": "EUR",
+      "id": "2c110491-62dc-432c-84b9-659b384d6e06",
+      "ean": "5901000000067"
+    },
+    {
+      "code": "PRD-0007",
+      "name": "Garden Hose 20m",
+      "description": "Reinforced PVC garden hose, 20 metres",
+      "price": 3275,
+      "currencyCode": "EUR",
+      "id": "e5f40e9c-1d8e-43fa-a1c0-314333c1bf09",
+      "ean": "5901000000074"
+    },
+    {
+      "code": "PRD-0008",
+      "name": "Laundry Detergent 5L",
+      "description": "5L concentrated liquid laundry detergent",
+      "price": 1489,
+      "currencyCode": "EUR",
+      "id": "34c7fd09-a747-457c-b4b5-a7e3c0e3091b",
+      "ean": "5901000000081"
+    },
+    {
+      "code": "PRD-0009",
+      "name": "English Breakfast Tea 250g",
+      "description": "250g loose-leaf English breakfast tea",
+      "price": 379,
+      "currencyCode": "GBP",
+      "id": "ab145d16-2927-4c3f-8ebb-8b97eb34241e",
+      "ean": "5901000000098"
+    },
+    {
+      "code": "PRD-0010",
+      "name": "Digestive Biscuits 400g",
+      "description": "400g pack of digestive biscuits",
+      "price": 165,
+      "currencyCode": "GBP",
+      "id": "6e35330f-3204-4e98-b93a-a8da66397624",
+      "ean": "5901000000104"
+    },
+    {
+      "code": "PRD-0011",
+      "name": "Maple Syrup 1L",
+      "description": "1L pure maple syrup",
+      "price": 1749,
+      "currencyCode": "USD",
+      "id": "428bfee9-00fe-43a9-bfa3-150ed084cbce",
+      "ean": "5901000000111"
+    },
+    {
+      "code": "PRD-0012",
+      "name": "Almond Butter 500g",
+      "description": "500g smooth almond butter",
+      "price": 895,
+      "currencyCode": "USD",
+      "id": "86a2fb88-37c0-4b04-be92-f28d24db9777",
+      "ean": "5901000000128"
+    }
+  ],
+  "retailers": [
+    {
+      "id": "0e47f181-c92e-416a-bff1-5c8d497768b1",
+      "code": "CarrefourEs",
+      "name": "Carrefour España",
+      "country": "ES",
+      "vat": "ESA28425270",
+      "gln": "5400000000010",
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "7598db3f-4633-4d96-a5a0-d0f59666f147",
+      "code": "CarrefourFr",
+      "name": "Carrefour France",
+      "country": "FR",
+      "vat": "FR45652014051",
+      "gln": "5400000000027",
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "b2c2587d-eb26-4805-a465-d82a7088300c",
+      "code": "LeroyMerlinEs",
+      "name": "Leroy Merlin España",
+      "country": "ES",
+      "vat": "ESA28398950",
+      "gln": "5400000000034",
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "c18ea11d-59f9-48fe-abaf-76f6530df7a3",
+      "code": "LeroyMerlinFr",
+      "name": "Leroy Merlin France",
+      "country": "FR",
+      "vat": "FR32384657943",
+      "gln": "5400000000041",
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "9436d555-ec26-4488-a8e3-728b2ebbc5c3",
+      "code": "AldiEs",
+      "name": "Aldi España",
+      "country": "ES",
+      "vat": "ESA65037725",
+      "gln": "5400000000058",
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "baef7631-6eac-45c7-bc47-f8aa0726f195",
+      "code": "AldiDe",
+      "name": "Aldi Deutschland",
+      "country": "DE",
+      "vat": "DE812631079",
+      "gln": "5400000000065",
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8c0c8976-4202-498a-80fe-9cee8ccb0b55",
+      "code": "AldiGb",
+      "name": "Aldi UK",
+      "country": "GB",
+      "vat": "GB245012348",
+      "gln": "5400000000072",
+      "currencyCode": "GBP"
+    }
+  ],
+  "companies": [
+    {
+      "code": "IBERFOODS",
+      "name": "Iberian Foods Distribution SA",
+      "country": "ES",
+      "vat": "ESA80907397",
+      "currencyCode": "EUR",
+      "id": "75ac5f95-9a43-4109-8bff-675dcae67808",
+      "gln": "5400000000218"
+    },
+    {
+      "code": "SPANATURAL",
+      "name": "Hispania Natural Foods SL",
+      "country": "ES",
+      "vat": "ESB82591744",
+      "currencyCode": "EUR",
+      "id": "90a8e0cc-f58d-4c8a-a31a-7f84bccf24ae",
+      "gln": "5400000000225"
+    },
+    {
+      "code": "TOOLIBERIA",
+      "name": "Herramientas Ibéricas SA",
+      "country": "ES",
+      "vat": "ESA84606310",
+      "currencyCode": "EUR",
+      "id": "838d6b15-cf19-47c0-92d9-89957dfb4265",
+      "gln": "5400000000232"
+    },
+    {
+      "code": "MEDFRESH",
+      "name": "Mediterráneo Fresh Goods SL",
+      "country": "ES",
+      "vat": "ESB63022260",
+      "currencyCode": "EUR",
+      "id": "6255ec55-16ee-432e-ab19-5c2ea2fffb27",
+      "gln": "5400000000249"
+    },
+    {
+      "code": "FRESHFR",
+      "name": "Fraîcheur de France SARL",
+      "country": "FR",
+      "vat": "FR76403355947",
+      "currencyCode": "EUR",
+      "id": "49ee586e-0f0a-4c86-b9fc-b1726ade7d98",
+      "gln": "5400000000256"
+    },
+    {
+      "code": "OUTILFRANCE",
+      "name": "Outillage de France SAS",
+      "country": "FR",
+      "vat": "FR89552120222",
+      "currencyCode": "EUR",
+      "id": "ac9e0b28-d5c4-461f-b479-f6d31ced9033",
+      "gln": "5400000000263"
+    },
+    {
+      "code": "GALLIAGOODS",
+      "name": "Gallia Goods Distribution SA",
+      "country": "FR",
+      "vat": "FR23334028554",
+      "currencyCode": "EUR",
+      "id": "14881108-831a-4cbe-be07-cf37b9fe453e",
+      "gln": "5400000000270"
+    },
+    {
+      "code": "GERMANFOODS",
+      "name": "Deutsche Lebensmittel GmbH",
+      "country": "DE",
+      "vat": "DE136695970",
+      "currencyCode": "EUR",
+      "id": "95d33f16-33e8-4235-8216-31b35ccb2af6",
+      "gln": "5400000000287"
+    },
+    {
+      "code": "BAUWERK",
+      "name": "Bauwerk Werkzeuge GmbH",
+      "country": "DE",
+      "vat": "DE811115660",
+      "currencyCode": "EUR",
+      "id": "f5ba28c6-6ac4-47c2-a0c7-ed9d52d340ed",
+      "gln": "5400000000294"
+    },
+    {
+      "code": "RHEINGOODS",
+      "name": "Rheingold Handels GmbH",
+      "country": "DE",
+      "vat": "DE147426685",
+      "currencyCode": "EUR",
+      "id": "1f103f3f-b34f-49d5-93bf-575d4d1d1d41",
+      "gln": "5400000000300"
+    },
+    {
+      "code": "UKDISTRIB",
+      "name": "British Isles Distribution Ltd",
+      "country": "GB",
+      "vat": "GB434031494",
+      "currencyCode": "GBP",
+      "id": "e2982c17-4bf1-478a-805b-af93869a7ece",
+      "gln": "5400000000317"
+    },
+    {
+      "code": "LONDONTOOLS",
+      "name": "London Tools Supply Ltd",
+      "country": "GB",
+      "vat": "GB113292750",
+      "currencyCode": "GBP",
+      "id": "2cb1e0a2-62b9-48fe-b5e9-742d1e488281",
+      "gln": "5400000000324"
+    },
+    {
+      "code": "ALBIONFOODS",
+      "name": "Albion Foods Ltd",
+      "country": "GB",
+      "vat": "GB980780684",
+      "currencyCode": "GBP",
+      "id": "092b7467-2cda-42d3-b53f-7be5b2832c05",
+      "gln": "5400000000331"
+    },
+    {
+      "code": "ITALPASTA",
+      "name": "Pastificio Italiano SRL",
+      "country": "IT",
+      "vat": "IT00743110157",
+      "currencyCode": "EUR",
+      "id": "c9ffce1e-0f8a-44c4-a0e3-482a424a8310",
+      "gln": "5400000000348"
+    },
+    {
+      "code": "ROMATOOLS",
+      "name": "Attrezzi di Roma SRL",
+      "country": "IT",
+      "vat": "IT01654060157",
+      "currencyCode": "EUR",
+      "id": "61bbf36b-9045-4151-a3e4-de20fb975846",
+      "gln": "5400000000355"
+    },
+    {
+      "code": "MILANOGOODS",
+      "name": "Milano Distribuzione SRL",
+      "country": "IT",
+      "vat": "IT12842760151",
+      "currencyCode": "EUR",
+      "id": "8911b72f-9c77-4d50-9729-3f68367078c4",
+      "gln": "5400000000362"
+    },
+    {
+      "code": "LUSOFOODS",
+      "name": "Luso Alimentos Lda",
+      "country": "PT",
+      "vat": "PT502757191",
+      "currencyCode": "EUR",
+      "id": "9fda7193-fb04-4def-8e7a-14a6d77fb640",
+      "gln": "5400000000379"
+    },
+    {
+      "code": "PORTOTOOLS",
+      "name": "Porto Ferramentas Lda",
+      "country": "PT",
+      "vat": "PT503504457",
+      "currencyCode": "EUR",
+      "id": "20825608-84d0-46b9-9f2f-f78794aa9ec7",
+      "gln": "5400000000386"
+    },
+    {
+      "code": "DUTCHGOODS",
+      "name": "Nederlandse Groothandel BV",
+      "country": "NL",
+      "vat": "NL805806053B01",
+      "currencyCode": "EUR",
+      "id": "760c6069-973c-4252-8b98-753782fbd0c2",
+      "gln": "5400000000393"
+    },
+    {
+      "code": "HOLLANDTOOLS",
+      "name": "Holland Gereedschap BV",
+      "country": "NL",
+      "vat": "NL818838663B01",
+      "currencyCode": "EUR",
+      "id": "a644a6bd-c0f5-4c42-abed-0f169627f8a2",
+      "gln": "5400000000409"
+    },
+    {
+      "code": "BENELUXFOODS",
+      "name": "Benelux Voeding NV",
+      "country": "BE",
+      "vat": "BE0429646425",
+      "currencyCode": "EUR",
+      "id": "c728bb81-1d6c-433e-9907-b3b7ef2ef5af",
+      "gln": "5400000000416"
+    },
+    {
+      "code": "BRUSSELSTOOLS",
+      "name": "Brussels Outillage NV",
+      "country": "BE",
+      "vat": "BE0475747019",
+      "currencyCode": "EUR",
+      "id": "2606f863-2b57-4ac9-b7c2-df857d152917",
+      "gln": "5400000000423"
+    }
+  ],
+  "credits": [
+    {
+      "id": "5c62308c-31fd-47ab-aa6f-a27cc545a36e",
+      "code": "CR-000001",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "IBERFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "4be4d371-a4f5-4622-8aba-ac42e469d68f",
+      "code": "CR-000002",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "FRESHFR",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ad2bbcb9-b22e-4c1b-9580-c96498ffdd3b",
+      "code": "CR-000003",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "TOOLIBERIA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "887e36b5-2eef-4fb6-9931-36f12ac08120",
+      "code": "CR-000004",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "OUTILFRANCE",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ca63816c-df20-4cd5-bd33-91d2ac4cacdf",
+      "code": "CR-000005",
+      "retailerCode": "AldiEs",
+      "companyCode": "SPANATURAL",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "3c30e4ac-4ca4-4594-9c8b-4e132c160a3c",
+      "code": "CR-000006",
+      "retailerCode": "AldiDe",
+      "companyCode": "GERMANFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "d7846b17-8b97-4185-ac79-5689597a3c15",
+      "code": "CR-000007",
+      "retailerCode": "AldiGb",
+      "companyCode": "UKDISTRIB",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "84dc256e-dc67-426a-aae8-75f7634df6fc",
+      "code": "CR-000008",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "SPANATURAL",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "06f538fa-5c6d-45c1-a17c-d66dc94f11f7",
+      "code": "CR-000009",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "TOOLIBERIA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "d25ab607-bb97-4dbb-996c-46f1ce70e653",
+      "code": "CR-000010",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "MEDFRESH",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "628a0b84-868a-446c-a4e5-336d1d72bcb3",
+      "code": "CR-000011",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "FRESHFR",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "9fc4807f-dd0d-4ad4-b02f-6eab743986b0",
+      "code": "CR-000012",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "OUTILFRANCE",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "9f7a72d6-657f-407b-84a5-aa19104819ee",
+      "code": "CR-000013",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "GALLIAGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "54810cf4-f700-4f68-8235-f0f73272d606",
+      "code": "CR-000014",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "GERMANFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8d570ff1-cd93-4c1b-95ab-fb9f380d5d04",
+      "code": "CR-000015",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "BAUWERK",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "146fe4a9-3108-4bbb-8c73-60e25f05267a",
+      "code": "CR-000016",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "RHEINGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "041152ee-e4dc-4f8e-aff3-a853d168ea9e",
+      "code": "CR-000017",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "UKDISTRIB",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "26463093-8825-46e1-ae73-08c205a38554",
+      "code": "CR-000018",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "LONDONTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "d5baecad-759e-4288-900a-c85d79f7639c",
+      "code": "CR-000019",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "ALBIONFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "7d938fbf-ce31-41cd-9f4e-307bfe177883",
+      "code": "CR-000020",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "ITALPASTA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "f4c3c5a6-5bfb-4672-96ff-17219912fbe1",
+      "code": "CR-000021",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "ROMATOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "6069a449-ccb6-42f9-ba51-b65e4d87a549",
+      "code": "CR-000022",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "MILANOGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "e3d88ec8-2795-49e9-aad3-cdd8c1f80d4d",
+      "code": "CR-000023",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "LUSOFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "4e6bb245-38cf-41d6-9bfa-360cbf099b4e",
+      "code": "CR-000024",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "PORTOTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "1ba840f7-8bc4-4dea-b3f3-715f47832ead",
+      "code": "CR-000025",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "DUTCHGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "d069baa6-2c48-4fe3-8460-8c7ae3618ea0",
+      "code": "CR-000026",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "HOLLANDTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "42a95ba3-a46e-4414-b74b-3e4a700292aa",
+      "code": "CR-000027",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "BENELUXFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8c9b3c3e-9188-4ad4-8e65-d869336fa43f",
+      "code": "CR-000028",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "BRUSSELSTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8fccba4d-a001-4200-ae8d-1937c30eac70",
+      "code": "CR-000029",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "IBERFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8683b6b3-642e-4cb5-a233-23ac23ea2938",
+      "code": "CR-000030",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "SPANATURAL",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "b4e6d12b-a3e4-4e2e-bcc6-fcf052397ee6",
+      "code": "CR-000031",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "TOOLIBERIA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "878bedf5-9302-4194-a05c-09e069c745a8",
+      "code": "CR-000032",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "MEDFRESH",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "b7a35e0a-9e2d-48c1-b408-c787b710ed23",
+      "code": "CR-000033",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "OUTILFRANCE",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "f38ae55c-e503-4892-8722-de3ed1fcc4e7",
+      "code": "CR-000034",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "GALLIAGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "1c5c8857-a850-45dd-9114-ffe18ae9409f",
+      "code": "CR-000035",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "GERMANFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "dca2cf1f-9ab9-4333-88c2-22fb75ee76e3",
+      "code": "CR-000036",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "BAUWERK",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "817ab707-33c7-40c7-bcb5-52be6962767f",
+      "code": "CR-000037",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "RHEINGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "6322e87a-5dcc-4f33-81e0-cc52b1a343bc",
+      "code": "CR-000038",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "UKDISTRIB",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ab6b9660-eaa4-4e2d-9991-744f5d55a8d9",
+      "code": "CR-000039",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "LONDONTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "fa59441a-5e3c-4188-87e1-ce29d4e0527c",
+      "code": "CR-000040",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "ALBIONFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "62a25851-fd1f-4422-bf7d-dc430c7d124d",
+      "code": "CR-000041",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "ITALPASTA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "38c37e91-c944-45e3-ac23-3994a54f7397",
+      "code": "CR-000042",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "ROMATOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "440db0f3-cbf7-413a-ab2a-8e3ecd2bbb6d",
+      "code": "CR-000043",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "MILANOGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "c986d360-937a-44a4-b8c1-011f37739035",
+      "code": "CR-000044",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "LUSOFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "c695df1e-4071-4caa-b70a-3ffbd807fb19",
+      "code": "CR-000045",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "PORTOTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "399de8f8-8053-4298-9e66-0e46a5e45023",
+      "code": "CR-000046",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "DUTCHGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8c27751b-ea65-4752-98ad-d9748e693ccc",
+      "code": "CR-000047",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "HOLLANDTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ed09f987-a36d-40ee-9489-47bc5b9b76a1",
+      "code": "CR-000048",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "BENELUXFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "b8963204-9506-4b2b-ac24-afa56bc2aaa9",
+      "code": "CR-000049",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "BRUSSELSTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "5e8372af-4a4c-4db5-8e79-ff91947a206e",
+      "code": "CR-000050",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "IBERFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "f699c3ac-8d7e-4305-958e-6d70d9ca679f",
+      "code": "CR-000051",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "SPANATURAL",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "1065ea0e-0ea0-4dbf-a069-92ff8029b6b7",
+      "code": "CR-000052",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "MEDFRESH",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "3977c266-b311-4656-a76d-1258a93a4d09",
+      "code": "CR-000053",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "FRESHFR",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ec0ec824-bd75-4cd9-8011-a8e59f3d36a9",
+      "code": "CR-000054",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "OUTILFRANCE",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "20b64fd9-257b-4aa2-af54-436b0022b29b",
+      "code": "CR-000055",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "GALLIAGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "f8fd04f9-dc4a-48b6-949f-507f4f3df720",
+      "code": "CR-000056",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "GERMANFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8745a80f-6cb3-4588-8726-cb3517954e89",
+      "code": "CR-000057",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "BAUWERK",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8f6b00f3-f2fa-40f9-83b4-5527fe4abe09",
+      "code": "CR-000058",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "RHEINGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "47bbde85-eeb4-4b44-a6e7-896214db3804",
+      "code": "CR-000059",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "UKDISTRIB",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "d1797230-7bbf-44f6-9d4f-e4761f750368",
+      "code": "CR-000060",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "LONDONTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ebe60ed6-685a-45f8-b2ed-92c7b4617777",
+      "code": "CR-000061",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "ALBIONFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "1dfe7897-5b99-4d56-9cc6-82b3c679035f",
+      "code": "CR-000062",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "ITALPASTA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "d6e83fd6-64cf-4f93-9421-718af8dc4a88",
+      "code": "CR-000063",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "ROMATOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "fb745df5-b544-433f-b1ff-09a7e63de5b3",
+      "code": "CR-000064",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "MILANOGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "aa9988a5-aa1a-49b9-9f0a-b568d8dfc4ff",
+      "code": "CR-000065",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "LUSOFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "44b750aa-4e7e-4167-ab69-237da9b45f10",
+      "code": "CR-000066",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "PORTOTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "4ee98ff5-9c63-4b75-bf9d-ba293dc34930",
+      "code": "CR-000067",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "DUTCHGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "23d9f069-a454-486c-9bfd-6e7507106253",
+      "code": "CR-000068",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "HOLLANDTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "c5089e00-d24b-4c9b-a3c6-159bb883383d",
+      "code": "CR-000069",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "BENELUXFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "40859624-84af-4786-9688-f3fd205fb820",
+      "code": "CR-000070",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "BRUSSELSTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "1c1e2f96-fc7e-4de4-9dd8-d3d240af1d68",
+      "code": "CR-000071",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "IBERFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8aaac9cb-131b-4c7a-859e-f888e2239a22",
+      "code": "CR-000072",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "SPANATURAL",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "0609cca0-5e1f-40f6-a258-c844f144de6e",
+      "code": "CR-000073",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "TOOLIBERIA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "1e7bff2e-30c9-4a00-94d2-385b0cd22f73",
+      "code": "CR-000074",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "MEDFRESH",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "30911d89-1b66-4815-8021-ec630e5c4063",
+      "code": "CR-000075",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "FRESHFR",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "95146f54-5f33-425b-a12e-156435c4c9cb",
+      "code": "CR-000076",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "GALLIAGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "7b786460-8ffe-4f81-b711-719b3a69830c",
+      "code": "CR-000077",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "GERMANFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "67208429-9b3b-4a88-a655-4279ea91d92d",
+      "code": "CR-000078",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "BAUWERK",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "d4846c4b-84c1-4e0d-8ce5-27d4f647a6cf",
+      "code": "CR-000079",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "RHEINGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "b135bc40-56ff-4161-a77e-7ce552c53a16",
+      "code": "CR-000080",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "UKDISTRIB",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8452dd41-c5a9-44e1-aa18-06277f80f771",
+      "code": "CR-000081",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "LONDONTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "a355b321-1696-4bf5-8e88-599069cc46f2",
+      "code": "CR-000082",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "ALBIONFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "7025f1ef-cf46-4170-a895-24b16ebf0a29",
+      "code": "CR-000083",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "ITALPASTA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ef65de2c-a1a1-4c4a-a7c2-f013297b29e0",
+      "code": "CR-000084",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "ROMATOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8eb3ce1a-da80-4d2e-a3e6-55511a537928",
+      "code": "CR-000085",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "MILANOGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ea447fda-b340-4c86-93c4-8b98c66c0f19",
+      "code": "CR-000086",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "LUSOFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "1495ff54-bdc4-4233-af18-149499f6990c",
+      "code": "CR-000087",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "PORTOTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "a1bb4303-bc03-4094-a955-672b473da76e",
+      "code": "CR-000088",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "DUTCHGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "c8738bb3-794d-488b-ba16-9b4bd1359714",
+      "code": "CR-000089",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "HOLLANDTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "015aa32e-2b6a-4b0b-bb30-0eb5a95be503",
+      "code": "CR-000090",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "BENELUXFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "64d43c62-c3ec-4a7f-a33a-752b00ebdcf1",
+      "code": "CR-000091",
+      "retailerCode": "LeroyMerlinFr",
+      "companyCode": "BRUSSELSTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "e9193bc7-a265-42a3-89fe-bb50a317415c",
+      "code": "CR-000092",
+      "retailerCode": "AldiEs",
+      "companyCode": "IBERFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "9e011913-6901-482b-b6c9-ba09704b0f01",
+      "code": "CR-000093",
+      "retailerCode": "AldiEs",
+      "companyCode": "TOOLIBERIA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "13b85b56-a51f-427e-94c1-36f24fe079b2",
+      "code": "CR-000094",
+      "retailerCode": "AldiEs",
+      "companyCode": "MEDFRESH",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "8e09c027-9475-4bb6-a3f1-77b30ce917da",
+      "code": "CR-000095",
+      "retailerCode": "AldiEs",
+      "companyCode": "FRESHFR",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "79ab5e49-5d7f-4a82-90c4-13ae41016e50",
+      "code": "CR-000096",
+      "retailerCode": "AldiEs",
+      "companyCode": "OUTILFRANCE",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "857b2782-635f-4203-a33a-ee16ae7812b1",
+      "code": "CR-000097",
+      "retailerCode": "AldiEs",
+      "companyCode": "GALLIAGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "c19507f9-5e0a-46c8-97ad-97a728bee2cf",
+      "code": "CR-000098",
+      "retailerCode": "AldiEs",
+      "companyCode": "GERMANFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "3f3ff3d8-3ab4-47bb-bf25-b0516d97004a",
+      "code": "CR-000099",
+      "retailerCode": "AldiEs",
+      "companyCode": "BAUWERK",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "d0011ab9-ad3d-409c-9b61-51e865d5a379",
+      "code": "CR-000100",
+      "retailerCode": "AldiEs",
+      "companyCode": "RHEINGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "c2386ce7-2b91-40e2-93d1-b7d81a272122",
+      "code": "CR-000101",
+      "retailerCode": "AldiEs",
+      "companyCode": "UKDISTRIB",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "9dceb8e2-e87d-4384-80ce-37fe7a5937d7",
+      "code": "CR-000102",
+      "retailerCode": "AldiEs",
+      "companyCode": "LONDONTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "a5f5fadf-03f5-45f3-9911-5cb47f5c58e9",
+      "code": "CR-000103",
+      "retailerCode": "AldiEs",
+      "companyCode": "ALBIONFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "05413376-9613-4597-a046-58110be08b55",
+      "code": "CR-000104",
+      "retailerCode": "AldiEs",
+      "companyCode": "ITALPASTA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "fef63bc1-d309-4016-a393-5190c2cfed2d",
+      "code": "CR-000105",
+      "retailerCode": "AldiEs",
+      "companyCode": "ROMATOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "329a7799-e4a0-4307-a8ad-0f3a10f1eaf3",
+      "code": "CR-000106",
+      "retailerCode": "AldiEs",
+      "companyCode": "MILANOGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "aa5e0448-19b6-4aa2-9478-40c30fdc12d1",
+      "code": "CR-000107",
+      "retailerCode": "AldiEs",
+      "companyCode": "LUSOFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "15133889-49f8-4767-ba03-da4f4e5eb06e",
+      "code": "CR-000108",
+      "retailerCode": "AldiEs",
+      "companyCode": "PORTOTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "9f4a511e-3c7d-4498-adcd-d237e279d158",
+      "code": "CR-000109",
+      "retailerCode": "AldiEs",
+      "companyCode": "DUTCHGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "bd95fcb2-4b9d-478b-a9a9-c83176f6f8ee",
+      "code": "CR-000110",
+      "retailerCode": "AldiEs",
+      "companyCode": "HOLLANDTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "95c02403-1279-45d1-b17c-443a0937bd4d",
+      "code": "CR-000111",
+      "retailerCode": "AldiEs",
+      "companyCode": "BENELUXFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "a50bd9c3-9b93-469a-a342-2904314d524b",
+      "code": "CR-000112",
+      "retailerCode": "AldiEs",
+      "companyCode": "BRUSSELSTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "1d88c9a0-ba27-4861-bda7-5f94c3a16cba",
+      "code": "CR-000113",
+      "retailerCode": "AldiDe",
+      "companyCode": "IBERFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "f019bc04-7ba6-4fba-bb04-6f44fbfaf32d",
+      "code": "CR-000114",
+      "retailerCode": "AldiDe",
+      "companyCode": "SPANATURAL",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "232c7980-2aba-437d-924c-3b4c2478695c",
+      "code": "CR-000115",
+      "retailerCode": "AldiDe",
+      "companyCode": "TOOLIBERIA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "268069c1-2b2d-4fdd-88a5-8b4fe25926a1",
+      "code": "CR-000116",
+      "retailerCode": "AldiDe",
+      "companyCode": "MEDFRESH",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "f9758d36-368d-48ff-ae17-d4bcdfb2412d",
+      "code": "CR-000117",
+      "retailerCode": "AldiDe",
+      "companyCode": "FRESHFR",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "85678658-9765-4e69-b4be-3d4a05dc4f47",
+      "code": "CR-000118",
+      "retailerCode": "AldiDe",
+      "companyCode": "OUTILFRANCE",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "dc286026-4f95-41fd-b78a-bc24a1bea532",
+      "code": "CR-000119",
+      "retailerCode": "AldiDe",
+      "companyCode": "GALLIAGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ede8523f-5084-493a-a5e4-0ef339e188c9",
+      "code": "CR-000120",
+      "retailerCode": "AldiDe",
+      "companyCode": "BAUWERK",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "1be06265-8af7-464f-bb61-2e2861575493",
+      "code": "CR-000121",
+      "retailerCode": "AldiDe",
+      "companyCode": "RHEINGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "df08b2e4-4307-4aa7-a3df-fe4930f7ca23",
+      "code": "CR-000122",
+      "retailerCode": "AldiDe",
+      "companyCode": "UKDISTRIB",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "c435feae-4a9c-49ef-bdff-7b234827c99c",
+      "code": "CR-000123",
+      "retailerCode": "AldiDe",
+      "companyCode": "LONDONTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "e1c96605-a485-41c4-bf13-5933a58db7f5",
+      "code": "CR-000124",
+      "retailerCode": "AldiDe",
+      "companyCode": "ALBIONFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "b17ddf4b-d5c2-407d-b375-7bd7e4b1e94c",
+      "code": "CR-000125",
+      "retailerCode": "AldiDe",
+      "companyCode": "ITALPASTA",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "811bcb77-9058-44e3-80ef-b0f68ec30377",
+      "code": "CR-000126",
+      "retailerCode": "AldiDe",
+      "companyCode": "ROMATOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "729be844-62c7-4c6a-a264-51bfac37a996",
+      "code": "CR-000127",
+      "retailerCode": "AldiDe",
+      "companyCode": "MILANOGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "fbf013ae-b570-4a86-bdb6-f753225a1a8b",
+      "code": "CR-000128",
+      "retailerCode": "AldiDe",
+      "companyCode": "LUSOFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "168d355a-4141-4666-b8e7-ab99689a13a6",
+      "code": "CR-000129",
+      "retailerCode": "AldiDe",
+      "companyCode": "PORTOTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "ac9b8cc1-78de-4a47-ae7e-bf6931d27594",
+      "code": "CR-000130",
+      "retailerCode": "AldiDe",
+      "companyCode": "DUTCHGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "533dc5b0-aebf-4bf5-913b-aa72c366887a",
+      "code": "CR-000131",
+      "retailerCode": "AldiDe",
+      "companyCode": "HOLLANDTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "52e9e854-fce0-4c1c-b0d2-0079c4c985ad",
+      "code": "CR-000132",
+      "retailerCode": "AldiDe",
+      "companyCode": "BENELUXFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "a90b4b91-fd7a-49aa-b498-4392c398c318",
+      "code": "CR-000133",
+      "retailerCode": "AldiDe",
+      "companyCode": "BRUSSELSTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "EUR"
+    },
+    {
+      "id": "a7a4d209-126a-4412-b97f-d61c011e25c8",
+      "code": "CR-000134",
+      "retailerCode": "AldiGb",
+      "companyCode": "IBERFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "7498ecc6-5df7-4270-83e0-20786dd54cfd",
+      "code": "CR-000135",
+      "retailerCode": "AldiGb",
+      "companyCode": "SPANATURAL",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "60e52514-ecc4-417c-a695-30c80e5a1382",
+      "code": "CR-000136",
+      "retailerCode": "AldiGb",
+      "companyCode": "TOOLIBERIA",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "a764a246-1ffb-41ea-8bbc-9168f4104f8e",
+      "code": "CR-000137",
+      "retailerCode": "AldiGb",
+      "companyCode": "MEDFRESH",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "dccd2220-8c9b-4469-9064-5f713717c4cd",
+      "code": "CR-000138",
+      "retailerCode": "AldiGb",
+      "companyCode": "FRESHFR",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "89b2e4c8-50f9-46ac-a521-9947a9ff4df0",
+      "code": "CR-000139",
+      "retailerCode": "AldiGb",
+      "companyCode": "OUTILFRANCE",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "a90ca442-1750-4ba8-9e5d-c1d563dd90dc",
+      "code": "CR-000140",
+      "retailerCode": "AldiGb",
+      "companyCode": "GALLIAGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "baf31324-ace5-4944-9b7e-ab8a4e87fdba",
+      "code": "CR-000141",
+      "retailerCode": "AldiGb",
+      "companyCode": "GERMANFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "ac8a92a0-f3c4-4222-bf16-371d8128f18b",
+      "code": "CR-000142",
+      "retailerCode": "AldiGb",
+      "companyCode": "BAUWERK",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "f814c2a8-c7db-4b07-89a5-c07f15d6f0ea",
+      "code": "CR-000143",
+      "retailerCode": "AldiGb",
+      "companyCode": "RHEINGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "35f0df2e-afb5-4a86-9e8c-a69dcc193a73",
+      "code": "CR-000144",
+      "retailerCode": "AldiGb",
+      "companyCode": "LONDONTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "47dc2f38-7f5b-4bd2-9436-5dac464b6480",
+      "code": "CR-000145",
+      "retailerCode": "AldiGb",
+      "companyCode": "ALBIONFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "6ce0b950-cc9d-4d75-83fe-d878d26d59c6",
+      "code": "CR-000146",
+      "retailerCode": "AldiGb",
+      "companyCode": "ITALPASTA",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "dbdc0ccb-d27d-4cac-989c-b048b76b36d3",
+      "code": "CR-000147",
+      "retailerCode": "AldiGb",
+      "companyCode": "ROMATOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "cce02970-7d35-40bc-9218-aca42161af82",
+      "code": "CR-000148",
+      "retailerCode": "AldiGb",
+      "companyCode": "MILANOGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "66eae12a-7a5c-4b07-9809-aee6e91038d7",
+      "code": "CR-000149",
+      "retailerCode": "AldiGb",
+      "companyCode": "LUSOFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "b86f3e1e-aa57-4ac3-9d74-faaf1d3956eb",
+      "code": "CR-000150",
+      "retailerCode": "AldiGb",
+      "companyCode": "PORTOTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "cac88df1-1c12-4543-91ff-9cf58dcc8e5f",
+      "code": "CR-000151",
+      "retailerCode": "AldiGb",
+      "companyCode": "DUTCHGOODS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "86f73d13-1804-4a01-a522-942d4f1c930e",
+      "code": "CR-000152",
+      "retailerCode": "AldiGb",
+      "companyCode": "HOLLANDTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "4f0486d7-b9c0-4802-97df-f0168e14f324",
+      "code": "CR-000153",
+      "retailerCode": "AldiGb",
+      "companyCode": "BENELUXFOODS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    },
+    {
+      "id": "762f4ed1-1bad-4e50-8883-96a898c27625",
+      "code": "CR-000154",
+      "retailerCode": "AldiGb",
+      "companyCode": "BRUSSELSTOOLS",
+      "creditLimit": 500000,
+      "currencyCode": "GBP"
+    }
+  ],
+  "stock": [
+    {
+      "id": "20046a96-6f69-4c40-8e47-06ecb9fa1b0a",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "6273a93b-5dbd-4aa7-94de-cf4785f53c84",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "3d8e217f-62ba-4f1a-b643-a0563b6948da",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "d8ee7627-5d5e-48a4-a645-1bbf6f8f3da8",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "b36c09f8-b989-4e39-a67a-2c9ddbff196d",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "bf8061fa-02e5-4c2e-b0f6-6db04209429f",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "84362e8f-2fc4-449c-9f28-d896207dd31c",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c013bff3-d2ab-49e3-8993-16e987660662",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "60b44e7f-778e-4be1-82ee-b15a9966143c",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "5d504eab-10eb-4435-b3de-526bcd6dd138",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "0b040e80-026b-411e-83b1-69df7359356a",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2744d7de-1019-41b5-b3f9-8a81d3216320",
+      "companyCode": "ALBIONFOODS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "217af79e-1435-4658-abe7-33a7e0140a8e",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "55f11e14-fcd1-4e1c-a0de-38af572d1cfb",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "92843ab7-e5de-4d06-a003-ab0c75a5b8d6",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "4977547a-366a-45ae-a62f-c4d12cfadc9d",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "56a48c2a-8578-4551-8088-973bd177e281",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "666f6362-8046-4a4f-82c4-3a0db8e733f5",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "f6a06fb2-c1c5-4c32-8d20-e7d0ca7ff172",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "43248e0e-2b95-4d1c-9834-928f8a1e07ce",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ee0e4ec4-8804-4a8e-b509-7022272ee461",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "903b643c-b722-46cb-a3c0-eb91494e32c8",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "7948e462-9fdd-4b31-a0fb-14f460ab88be",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "4631b089-2a6b-4297-ae9f-fe030743a48c",
+      "companyCode": "BAUWERK",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "928cd804-d3dd-4e3c-bdec-3dfff06b84dc",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ec7ea781-2ce4-4d06-8ceb-833d3c923733",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "848b65a7-bfe7-40a8-8153-3cd9207c826e",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "72ccab0f-9bf0-45df-aa0b-136abdd2b6f5",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "1fcc1e64-81b6-405e-868a-213c816a4385",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ec3be42d-7ebf-431f-986b-59877c52cd56",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "9b0093bc-9c9e-4e43-ad1c-06c6f3dfbc6e",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "cbf25341-764e-4242-b13d-549f42170755",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "08773e95-fa2b-4f34-a992-e73928a06b2f",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "94de01c0-b5ba-4c78-87ed-7d84d90a310e",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "f41159e1-8ace-469b-b62d-741802e7bee0",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "84404772-2124-4f7e-ae70-0666ad3fa70a",
+      "companyCode": "BENELUXFOODS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "85253e30-6396-4993-a5a1-6bdda83b80e1",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "d6caaa23-2e98-4bb2-b591-c23b97b4496b",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "9cc47840-96ba-4281-9036-e07d049b43fc",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "962e85c7-c8ab-4892-98f4-0173b6261602",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2156ce73-256e-448b-b15f-220bf8b7f182",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "d9c59fe6-d6df-4bda-9d4a-b317b6ad958f",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "9eb65e7a-4238-489d-8b50-454b61068643",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "8c9b9cf7-122d-468d-b0e8-f24f2626f3b8",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "9603c669-bdaa-491c-8236-05729d14f524",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "f5e32b0d-d082-48e0-b81c-ed0ce9f12914",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "8bdab386-1d66-4a67-9b5e-c9151840e8bf",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "4a0a4e9a-f02a-4817-a463-3148798dae3a",
+      "companyCode": "BRUSSELSTOOLS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "df5fdb9f-bcb7-472c-a495-625ef6cd780b",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "5b330e16-f4b4-42d8-8b04-2e04752ceb51",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "713a8797-b03e-4388-bf8c-172f2a93e74e",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "694b9a3e-87b7-4398-8e47-e5bdb7790fd4",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "4ec97cd3-0ce0-467d-9fff-06bb6542a921",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "a2f0cb5b-ff3d-48b7-a8f3-d4d55330abef",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "8f2b2bef-6544-4873-8ab1-8deca9889462",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "99d320d4-b64d-45b4-8214-6557d7d489e7",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "34ef17fc-4248-41cb-a0f7-0c646568e7aa",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "6d782bc7-12ad-4dad-aef9-9e01fbbf9789",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2691ff40-d105-4b2d-8cbc-03c9a79096f6",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "fb255070-7e08-4916-a66b-65d374128983",
+      "companyCode": "DUTCHGOODS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "6494c23b-5307-4978-9554-ed40c2c71768",
+      "companyCode": "FRESHFR",
+      "productCode": "PRD-0002",
+      "units": 496,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "1d39a9f1-2fe7-4fa4-ae19-df6297040711",
+      "companyCode": "FRESHFR",
+      "productCode": "PRD-0008",
+      "units": 498,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "e7d2c6c5-ff3c-4d06-a89a-17dfd2ac367c",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "0e4b2b91-f5f4-47e6-badd-94562f7c489e",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "e455eddf-7bc2-405c-9e65-7dee8eb7751f",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ed81012f-21d4-435b-b37f-174caccec071",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "3f2d96f6-1084-4bf5-ab6f-73705c3d5380",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "f858b306-41ac-448b-bf7d-84094eefc304",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "dbce0d5d-e3a2-437a-8131-ae300abc89f2",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "35d75c5a-87c3-431f-873f-d8dd9336a601",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2a4bec8e-5cd5-495b-b65d-89f6e326639e",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "a4789042-d6ba-41d2-a0d8-98391a634849",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "4c379d3a-56ac-46a0-923c-11609b9c8193",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "e6965d35-f08e-4bc5-8b33-f4b9fb4dd775",
+      "companyCode": "GALLIAGOODS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "49bf3d2d-d93e-4223-ba0e-dd148f732ee2",
+      "companyCode": "GERMANFOODS",
+      "productCode": "PRD-0002",
+      "units": 492,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "74a063b9-19b0-4596-ada8-6af00a2ddfe0",
+      "companyCode": "GERMANFOODS",
+      "productCode": "PRD-0003",
+      "units": 496,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "8fc431ea-d8b5-4a3d-86d6-8ee02e80e4a8",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "e39be814-1f39-4a15-9f80-9cc03725c785",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "b2210e6b-3ae7-430d-8186-b4d8739f0e77",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2e6c9e83-52b8-48e5-a816-4bfbe86cafd3",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "abbe8f89-b242-43d7-a46a-093d67d3ad03",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "5579eda5-5a85-4f65-98b3-9aefd4d2bda7",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "7cd51e41-75b9-4877-8935-c3104b3f797a",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "21057248-5760-48f3-ac7c-77ce9c4eb760",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "9117b0af-60ce-4210-992b-3366e5391245",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ee652ca4-7797-4c7e-ac42-332efdc72ff4",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c03fdaa4-f30f-46c0-9eea-aec26e17089c",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "389f58b4-94bf-4377-9e9c-86f2c0679929",
+      "companyCode": "HOLLANDTOOLS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "320069ba-26ec-4849-8f7e-7f83b4d39aa5",
+      "companyCode": "IBERFOODS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "9ad0863b-e61e-4e1d-9488-c60850b82779",
+      "companyCode": "IBERFOODS",
+      "productCode": "PRD-0002",
+      "units": 495,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "da534d46-6c0b-4244-912e-fb5f25358102",
+      "companyCode": "IBERFOODS",
+      "productCode": "PRD-0003",
+      "units": 497,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "3319902a-0304-48ea-bee3-c610d4be3d9a",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c8c57ed9-85af-41a9-b8d5-9f457ce57408",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "6f4b5727-1f0d-4134-83d1-f6f50421a98c",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "6dbaa9da-2054-4d10-83ba-73ad244dbb5c",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "6280654b-60a7-415d-a8fa-d0b2384f8397",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "88b0c92d-31d5-4745-b966-da0af343d55a",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "61b598b9-82b8-43b3-87d8-4c4138f84554",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "fc00f25f-4e6b-4250-a21f-d69b59bb1640",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "877ef5e8-2b9e-4aa6-8c92-ef4100ef78db",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ddb7b08d-991f-4f15-b00f-9b0c762675a2",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "94d05414-051d-4750-b786-be2ae67073d5",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "5011b9f1-d8e4-4587-a8df-3cd857c0508c",
+      "companyCode": "ITALPASTA",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "af3937db-d29b-412a-9eab-418cd88add9b",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "8c8a95a4-ea7f-4e48-9ff5-67a0b8dff690",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "b584151d-5fbc-4e81-a56f-02f52df8c007",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "8205fa0b-ad25-4b5c-a8d3-f4013bf0fbca",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "75bf9901-47ea-4dc6-9152-fd9695843de6",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "fc9dd421-c65d-494f-b76e-b869a83b8ff9",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "65303acd-132b-4dcf-9a25-5e4d78590941",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c95a787f-46b9-4103-9ede-bf6c61474524",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "e6e16c59-c0b3-40fd-b53b-01898681079d",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "522c2afe-4589-4382-abc3-c2792e5884c9",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "65759273-f911-4ed2-9dd4-507602412fee",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ef7732b9-4094-4540-9a59-39b2ed518938",
+      "companyCode": "LONDONTOOLS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "8df97397-ba0a-4050-b475-bee3fc255466",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "86bcd16c-76de-47a1-9626-f0438e48bbde",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "f9369d64-0f00-4912-a7eb-7c3844ea6e2e",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "db81bce4-e0b6-42dd-8902-421543a17716",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "29dfec5a-8e89-4f97-8b01-0a7bc6b671a4",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "f8a7243a-3515-485e-af93-c08d52fa6744",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "786c85a0-807c-49c0-8518-1ebc6e84a7d8",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "4562fa46-4882-4b8a-a9fa-0ca9f0d2d47a",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "e7d0adb9-01be-4100-80f6-99779f32eb03",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "a5cf02d4-44f6-489f-b77b-4e511db5cdb7",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "d576cd83-9c1d-426a-9123-5536c094b138",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "11fca719-1cfc-4e98-a2a8-2b61c3574c2c",
+      "companyCode": "LUSOFOODS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c4c3ebd2-e999-4610-b381-d5f8783b02a3",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "3b799046-0618-46c1-99e3-fea1c5c11ba4",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "afb32b2f-1e90-4f86-9a27-83cd22f4537c",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "df6c6369-11b8-4b5b-8459-d9853f75cb83",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ab82c702-3ef2-4cca-b535-c66293a133ff",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "1563b9ce-a94f-4ede-b7e7-36d9df05c22f",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "fc066e72-4714-4220-be51-636802b9fd53",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "97c434b5-8185-437f-a609-de8e91ff65bd",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "964177e2-f5d0-45ad-b3e3-1891fed55b16",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ba8da3a4-6ab2-47ce-a1d9-50803c99f02c",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "3e73bbfe-c5a6-46d3-a5e1-7e958ae553ba",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2de59a9b-0365-484c-b9f8-96e3e9008e8f",
+      "companyCode": "MEDFRESH",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "a3fb260f-0252-46d8-8c2b-01c2be7dd11c",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "d7ddd341-39a1-4408-8674-cb984ad0c16d",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "571d97c7-0d46-454b-afdb-ecc6b1000dd1",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "68257f30-f5bf-4671-bb14-10f26492e685",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "dc76f44f-f2da-4876-a572-f24722b75ff1",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "fe3a856f-77d0-4885-8873-9dc91842a3c7",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "387b6aff-ff06-4bb5-8e7b-fc99243f65ed",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "5610766e-1833-4243-ad8b-b8439bd063a3",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "5b1e03c3-3eda-4de3-b3a7-7a6bd9262b77",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "b835246c-58b1-4be3-9880-04fadc53f5eb",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c58bb277-766a-47c7-bf29-a2ae1e36e4ca",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "fe1ac5df-0850-418f-ae89-55369e57cdfb",
+      "companyCode": "MILANOGOODS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ca40d053-108b-4d8b-8134-88413f912ee4",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "cb77abd7-1723-4432-8ce3-3a2a9ff0a2d8",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2b7ac3eb-3fc5-4208-8669-a054a50a5919",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c8f2e55b-6237-41ce-81ac-ef28d76d68db",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "9cbe4c81-0770-4ac5-8af8-cf7d2ffa1513",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "d42f4c85-6cb6-4807-81c3-17218db50f43",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "0d095f21-c9ef-42e4-8359-689de234a89a",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "d1bc9b63-8514-4355-91ee-e574d85910ea",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "18da55a5-ac23-448a-8be5-877c6fa67df9",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "306e4067-e6bd-4417-932a-97f6ae959dbf",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "71e7024c-70f3-4580-b819-7a5119f3d8b2",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2dbaf7c7-5da2-4b3f-babe-24156b518ebf",
+      "companyCode": "OUTILFRANCE",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "0198c2e2-f876-4c63-9d64-bb40ed8e65a9",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "568084f9-dd91-419d-bd42-7c341e405694",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "1110b514-4d0e-4f14-be6a-99c3252e7c0d",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "82dd5678-009f-4c68-887f-54f341897e4a",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c168ca4a-36d0-42ad-ae47-3f4da367015d",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "cf1e58d3-9b36-4549-9292-89b8b384b68d",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "1aa54554-77ce-418a-bdee-96cabc716dca",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "def60317-c870-446b-a594-857ef1a2f535",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "14ceea90-a0cc-4f9f-b0ff-cd6d010220f5",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "f7ce5fcb-3d38-449b-9088-7b0e1fa7c941",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "e93aa184-2a6f-4852-a2d0-4fe477cd0020",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "087b6571-fac8-4d5d-b8fb-31d674745b38",
+      "companyCode": "PORTOTOOLS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "797adb25-fb79-4fe3-a438-f3d47959f17c",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "79397971-a866-40c1-b3bc-c13efe40e8fe",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "226c9f3d-ff48-49ec-8707-98e354705b14",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "51ce2ea4-422f-4401-b044-4f7dae54313a",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2e6c821f-5783-462c-b731-d3160f873069",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "b4854616-3800-4073-aa0c-25150e76d4ac",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "749e0518-cbc3-45ee-98d5-728831110267",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "1571d6ba-f405-4102-a9e7-af84ec01d1ee",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "e0aff5c8-e026-4e38-aa9a-e54fea83170d",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "4800fe34-be54-43aa-8981-4249edba39d6",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "561e5d12-dd60-4a03-a2a0-1f04b80866d1",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "d3ddaacb-3f4f-421b-8fa8-5de6f0ac4048",
+      "companyCode": "RHEINGOODS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "68dcbdd3-5a95-492d-bcaa-03b0ac9359dc",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "3badc01d-9288-4bbe-a117-ac88a7b6871c",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ba45e4b3-af86-4062-ac18-54ec597fd7f7",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "14f7e322-f686-41dc-918a-143751d9fd7a",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "d656fc82-38ec-44a2-a9fb-7409c7b98f7e",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "1aab4bc0-fa33-4b2d-87e8-b8ae9a8f7d04",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "8098d294-d11c-4872-a624-bc5e3ddaf728",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "290a534f-339f-4a76-87e8-905c6cbaa4ee",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "9e7fc1ef-035c-4ebe-9890-6661d5097768",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c964d5d1-969a-4508-a2ca-9f3a876bb03d",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "a7c56acd-325d-4e53-8c0b-a88ef3914d51",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "dae4471e-ed90-4897-aef8-65d1c001adf0",
+      "companyCode": "ROMATOOLS",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "781035b7-30fa-4c2d-9b23-8ae96ec1aeb5",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0001",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "58120fca-22a4-46cb-a27a-99e65425f87e",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0002",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "67d08dec-7a46-44cf-95c4-9eb82e16fba1",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0003",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "ee3778c2-d30f-4389-b3d2-4238bd0c0732",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0004",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "6c1b2564-5e41-4584-87b0-3ab04b6fcbdf",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0005",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "2be1b36b-0bad-4728-b3ba-a523512232c3",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0006",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "a9b59aea-e289-4a33-ae92-2a13a7ebe5a2",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0007",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "a6e23e2c-4596-4eba-af7b-94482d63b77c",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0008",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "99cc8626-be30-418d-a649-2e23c63c0ffb",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0009",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "c86bf6d1-901a-4f7e-b332-b67a2e99dfeb",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0010",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "e73d4fd5-0260-4df6-84ca-74b9f09b9128",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0011",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "50a12f0e-c41d-4ff4-b8bb-7f33a5d8e44b",
+      "companyCode": "SPANATURAL",
+      "productCode": "PRD-0012",
+      "units": 500,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "a688b8d7-e104-4eaf-891e-72c575374702",
+      "companyCode": "TOOLIBERIA",
+      "productCode": "PRD-0004",
+      "units": 490,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "a22ab1be-3404-41dd-abfd-00a04771bac9",
+      "companyCode": "TOOLIBERIA",
+      "productCode": "PRD-0005",
+      "units": 494,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "54ab1ad2-bc31-4e66-ae4e-d61604e9a0cf",
+      "companyCode": "UKDISTRIB",
+      "productCode": "PRD-0009",
+      "units": 480,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    },
+    {
+      "id": "42499d3a-14bd-4bdf-95ce-31e3ffebad0b",
+      "companyCode": "UKDISTRIB",
+      "productCode": "PRD-0010",
+      "units": 485,
+      "reservedUnits": 0,
+      "lowStockThreshold": 20
+    }
+  ],
+  "sagas": [
+    {
+      "sequence": 1,
+      "orderId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+      "orderReference": "ORD-000001",
+      "orderDate": "2026-06-01T09:00:00.000Z",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "IBERFOODS",
+      "currency": "EUR",
+      "status": "completed",
+      "cancellationReason": null,
+      "lines": [
+        {
+          "productCode": "PRD-0002",
+          "description": "Pasta 500g Case (24u)",
+          "quantity": 5,
+          "unitPrice": 1849,
+          "lineDiscount": 0
+        },
+        {
+          "productCode": "PRD-0003",
+          "description": "Olive Oil 1L Case (12u)",
+          "quantity": 3,
+          "unitPrice": 2295,
+          "lineDiscount": 0
+        }
+      ],
+      "initialAmount": 16130,
+      "initialDiscount": 0,
+      "totalAmount": 16130,
+      "updatedAt": "2026-06-02T09:00:10.000Z",
+      "ordersOutbox": [
+        {
+          "id": "fa7c567d-04c4-4148-af9a-5f995ccd9bda",
+          "eventId": "f6cf96e0-6291-427a-9cac-992fe7d1e245",
+          "eventType": "order.placed.v1",
+          "aggregateId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "correlationId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "causationId": "0914f64b-f91e-4af3-927c-f9227fb92077",
+          "payload": {
+            "orderReference": "ORD-000001",
+            "retailerCode": "CarrefourEs",
+            "companyCode": "IBERFOODS",
+            "buyerGln": "5400000000010",
+            "supplierGln": "5400000000218",
+            "currency": "EUR",
+            "orderDate": "2026-06-01T09:00:00.000Z",
+            "lines": [
+              {
+                "productCode": "PRD-0002",
+                "description": "Pasta 500g Case (24u)",
+                "quantity": 5,
+                "unitPrice": 1849,
+                "lineDiscount": 0
+              },
+              {
+                "productCode": "PRD-0003",
+                "description": "Olive Oil 1L Case (12u)",
+                "quantity": 3,
+                "unitPrice": 2295,
+                "lineDiscount": 0
+              }
+            ],
+            "initialAmount": 16130,
+            "initialDiscount": 0,
+            "totalAmount": 16130
+          },
+          "occurredAt": "2026-06-01T09:00:00.000Z",
+          "publishedAt": "2026-06-01T09:00:00.000Z"
+        },
+        {
+          "id": "52688608-3d39-41a1-8ce4-25afe52915ad",
+          "eventId": "8611cdde-9dcd-417d-b459-1dda1d8ed53f",
+          "eventType": "order.confirmed.v1",
+          "aggregateId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "correlationId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "causationId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8",
+          "payload": {
+            "orderReference": "ORD-000001",
+            "retailerCode": "CarrefourEs",
+            "companyCode": "IBERFOODS",
+            "currency": "EUR",
+            "totalAmount": 16130,
+            "confirmedAt": "2026-06-01T09:02:30.000Z"
+          },
+          "occurredAt": "2026-06-01T09:02:30.000Z",
+          "publishedAt": "2026-06-01T09:02:30.000Z"
+        },
+        {
+          "id": "bc313686-f5a0-41fa-9ad3-b7a3c900a8a1",
+          "eventId": "3fbb3aee-cebe-49a5-a71a-27fe16e9306d",
+          "eventType": "order.completed.v1",
+          "aggregateId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "correlationId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "causationId": "a9c7a128-aa91-43b7-91c7-699f8248806e",
+          "payload": {
+            "orderReference": "ORD-000001",
+            "retailerCode": "CarrefourEs",
+            "companyCode": "IBERFOODS",
+            "currency": "EUR",
+            "totalAmount": 16130,
+            "completedAt": "2026-06-02T09:00:10.000Z"
+          },
+          "occurredAt": "2026-06-02T09:00:10.000Z",
+          "publishedAt": "2026-06-02T09:00:10.000Z"
+        }
+      ],
+      "reservations": [
+        {
+          "id": "02524ae2-31d5-4a79-bd7a-513a38aa5d2b",
+          "companyCode": "IBERFOODS",
+          "retailerCode": "CarrefourEs",
+          "productCode": "PRD-0002",
+          "units": 5,
+          "status": "consumed",
+          "createdAt": "2026-06-01T09:01:00.000Z",
+          "updatedAt": "2026-06-01T09:03:00.000Z"
+        },
+        {
+          "id": "82b25f60-e8c9-4dc2-8333-7e78df791e73",
+          "companyCode": "IBERFOODS",
+          "retailerCode": "CarrefourEs",
+          "productCode": "PRD-0003",
+          "units": 3,
+          "status": "consumed",
+          "createdAt": "2026-06-01T09:01:00.000Z",
+          "updatedAt": "2026-06-01T09:03:00.000Z"
+        }
+      ],
+      "despatch": {
+        "id": "436cd0a8-a2c6-4d34-93bb-33c5f8532dd7",
+        "despatchReference": "DES-000001",
+        "despatchDate": "2026-06-01T09:03:00.000Z",
+        "companyCode": "IBERFOODS",
+        "retailerCode": "CarrefourEs",
+        "items": [
+          {
+            "productCode": "PRD-0002",
+            "units": 5
+          },
+          {
+            "productCode": "PRD-0003",
+            "units": 3
+          }
+        ]
+      },
+      "fulfillmentOutbox": [
+        {
+          "id": "9b47bbf3-9c44-4c77-b3ff-407830dc77b8",
+          "eventId": "07931069-003f-4cae-bde3-df5e37eed326",
+          "eventType": "stock.reserved.v1",
+          "aggregateId": "9ad0863b-e61e-4e1d-9488-c60850b82779",
+          "correlationId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "causationId": "f6cf96e0-6291-427a-9cac-992fe7d1e245",
+          "payload": {
+            "orderReference": "ORD-000001",
+            "companyCode": "IBERFOODS",
+            "retailerCode": "CarrefourEs",
+            "reservations": [
+              {
+                "reservationId": "02524ae2-31d5-4a79-bd7a-513a38aa5d2b",
+                "productCode": "PRD-0002",
+                "units": 5
+              },
+              {
+                "reservationId": "82b25f60-e8c9-4dc2-8333-7e78df791e73",
+                "productCode": "PRD-0003",
+                "units": 3
+              }
+            ]
+          },
+          "occurredAt": "2026-06-01T09:01:00.000Z",
+          "publishedAt": "2026-06-01T09:01:00.000Z"
+        },
+        {
+          "id": "10bd7e92-856f-491c-89cd-4f10cbac09a0",
+          "eventId": "8a0fd807-222e-4b5f-af0f-c91119bdb645",
+          "eventType": "order.despatched.v1",
+          "aggregateId": "436cd0a8-a2c6-4d34-93bb-33c5f8532dd7",
+          "correlationId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "causationId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8",
+          "payload": {
+            "orderReference": "ORD-000001",
+            "despatchReference": "DES-000001",
+            "despatchDate": "2026-06-01T09:03:00.000Z",
+            "companyCode": "IBERFOODS",
+            "retailerCode": "CarrefourEs",
+            "lines": [
+              {
+                "productCode": "PRD-0002",
+                "units": 5
+              },
+              {
+                "productCode": "PRD-0003",
+                "units": 3
+              }
+            ]
+          },
+          "occurredAt": "2026-06-01T09:03:00.000Z",
+          "publishedAt": "2026-06-01T09:03:00.000Z"
+        }
+      ],
+      "creditLedgerEntries": [
+        {
+          "id": "41a922ab-437f-4f93-8fb4-e45a0bd6ea41",
+          "creditId": "5c62308c-31fd-47ab-aa6f-a27cc545a36e",
+          "orderReference": "ORD-000001",
+          "amount": 16130,
+          "type": "hold",
+          "creditDate": "2026-06-01T09:02:00.000Z"
+        },
+        {
+          "id": "68a017a0-c610-4c11-9d6b-2fb1c5916ce1",
+          "creditId": "5c62308c-31fd-47ab-aa6f-a27cc545a36e",
+          "orderReference": "ORD-000001",
+          "amount": 16130,
+          "type": "consume",
+          "creditDate": "2026-06-01T09:04:00.000Z"
+        },
+        {
+          "id": "23059be5-3d94-44cd-9fe9-5e8f81ed2b7b",
+          "creditId": "5c62308c-31fd-47ab-aa6f-a27cc545a36e",
+          "orderReference": "ORD-000001",
+          "amount": 16130,
+          "type": "release",
+          "creditDate": "2026-06-02T09:00:05.000Z"
+        }
+      ],
+      "invoice": {
+        "id": "772f43e4-c5e5-4aca-b46e-41af6b9bc854",
+        "invoiceReference": "INV-000001",
+        "invoiceDate": "2026-06-01T09:04:00.000Z",
+        "amount": 16130,
+        "discount": 0,
+        "totalAmount": 16130,
+        "status": "paid",
+        "paidAt": "2026-06-02T09:00:00.000Z",
+        "items": [
+          {
+            "productCode": "PRD-0002",
+            "units": 5,
+            "price": 1849
+          },
+          {
+            "productCode": "PRD-0003",
+            "units": 3,
+            "price": 2295
+          }
+        ],
+        "payment": {
+          "id": "ec88ba4a-b67b-4f0f-9e19-c551f95ec697",
+          "paymentReference": "PAY-SEED-000001",
+          "amount": 16130,
+          "valueDate": "2026-06-02T09:00:00.000Z",
+          "source": "test"
+        }
+      },
+      "billingOutbox": [
+        {
+          "id": "f8aafd6d-e1df-46c9-91d9-041300d6a6f7",
+          "eventId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8",
+          "eventType": "credit.approved.v1",
+          "aggregateId": "5c62308c-31fd-47ab-aa6f-a27cc545a36e",
+          "correlationId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "causationId": "07931069-003f-4cae-bde3-df5e37eed326",
+          "payload": {
+            "orderReference": "ORD-000001",
+            "retailerCode": "CarrefourEs",
+            "companyCode": "IBERFOODS",
+            "creditCode": "CR-000001",
+            "currency": "EUR",
+            "heldAmount": 16130,
+            "availableCreditAfter": 483870
+          },
+          "occurredAt": "2026-06-01T09:02:00.000Z",
+          "publishedAt": "2026-06-01T09:02:00.000Z"
+        },
+        {
+          "id": "ff1771ac-d5ef-44eb-aae4-3e917a42c770",
+          "eventId": "ab4b676e-ac01-4187-a448-5cce44dc21bc",
+          "eventType": "invoice.issued.v1",
+          "aggregateId": "772f43e4-c5e5-4aca-b46e-41af6b9bc854",
+          "correlationId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "causationId": "8a0fd807-222e-4b5f-af0f-c91119bdb645",
+          "payload": {
+            "orderReference": "ORD-000001",
+            "invoiceReference": "INV-000001",
+            "invoiceDate": "2026-06-01T09:04:00.000Z",
+            "retailerCode": "CarrefourEs",
+            "companyCode": "IBERFOODS",
+            "currency": "EUR",
+            "lines": [
+              {
+                "productCode": "PRD-0002",
+                "units": 5,
+                "unitPrice": 1849
+              },
+              {
+                "productCode": "PRD-0003",
+                "units": 3,
+                "unitPrice": 2295
+              }
+            ],
+            "amount": 16130,
+            "discount": 0,
+            "totalAmount": 16130
+          },
+          "occurredAt": "2026-06-01T09:04:00.000Z",
+          "publishedAt": "2026-06-01T09:04:00.000Z"
+        },
+        {
+          "id": "ce69a888-a296-438d-87d0-ba71f5588967",
+          "eventId": "639a1fd2-feba-4c47-8e79-8756febfbdc9",
+          "eventType": "payment.received.v1",
+          "aggregateId": "772f43e4-c5e5-4aca-b46e-41af6b9bc854",
+          "correlationId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "causationId": "93fb70d9-41c5-41c6-a9f4-fa5cc6349ab4",
+          "payload": {
+            "orderReference": "ORD-000001",
+            "invoiceReference": "INV-000001",
+            "paymentReference": "PAY-SEED-000001",
+            "currency": "EUR",
+            "amount": 16130,
+            "valueDate": "2026-06-02T09:00:00.000Z",
+            "source": "test"
+          },
+          "occurredAt": "2026-06-02T09:00:00.000Z",
+          "publishedAt": "2026-06-02T09:00:00.000Z"
+        },
+        {
+          "id": "e84157e9-ca4a-471a-87cf-fcdfdd3aeaf8",
+          "eventId": "a9c7a128-aa91-43b7-91c7-699f8248806e",
+          "eventType": "credit.released.v1",
+          "aggregateId": "5c62308c-31fd-47ab-aa6f-a27cc545a36e",
+          "correlationId": "1741d5aa-cfba-4205-a1c0-82e7a5cb8984",
+          "causationId": "639a1fd2-feba-4c47-8e79-8756febfbdc9",
+          "payload": {
+            "orderReference": "ORD-000001",
+            "retailerCode": "CarrefourEs",
+            "companyCode": "IBERFOODS",
+            "creditCode": "CR-000001",
+            "currency": "EUR",
+            "releasedAmount": 16130,
+            "availableCreditAfter": 500000,
+            "reason": "invoice_paid"
+          },
+          "occurredAt": "2026-06-02T09:00:05.000Z",
+          "publishedAt": "2026-06-02T09:00:05.000Z"
+        }
+      ],
+      "timeline": [
+        {
+          "eventId": "f6cf96e0-6291-427a-9cac-992fe7d1e245",
+          "eventType": "order.placed.v1",
+          "occurredAt": "2026-06-01T09:00:00.000Z",
+          "summary": "Order ORD-000001 placed for CarrefourEs",
+          "causationId": "0914f64b-f91e-4af3-927c-f9227fb92077"
+        },
+        {
+          "eventId": "07931069-003f-4cae-bde3-df5e37eed326",
+          "eventType": "stock.reserved.v1",
+          "occurredAt": "2026-06-01T09:01:00.000Z",
+          "summary": "Stock reserved for 2 line(s)",
+          "causationId": "f6cf96e0-6291-427a-9cac-992fe7d1e245"
+        },
+        {
+          "eventId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8",
+          "eventType": "credit.approved.v1",
+          "occurredAt": "2026-06-01T09:02:00.000Z",
+          "summary": "Credit hold of 161.30 EUR approved",
+          "causationId": "07931069-003f-4cae-bde3-df5e37eed326"
+        },
+        {
+          "eventId": "8611cdde-9dcd-417d-b459-1dda1d8ed53f",
+          "eventType": "order.confirmed.v1",
+          "occurredAt": "2026-06-01T09:02:30.000Z",
+          "summary": "Order confirmed (ORDRSP)",
+          "causationId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8"
+        },
+        {
+          "eventId": "8a0fd807-222e-4b5f-af0f-c91119bdb645",
+          "eventType": "order.despatched.v1",
+          "occurredAt": "2026-06-01T09:03:00.000Z",
+          "summary": "Despatch DES-000001 created",
+          "causationId": "bcd04aa8-cf89-4f03-bf7c-d9cc49f09ba8"
+        },
+        {
+          "eventId": "ab4b676e-ac01-4187-a448-5cce44dc21bc",
+          "eventType": "invoice.issued.v1",
+          "occurredAt": "2026-06-01T09:04:00.000Z",
+          "summary": "Invoice INV-000001 issued",
+          "causationId": "8a0fd807-222e-4b5f-af0f-c91119bdb645"
+        },
+        {
+          "eventId": "639a1fd2-feba-4c47-8e79-8756febfbdc9",
+          "eventType": "payment.received.v1",
+          "occurredAt": "2026-06-02T09:00:00.000Z",
+          "summary": "Payment PAY-SEED-000001 received",
+          "causationId": "93fb70d9-41c5-41c6-a9f4-fa5cc6349ab4"
+        },
+        {
+          "eventId": "a9c7a128-aa91-43b7-91c7-699f8248806e",
+          "eventType": "credit.released.v1",
+          "occurredAt": "2026-06-02T09:00:05.000Z",
+          "summary": "Credit exposure released — invoice paid",
+          "causationId": "639a1fd2-feba-4c47-8e79-8756febfbdc9"
+        },
+        {
+          "eventId": "3fbb3aee-cebe-49a5-a71a-27fe16e9306d",
+          "eventType": "order.completed.v1",
+          "occurredAt": "2026-06-02T09:00:10.000Z",
+          "summary": "Order ORD-000001 completed",
+          "causationId": "a9c7a128-aa91-43b7-91c7-699f8248806e"
+        }
+      ]
+    },
+    {
+      "sequence": 2,
+      "orderId": "cf826257-6521-4471-9292-d5a81919eba6",
+      "orderReference": "ORD-000002",
+      "orderDate": "2026-06-02T09:00:00.000Z",
+      "retailerCode": "CarrefourFr",
+      "companyCode": "FRESHFR",
+      "currency": "EUR",
+      "status": "completed",
+      "cancellationReason": null,
+      "lines": [
+        {
+          "productCode": "PRD-0002",
+          "description": "Pasta 500g Case (24u)",
+          "quantity": 4,
+          "unitPrice": 1849,
+          "lineDiscount": 0
+        },
+        {
+          "productCode": "PRD-0008",
+          "description": "Laundry Detergent 5L",
+          "quantity": 2,
+          "unitPrice": 1489,
+          "lineDiscount": 0
+        }
+      ],
+      "initialAmount": 10374,
+      "initialDiscount": 0,
+      "totalAmount": 10374,
+      "updatedAt": "2026-06-03T09:00:10.000Z",
+      "ordersOutbox": [
+        {
+          "id": "cd2216a9-18e6-452e-b8fd-0e3d645632b3",
+          "eventId": "a73d1bb2-4f89-4f21-afa1-629abe406f6d",
+          "eventType": "order.placed.v1",
+          "aggregateId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "correlationId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "causationId": "b8270991-81fd-44ab-8b3c-20b3cced5d08",
+          "payload": {
+            "orderReference": "ORD-000002",
+            "retailerCode": "CarrefourFr",
+            "companyCode": "FRESHFR",
+            "buyerGln": "5400000000027",
+            "supplierGln": "5400000000256",
+            "currency": "EUR",
+            "orderDate": "2026-06-02T09:00:00.000Z",
+            "lines": [
+              {
+                "productCode": "PRD-0002",
+                "description": "Pasta 500g Case (24u)",
+                "quantity": 4,
+                "unitPrice": 1849,
+                "lineDiscount": 0
+              },
+              {
+                "productCode": "PRD-0008",
+                "description": "Laundry Detergent 5L",
+                "quantity": 2,
+                "unitPrice": 1489,
+                "lineDiscount": 0
+              }
+            ],
+            "initialAmount": 10374,
+            "initialDiscount": 0,
+            "totalAmount": 10374
+          },
+          "occurredAt": "2026-06-02T09:00:00.000Z",
+          "publishedAt": "2026-06-02T09:00:00.000Z"
+        },
+        {
+          "id": "cb361d44-9906-4107-ac57-adc0ff6295bc",
+          "eventId": "7085fa96-f796-46fe-ad1b-a9c459f60e13",
+          "eventType": "order.confirmed.v1",
+          "aggregateId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "correlationId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "causationId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19",
+          "payload": {
+            "orderReference": "ORD-000002",
+            "retailerCode": "CarrefourFr",
+            "companyCode": "FRESHFR",
+            "currency": "EUR",
+            "totalAmount": 10374,
+            "confirmedAt": "2026-06-02T09:02:30.000Z"
+          },
+          "occurredAt": "2026-06-02T09:02:30.000Z",
+          "publishedAt": "2026-06-02T09:02:30.000Z"
+        },
+        {
+          "id": "c97c99d8-7643-4143-803b-3ac91bd4c2d9",
+          "eventId": "29776eab-6612-4d7f-a824-e969cddd0cc7",
+          "eventType": "order.completed.v1",
+          "aggregateId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "correlationId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "causationId": "1c0df4c2-b1a6-4db6-b793-cb4899935214",
+          "payload": {
+            "orderReference": "ORD-000002",
+            "retailerCode": "CarrefourFr",
+            "companyCode": "FRESHFR",
+            "currency": "EUR",
+            "totalAmount": 10374,
+            "completedAt": "2026-06-03T09:00:10.000Z"
+          },
+          "occurredAt": "2026-06-03T09:00:10.000Z",
+          "publishedAt": "2026-06-03T09:00:10.000Z"
+        }
+      ],
+      "reservations": [
+        {
+          "id": "af8d4a6c-db6e-48d2-a539-df5f4b22df93",
+          "companyCode": "FRESHFR",
+          "retailerCode": "CarrefourFr",
+          "productCode": "PRD-0002",
+          "units": 4,
+          "status": "consumed",
+          "createdAt": "2026-06-02T09:01:00.000Z",
+          "updatedAt": "2026-06-02T09:03:00.000Z"
+        },
+        {
+          "id": "3e6e367d-83d3-469c-8d50-1682d28550ff",
+          "companyCode": "FRESHFR",
+          "retailerCode": "CarrefourFr",
+          "productCode": "PRD-0008",
+          "units": 2,
+          "status": "consumed",
+          "createdAt": "2026-06-02T09:01:00.000Z",
+          "updatedAt": "2026-06-02T09:03:00.000Z"
+        }
+      ],
+      "despatch": {
+        "id": "8fe52a11-fef5-41df-81de-9e31bfa00469",
+        "despatchReference": "DES-000002",
+        "despatchDate": "2026-06-02T09:03:00.000Z",
+        "companyCode": "FRESHFR",
+        "retailerCode": "CarrefourFr",
+        "items": [
+          {
+            "productCode": "PRD-0002",
+            "units": 4
+          },
+          {
+            "productCode": "PRD-0008",
+            "units": 2
+          }
+        ]
+      },
+      "fulfillmentOutbox": [
+        {
+          "id": "3500801e-cea9-4ec8-a9d8-ed0fe01509b9",
+          "eventId": "5651f5e0-c836-450c-8337-0c89c2e88f58",
+          "eventType": "stock.reserved.v1",
+          "aggregateId": "6494c23b-5307-4978-9554-ed40c2c71768",
+          "correlationId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "causationId": "a73d1bb2-4f89-4f21-afa1-629abe406f6d",
+          "payload": {
+            "orderReference": "ORD-000002",
+            "companyCode": "FRESHFR",
+            "retailerCode": "CarrefourFr",
+            "reservations": [
+              {
+                "reservationId": "af8d4a6c-db6e-48d2-a539-df5f4b22df93",
+                "productCode": "PRD-0002",
+                "units": 4
+              },
+              {
+                "reservationId": "3e6e367d-83d3-469c-8d50-1682d28550ff",
+                "productCode": "PRD-0008",
+                "units": 2
+              }
+            ]
+          },
+          "occurredAt": "2026-06-02T09:01:00.000Z",
+          "publishedAt": "2026-06-02T09:01:00.000Z"
+        },
+        {
+          "id": "eaf80e30-829a-4942-9583-a64dadc04ff6",
+          "eventId": "d3799173-5363-4d0a-bfc1-284eed0ddf76",
+          "eventType": "order.despatched.v1",
+          "aggregateId": "8fe52a11-fef5-41df-81de-9e31bfa00469",
+          "correlationId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "causationId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19",
+          "payload": {
+            "orderReference": "ORD-000002",
+            "despatchReference": "DES-000002",
+            "despatchDate": "2026-06-02T09:03:00.000Z",
+            "companyCode": "FRESHFR",
+            "retailerCode": "CarrefourFr",
+            "lines": [
+              {
+                "productCode": "PRD-0002",
+                "units": 4
+              },
+              {
+                "productCode": "PRD-0008",
+                "units": 2
+              }
+            ]
+          },
+          "occurredAt": "2026-06-02T09:03:00.000Z",
+          "publishedAt": "2026-06-02T09:03:00.000Z"
+        }
+      ],
+      "creditLedgerEntries": [
+        {
+          "id": "0c1d7b86-e1c9-4606-a734-8745da3ac16a",
+          "creditId": "4be4d371-a4f5-4622-8aba-ac42e469d68f",
+          "orderReference": "ORD-000002",
+          "amount": 10374,
+          "type": "hold",
+          "creditDate": "2026-06-02T09:02:00.000Z"
+        },
+        {
+          "id": "acf590ec-ce1a-4642-bab4-a8e410367ece",
+          "creditId": "4be4d371-a4f5-4622-8aba-ac42e469d68f",
+          "orderReference": "ORD-000002",
+          "amount": 10374,
+          "type": "consume",
+          "creditDate": "2026-06-02T09:04:00.000Z"
+        },
+        {
+          "id": "b06c0f51-39a0-46fc-8504-ac471380d49c",
+          "creditId": "4be4d371-a4f5-4622-8aba-ac42e469d68f",
+          "orderReference": "ORD-000002",
+          "amount": 10374,
+          "type": "release",
+          "creditDate": "2026-06-03T09:00:05.000Z"
+        }
+      ],
+      "invoice": {
+        "id": "0a7d74df-1107-4df3-95ec-2dbe9152dc99",
+        "invoiceReference": "INV-000002",
+        "invoiceDate": "2026-06-02T09:04:00.000Z",
+        "amount": 10374,
+        "discount": 0,
+        "totalAmount": 10374,
+        "status": "paid",
+        "paidAt": "2026-06-03T09:00:00.000Z",
+        "items": [
+          {
+            "productCode": "PRD-0002",
+            "units": 4,
+            "price": 1849
+          },
+          {
+            "productCode": "PRD-0008",
+            "units": 2,
+            "price": 1489
+          }
+        ],
+        "payment": {
+          "id": "d477f7aa-00e4-4159-bc6d-41a02fc851aa",
+          "paymentReference": "PAY-SEED-000002",
+          "amount": 10374,
+          "valueDate": "2026-06-03T09:00:00.000Z",
+          "source": "test"
+        }
+      },
+      "billingOutbox": [
+        {
+          "id": "640fba19-9fc6-4c70-9804-6784ca86d8e0",
+          "eventId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19",
+          "eventType": "credit.approved.v1",
+          "aggregateId": "4be4d371-a4f5-4622-8aba-ac42e469d68f",
+          "correlationId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "causationId": "5651f5e0-c836-450c-8337-0c89c2e88f58",
+          "payload": {
+            "orderReference": "ORD-000002",
+            "retailerCode": "CarrefourFr",
+            "companyCode": "FRESHFR",
+            "creditCode": "CR-000002",
+            "currency": "EUR",
+            "heldAmount": 10374,
+            "availableCreditAfter": 489626
+          },
+          "occurredAt": "2026-06-02T09:02:00.000Z",
+          "publishedAt": "2026-06-02T09:02:00.000Z"
+        },
+        {
+          "id": "794844d3-c37e-4863-8040-688d9115b030",
+          "eventId": "dcb43496-b571-4a1d-9f8b-af691dbaa0bb",
+          "eventType": "invoice.issued.v1",
+          "aggregateId": "0a7d74df-1107-4df3-95ec-2dbe9152dc99",
+          "correlationId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "causationId": "d3799173-5363-4d0a-bfc1-284eed0ddf76",
+          "payload": {
+            "orderReference": "ORD-000002",
+            "invoiceReference": "INV-000002",
+            "invoiceDate": "2026-06-02T09:04:00.000Z",
+            "retailerCode": "CarrefourFr",
+            "companyCode": "FRESHFR",
+            "currency": "EUR",
+            "lines": [
+              {
+                "productCode": "PRD-0002",
+                "units": 4,
+                "unitPrice": 1849
+              },
+              {
+                "productCode": "PRD-0008",
+                "units": 2,
+                "unitPrice": 1489
+              }
+            ],
+            "amount": 10374,
+            "discount": 0,
+            "totalAmount": 10374
+          },
+          "occurredAt": "2026-06-02T09:04:00.000Z",
+          "publishedAt": "2026-06-02T09:04:00.000Z"
+        },
+        {
+          "id": "f34f9adb-31e9-44fd-83af-67a99870f285",
+          "eventId": "ed6ad86a-ccb8-4ff5-9c36-7e201b6629c3",
+          "eventType": "payment.received.v1",
+          "aggregateId": "0a7d74df-1107-4df3-95ec-2dbe9152dc99",
+          "correlationId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "causationId": "cef05760-aabc-43ac-a778-549442d8122a",
+          "payload": {
+            "orderReference": "ORD-000002",
+            "invoiceReference": "INV-000002",
+            "paymentReference": "PAY-SEED-000002",
+            "currency": "EUR",
+            "amount": 10374,
+            "valueDate": "2026-06-03T09:00:00.000Z",
+            "source": "test"
+          },
+          "occurredAt": "2026-06-03T09:00:00.000Z",
+          "publishedAt": "2026-06-03T09:00:00.000Z"
+        },
+        {
+          "id": "c4c99e4a-eca5-4a41-bd71-21779756ebf1",
+          "eventId": "1c0df4c2-b1a6-4db6-b793-cb4899935214",
+          "eventType": "credit.released.v1",
+          "aggregateId": "4be4d371-a4f5-4622-8aba-ac42e469d68f",
+          "correlationId": "cf826257-6521-4471-9292-d5a81919eba6",
+          "causationId": "ed6ad86a-ccb8-4ff5-9c36-7e201b6629c3",
+          "payload": {
+            "orderReference": "ORD-000002",
+            "retailerCode": "CarrefourFr",
+            "companyCode": "FRESHFR",
+            "creditCode": "CR-000002",
+            "currency": "EUR",
+            "releasedAmount": 10374,
+            "availableCreditAfter": 500000,
+            "reason": "invoice_paid"
+          },
+          "occurredAt": "2026-06-03T09:00:05.000Z",
+          "publishedAt": "2026-06-03T09:00:05.000Z"
+        }
+      ],
+      "timeline": [
+        {
+          "eventId": "a73d1bb2-4f89-4f21-afa1-629abe406f6d",
+          "eventType": "order.placed.v1",
+          "occurredAt": "2026-06-02T09:00:00.000Z",
+          "summary": "Order ORD-000002 placed for CarrefourFr",
+          "causationId": "b8270991-81fd-44ab-8b3c-20b3cced5d08"
+        },
+        {
+          "eventId": "5651f5e0-c836-450c-8337-0c89c2e88f58",
+          "eventType": "stock.reserved.v1",
+          "occurredAt": "2026-06-02T09:01:00.000Z",
+          "summary": "Stock reserved for 2 line(s)",
+          "causationId": "a73d1bb2-4f89-4f21-afa1-629abe406f6d"
+        },
+        {
+          "eventId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19",
+          "eventType": "credit.approved.v1",
+          "occurredAt": "2026-06-02T09:02:00.000Z",
+          "summary": "Credit hold of 103.74 EUR approved",
+          "causationId": "5651f5e0-c836-450c-8337-0c89c2e88f58"
+        },
+        {
+          "eventId": "7085fa96-f796-46fe-ad1b-a9c459f60e13",
+          "eventType": "order.confirmed.v1",
+          "occurredAt": "2026-06-02T09:02:30.000Z",
+          "summary": "Order confirmed (ORDRSP)",
+          "causationId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19"
+        },
+        {
+          "eventId": "d3799173-5363-4d0a-bfc1-284eed0ddf76",
+          "eventType": "order.despatched.v1",
+          "occurredAt": "2026-06-02T09:03:00.000Z",
+          "summary": "Despatch DES-000002 created",
+          "causationId": "aba5eeb3-73f4-4ed5-921f-e4b6c43c1f19"
+        },
+        {
+          "eventId": "dcb43496-b571-4a1d-9f8b-af691dbaa0bb",
+          "eventType": "invoice.issued.v1",
+          "occurredAt": "2026-06-02T09:04:00.000Z",
+          "summary": "Invoice INV-000002 issued",
+          "causationId": "d3799173-5363-4d0a-bfc1-284eed0ddf76"
+        },
+        {
+          "eventId": "ed6ad86a-ccb8-4ff5-9c36-7e201b6629c3",
+          "eventType": "payment.received.v1",
+          "occurredAt": "2026-06-03T09:00:00.000Z",
+          "summary": "Payment PAY-SEED-000002 received",
+          "causationId": "cef05760-aabc-43ac-a778-549442d8122a"
+        },
+        {
+          "eventId": "1c0df4c2-b1a6-4db6-b793-cb4899935214",
+          "eventType": "credit.released.v1",
+          "occurredAt": "2026-06-03T09:00:05.000Z",
+          "summary": "Credit exposure released — invoice paid",
+          "causationId": "ed6ad86a-ccb8-4ff5-9c36-7e201b6629c3"
+        },
+        {
+          "eventId": "29776eab-6612-4d7f-a824-e969cddd0cc7",
+          "eventType": "order.completed.v1",
+          "occurredAt": "2026-06-03T09:00:10.000Z",
+          "summary": "Order ORD-000002 completed",
+          "causationId": "1c0df4c2-b1a6-4db6-b793-cb4899935214"
+        }
+      ]
+    },
+    {
+      "sequence": 3,
+      "orderId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+      "orderReference": "ORD-000003",
+      "orderDate": "2026-06-03T09:00:00.000Z",
+      "retailerCode": "LeroyMerlinEs",
+      "companyCode": "TOOLIBERIA",
+      "currency": "EUR",
+      "status": "completed",
+      "cancellationReason": null,
+      "lines": [
+        {
+          "productCode": "PRD-0004",
+          "description": "Claw Hammer 16oz",
+          "quantity": 10,
+          "unitPrice": 1450,
+          "lineDiscount": 0
+        },
+        {
+          "productCode": "PRD-0005",
+          "description": "Screwdriver Set 6pc",
+          "quantity": 6,
+          "unitPrice": 825,
+          "lineDiscount": 0
+        }
+      ],
+      "initialAmount": 19450,
+      "initialDiscount": 0,
+      "totalAmount": 19450,
+      "updatedAt": "2026-06-04T09:00:10.000Z",
+      "ordersOutbox": [
+        {
+          "id": "d044ef0d-9e7f-41ee-9c20-38667233c3c7",
+          "eventId": "c8a25b42-6a3d-4642-a962-a8ac1a84a9d1",
+          "eventType": "order.placed.v1",
+          "aggregateId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "correlationId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "causationId": "742165bd-48b7-45cd-becc-75d57e82bfc3",
+          "payload": {
+            "orderReference": "ORD-000003",
+            "retailerCode": "LeroyMerlinEs",
+            "companyCode": "TOOLIBERIA",
+            "buyerGln": "5400000000034",
+            "supplierGln": "5400000000232",
+            "currency": "EUR",
+            "orderDate": "2026-06-03T09:00:00.000Z",
+            "lines": [
+              {
+                "productCode": "PRD-0004",
+                "description": "Claw Hammer 16oz",
+                "quantity": 10,
+                "unitPrice": 1450,
+                "lineDiscount": 0
+              },
+              {
+                "productCode": "PRD-0005",
+                "description": "Screwdriver Set 6pc",
+                "quantity": 6,
+                "unitPrice": 825,
+                "lineDiscount": 0
+              }
+            ],
+            "initialAmount": 19450,
+            "initialDiscount": 0,
+            "totalAmount": 19450
+          },
+          "occurredAt": "2026-06-03T09:00:00.000Z",
+          "publishedAt": "2026-06-03T09:00:00.000Z"
+        },
+        {
+          "id": "96798d33-cafd-4ef2-9943-c31f51d4af5c",
+          "eventId": "3de5828b-885c-4f65-b2c7-9f423db09032",
+          "eventType": "order.confirmed.v1",
+          "aggregateId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "correlationId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "causationId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f",
+          "payload": {
+            "orderReference": "ORD-000003",
+            "retailerCode": "LeroyMerlinEs",
+            "companyCode": "TOOLIBERIA",
+            "currency": "EUR",
+            "totalAmount": 19450,
+            "confirmedAt": "2026-06-03T09:02:30.000Z"
+          },
+          "occurredAt": "2026-06-03T09:02:30.000Z",
+          "publishedAt": "2026-06-03T09:02:30.000Z"
+        },
+        {
+          "id": "5a7bcfa8-e407-4ac6-8a21-3334d43443c8",
+          "eventId": "b3119a96-8611-4718-bd8d-9fb9c7106c63",
+          "eventType": "order.completed.v1",
+          "aggregateId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "correlationId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "causationId": "ca671a1f-9de7-4b48-a964-0ac5ca1a0254",
+          "payload": {
+            "orderReference": "ORD-000003",
+            "retailerCode": "LeroyMerlinEs",
+            "companyCode": "TOOLIBERIA",
+            "currency": "EUR",
+            "totalAmount": 19450,
+            "completedAt": "2026-06-04T09:00:10.000Z"
+          },
+          "occurredAt": "2026-06-04T09:00:10.000Z",
+          "publishedAt": "2026-06-04T09:00:10.000Z"
+        }
+      ],
+      "reservations": [
+        {
+          "id": "3548a384-67ed-4f94-8082-19e61f266f49",
+          "companyCode": "TOOLIBERIA",
+          "retailerCode": "LeroyMerlinEs",
+          "productCode": "PRD-0004",
+          "units": 10,
+          "status": "consumed",
+          "createdAt": "2026-06-03T09:01:00.000Z",
+          "updatedAt": "2026-06-03T09:03:00.000Z"
+        },
+        {
+          "id": "fc0d73c7-0def-445b-b5c5-0aa1da7ecbbd",
+          "companyCode": "TOOLIBERIA",
+          "retailerCode": "LeroyMerlinEs",
+          "productCode": "PRD-0005",
+          "units": 6,
+          "status": "consumed",
+          "createdAt": "2026-06-03T09:01:00.000Z",
+          "updatedAt": "2026-06-03T09:03:00.000Z"
+        }
+      ],
+      "despatch": {
+        "id": "836e84ca-33a2-44d5-9a00-a5d4ed1986c9",
+        "despatchReference": "DES-000003",
+        "despatchDate": "2026-06-03T09:03:00.000Z",
+        "companyCode": "TOOLIBERIA",
+        "retailerCode": "LeroyMerlinEs",
+        "items": [
+          {
+            "productCode": "PRD-0004",
+            "units": 10
+          },
+          {
+            "productCode": "PRD-0005",
+            "units": 6
+          }
+        ]
+      },
+      "fulfillmentOutbox": [
+        {
+          "id": "4c2caf27-885f-4c6d-963a-81818f638ce0",
+          "eventId": "1c07c725-460a-46b6-8de2-7ec4cfd604b0",
+          "eventType": "stock.reserved.v1",
+          "aggregateId": "a688b8d7-e104-4eaf-891e-72c575374702",
+          "correlationId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "causationId": "c8a25b42-6a3d-4642-a962-a8ac1a84a9d1",
+          "payload": {
+            "orderReference": "ORD-000003",
+            "companyCode": "TOOLIBERIA",
+            "retailerCode": "LeroyMerlinEs",
+            "reservations": [
+              {
+                "reservationId": "3548a384-67ed-4f94-8082-19e61f266f49",
+                "productCode": "PRD-0004",
+                "units": 10
+              },
+              {
+                "reservationId": "fc0d73c7-0def-445b-b5c5-0aa1da7ecbbd",
+                "productCode": "PRD-0005",
+                "units": 6
+              }
+            ]
+          },
+          "occurredAt": "2026-06-03T09:01:00.000Z",
+          "publishedAt": "2026-06-03T09:01:00.000Z"
+        },
+        {
+          "id": "31278684-a6c0-41f0-9b3a-0b33a10bd6ea",
+          "eventId": "0e53f361-0646-4cba-b5f3-64873ddd707c",
+          "eventType": "order.despatched.v1",
+          "aggregateId": "836e84ca-33a2-44d5-9a00-a5d4ed1986c9",
+          "correlationId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "causationId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f",
+          "payload": {
+            "orderReference": "ORD-000003",
+            "despatchReference": "DES-000003",
+            "despatchDate": "2026-06-03T09:03:00.000Z",
+            "companyCode": "TOOLIBERIA",
+            "retailerCode": "LeroyMerlinEs",
+            "lines": [
+              {
+                "productCode": "PRD-0004",
+                "units": 10
+              },
+              {
+                "productCode": "PRD-0005",
+                "units": 6
+              }
+            ]
+          },
+          "occurredAt": "2026-06-03T09:03:00.000Z",
+          "publishedAt": "2026-06-03T09:03:00.000Z"
+        }
+      ],
+      "creditLedgerEntries": [
+        {
+          "id": "1caf32f9-3c6b-4eba-92d1-ab77287bc6bb",
+          "creditId": "ad2bbcb9-b22e-4c1b-9580-c96498ffdd3b",
+          "orderReference": "ORD-000003",
+          "amount": 19450,
+          "type": "hold",
+          "creditDate": "2026-06-03T09:02:00.000Z"
+        },
+        {
+          "id": "ed338a37-2fec-4b94-8dc8-1e48f33a4968",
+          "creditId": "ad2bbcb9-b22e-4c1b-9580-c96498ffdd3b",
+          "orderReference": "ORD-000003",
+          "amount": 19450,
+          "type": "consume",
+          "creditDate": "2026-06-03T09:04:00.000Z"
+        },
+        {
+          "id": "72b5b1a0-ef9c-414d-be07-5b4ff1b290a2",
+          "creditId": "ad2bbcb9-b22e-4c1b-9580-c96498ffdd3b",
+          "orderReference": "ORD-000003",
+          "amount": 19450,
+          "type": "release",
+          "creditDate": "2026-06-04T09:00:05.000Z"
+        }
+      ],
+      "invoice": {
+        "id": "3b3f04a6-21b0-4c8a-9952-7dcdec7c82f0",
+        "invoiceReference": "INV-000003",
+        "invoiceDate": "2026-06-03T09:04:00.000Z",
+        "amount": 19450,
+        "discount": 0,
+        "totalAmount": 19450,
+        "status": "paid",
+        "paidAt": "2026-06-04T09:00:00.000Z",
+        "items": [
+          {
+            "productCode": "PRD-0004",
+            "units": 10,
+            "price": 1450
+          },
+          {
+            "productCode": "PRD-0005",
+            "units": 6,
+            "price": 825
+          }
+        ],
+        "payment": {
+          "id": "ad4ee6bf-a114-4aa6-afe4-ebc5d0dde806",
+          "paymentReference": "PAY-SEED-000003",
+          "amount": 19450,
+          "valueDate": "2026-06-04T09:00:00.000Z",
+          "source": "test"
+        }
+      },
+      "billingOutbox": [
+        {
+          "id": "2d70c4b4-8def-4468-affb-5f3c4a544d7a",
+          "eventId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f",
+          "eventType": "credit.approved.v1",
+          "aggregateId": "ad2bbcb9-b22e-4c1b-9580-c96498ffdd3b",
+          "correlationId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "causationId": "1c07c725-460a-46b6-8de2-7ec4cfd604b0",
+          "payload": {
+            "orderReference": "ORD-000003",
+            "retailerCode": "LeroyMerlinEs",
+            "companyCode": "TOOLIBERIA",
+            "creditCode": "CR-000003",
+            "currency": "EUR",
+            "heldAmount": 19450,
+            "availableCreditAfter": 480550
+          },
+          "occurredAt": "2026-06-03T09:02:00.000Z",
+          "publishedAt": "2026-06-03T09:02:00.000Z"
+        },
+        {
+          "id": "8aabd250-9ef8-4d0f-8dfd-b29036997ef6",
+          "eventId": "fe6a193a-8afa-4181-af78-48590d741451",
+          "eventType": "invoice.issued.v1",
+          "aggregateId": "3b3f04a6-21b0-4c8a-9952-7dcdec7c82f0",
+          "correlationId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "causationId": "0e53f361-0646-4cba-b5f3-64873ddd707c",
+          "payload": {
+            "orderReference": "ORD-000003",
+            "invoiceReference": "INV-000003",
+            "invoiceDate": "2026-06-03T09:04:00.000Z",
+            "retailerCode": "LeroyMerlinEs",
+            "companyCode": "TOOLIBERIA",
+            "currency": "EUR",
+            "lines": [
+              {
+                "productCode": "PRD-0004",
+                "units": 10,
+                "unitPrice": 1450
+              },
+              {
+                "productCode": "PRD-0005",
+                "units": 6,
+                "unitPrice": 825
+              }
+            ],
+            "amount": 19450,
+            "discount": 0,
+            "totalAmount": 19450
+          },
+          "occurredAt": "2026-06-03T09:04:00.000Z",
+          "publishedAt": "2026-06-03T09:04:00.000Z"
+        },
+        {
+          "id": "a3d3f00f-391b-4add-a302-963efac9b0df",
+          "eventId": "a134c6eb-d309-45d3-95a9-06060a1a55b3",
+          "eventType": "payment.received.v1",
+          "aggregateId": "3b3f04a6-21b0-4c8a-9952-7dcdec7c82f0",
+          "correlationId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "causationId": "da9da8f1-2ca1-44e1-937e-338d9f590873",
+          "payload": {
+            "orderReference": "ORD-000003",
+            "invoiceReference": "INV-000003",
+            "paymentReference": "PAY-SEED-000003",
+            "currency": "EUR",
+            "amount": 19450,
+            "valueDate": "2026-06-04T09:00:00.000Z",
+            "source": "test"
+          },
+          "occurredAt": "2026-06-04T09:00:00.000Z",
+          "publishedAt": "2026-06-04T09:00:00.000Z"
+        },
+        {
+          "id": "a65a6114-de7b-480d-b450-cf248ef50d89",
+          "eventId": "ca671a1f-9de7-4b48-a964-0ac5ca1a0254",
+          "eventType": "credit.released.v1",
+          "aggregateId": "ad2bbcb9-b22e-4c1b-9580-c96498ffdd3b",
+          "correlationId": "321abe6d-ee7b-465f-86d7-d65d6707d131",
+          "causationId": "a134c6eb-d309-45d3-95a9-06060a1a55b3",
+          "payload": {
+            "orderReference": "ORD-000003",
+            "retailerCode": "LeroyMerlinEs",
+            "companyCode": "TOOLIBERIA",
+            "creditCode": "CR-000003",
+            "currency": "EUR",
+            "releasedAmount": 19450,
+            "availableCreditAfter": 500000,
+            "reason": "invoice_paid"
+          },
+          "occurredAt": "2026-06-04T09:00:05.000Z",
+          "publishedAt": "2026-06-04T09:00:05.000Z"
+        }
+      ],
+      "timeline": [
+        {
+          "eventId": "c8a25b42-6a3d-4642-a962-a8ac1a84a9d1",
+          "eventType": "order.placed.v1",
+          "occurredAt": "2026-06-03T09:00:00.000Z",
+          "summary": "Order ORD-000003 placed for LeroyMerlinEs",
+          "causationId": "742165bd-48b7-45cd-becc-75d57e82bfc3"
+        },
+        {
+          "eventId": "1c07c725-460a-46b6-8de2-7ec4cfd604b0",
+          "eventType": "stock.reserved.v1",
+          "occurredAt": "2026-06-03T09:01:00.000Z",
+          "summary": "Stock reserved for 2 line(s)",
+          "causationId": "c8a25b42-6a3d-4642-a962-a8ac1a84a9d1"
+        },
+        {
+          "eventId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f",
+          "eventType": "credit.approved.v1",
+          "occurredAt": "2026-06-03T09:02:00.000Z",
+          "summary": "Credit hold of 194.50 EUR approved",
+          "causationId": "1c07c725-460a-46b6-8de2-7ec4cfd604b0"
+        },
+        {
+          "eventId": "3de5828b-885c-4f65-b2c7-9f423db09032",
+          "eventType": "order.confirmed.v1",
+          "occurredAt": "2026-06-03T09:02:30.000Z",
+          "summary": "Order confirmed (ORDRSP)",
+          "causationId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f"
+        },
+        {
+          "eventId": "0e53f361-0646-4cba-b5f3-64873ddd707c",
+          "eventType": "order.despatched.v1",
+          "occurredAt": "2026-06-03T09:03:00.000Z",
+          "summary": "Despatch DES-000003 created",
+          "causationId": "5bbc9cfc-d9b5-4290-8427-e3199091ec5f"
+        },
+        {
+          "eventId": "fe6a193a-8afa-4181-af78-48590d741451",
+          "eventType": "invoice.issued.v1",
+          "occurredAt": "2026-06-03T09:04:00.000Z",
+          "summary": "Invoice INV-000003 issued",
+          "causationId": "0e53f361-0646-4cba-b5f3-64873ddd707c"
+        },
+        {
+          "eventId": "a134c6eb-d309-45d3-95a9-06060a1a55b3",
+          "eventType": "payment.received.v1",
+          "occurredAt": "2026-06-04T09:00:00.000Z",
+          "summary": "Payment PAY-SEED-000003 received",
+          "causationId": "da9da8f1-2ca1-44e1-937e-338d9f590873"
+        },
+        {
+          "eventId": "ca671a1f-9de7-4b48-a964-0ac5ca1a0254",
+          "eventType": "credit.released.v1",
+          "occurredAt": "2026-06-04T09:00:05.000Z",
+          "summary": "Credit exposure released — invoice paid",
+          "causationId": "a134c6eb-d309-45d3-95a9-06060a1a55b3"
+        },
+        {
+          "eventId": "b3119a96-8611-4718-bd8d-9fb9c7106c63",
+          "eventType": "order.completed.v1",
+          "occurredAt": "2026-06-04T09:00:10.000Z",
+          "summary": "Order ORD-000003 completed",
+          "causationId": "ca671a1f-9de7-4b48-a964-0ac5ca1a0254"
+        }
+      ]
+    },
+    {
+      "sequence": 4,
+      "orderId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+      "orderReference": "ORD-000004",
+      "orderDate": "2026-06-04T09:00:00.000Z",
+      "retailerCode": "AldiDe",
+      "companyCode": "GERMANFOODS",
+      "currency": "EUR",
+      "status": "completed",
+      "cancellationReason": null,
+      "lines": [
+        {
+          "productCode": "PRD-0002",
+          "description": "Pasta 500g Case (24u)",
+          "quantity": 8,
+          "unitPrice": 1849,
+          "lineDiscount": 0
+        },
+        {
+          "productCode": "PRD-0003",
+          "description": "Olive Oil 1L Case (12u)",
+          "quantity": 4,
+          "unitPrice": 2295,
+          "lineDiscount": 0
+        }
+      ],
+      "initialAmount": 23972,
+      "initialDiscount": 0,
+      "totalAmount": 23972,
+      "updatedAt": "2026-06-05T09:00:10.000Z",
+      "ordersOutbox": [
+        {
+          "id": "b3f5ea19-fe1f-4f07-953c-3a75e35167bc",
+          "eventId": "dbd42414-04f2-4444-a8b0-24d37b85fffd",
+          "eventType": "order.placed.v1",
+          "aggregateId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "correlationId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "causationId": "13317f21-37a5-406b-9e40-9e6082f552d9",
+          "payload": {
+            "orderReference": "ORD-000004",
+            "retailerCode": "AldiDe",
+            "companyCode": "GERMANFOODS",
+            "buyerGln": "5400000000065",
+            "supplierGln": "5400000000287",
+            "currency": "EUR",
+            "orderDate": "2026-06-04T09:00:00.000Z",
+            "lines": [
+              {
+                "productCode": "PRD-0002",
+                "description": "Pasta 500g Case (24u)",
+                "quantity": 8,
+                "unitPrice": 1849,
+                "lineDiscount": 0
+              },
+              {
+                "productCode": "PRD-0003",
+                "description": "Olive Oil 1L Case (12u)",
+                "quantity": 4,
+                "unitPrice": 2295,
+                "lineDiscount": 0
+              }
+            ],
+            "initialAmount": 23972,
+            "initialDiscount": 0,
+            "totalAmount": 23972
+          },
+          "occurredAt": "2026-06-04T09:00:00.000Z",
+          "publishedAt": "2026-06-04T09:00:00.000Z"
+        },
+        {
+          "id": "116cb216-b015-42f1-9058-74bfb2547fcb",
+          "eventId": "75679d7c-165f-4f01-839a-4dcd135b2db3",
+          "eventType": "order.confirmed.v1",
+          "aggregateId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "correlationId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "causationId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e",
+          "payload": {
+            "orderReference": "ORD-000004",
+            "retailerCode": "AldiDe",
+            "companyCode": "GERMANFOODS",
+            "currency": "EUR",
+            "totalAmount": 23972,
+            "confirmedAt": "2026-06-04T09:02:30.000Z"
+          },
+          "occurredAt": "2026-06-04T09:02:30.000Z",
+          "publishedAt": "2026-06-04T09:02:30.000Z"
+        },
+        {
+          "id": "80e8da9c-4f96-4a80-8eed-c75a280cb207",
+          "eventId": "dd3b8de6-a688-419b-8409-486935921867",
+          "eventType": "order.completed.v1",
+          "aggregateId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "correlationId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "causationId": "d075e58b-0055-4c9f-b480-dec84ab82225",
+          "payload": {
+            "orderReference": "ORD-000004",
+            "retailerCode": "AldiDe",
+            "companyCode": "GERMANFOODS",
+            "currency": "EUR",
+            "totalAmount": 23972,
+            "completedAt": "2026-06-05T09:00:10.000Z"
+          },
+          "occurredAt": "2026-06-05T09:00:10.000Z",
+          "publishedAt": "2026-06-05T09:00:10.000Z"
+        }
+      ],
+      "reservations": [
+        {
+          "id": "78d947e7-ebfc-451c-bf13-f9361971df47",
+          "companyCode": "GERMANFOODS",
+          "retailerCode": "AldiDe",
+          "productCode": "PRD-0002",
+          "units": 8,
+          "status": "consumed",
+          "createdAt": "2026-06-04T09:01:00.000Z",
+          "updatedAt": "2026-06-04T09:03:00.000Z"
+        },
+        {
+          "id": "c9c11d60-27ef-4b3f-b520-dce618ba2198",
+          "companyCode": "GERMANFOODS",
+          "retailerCode": "AldiDe",
+          "productCode": "PRD-0003",
+          "units": 4,
+          "status": "consumed",
+          "createdAt": "2026-06-04T09:01:00.000Z",
+          "updatedAt": "2026-06-04T09:03:00.000Z"
+        }
+      ],
+      "despatch": {
+        "id": "bb2b8950-8686-462b-9d7d-a501f9b0a9c4",
+        "despatchReference": "DES-000004",
+        "despatchDate": "2026-06-04T09:03:00.000Z",
+        "companyCode": "GERMANFOODS",
+        "retailerCode": "AldiDe",
+        "items": [
+          {
+            "productCode": "PRD-0002",
+            "units": 8
+          },
+          {
+            "productCode": "PRD-0003",
+            "units": 4
+          }
+        ]
+      },
+      "fulfillmentOutbox": [
+        {
+          "id": "eebc5629-1634-4001-af63-d334a7a86848",
+          "eventId": "fcd71b31-7de9-48d8-973d-2182dd516fbe",
+          "eventType": "stock.reserved.v1",
+          "aggregateId": "49bf3d2d-d93e-4223-ba0e-dd148f732ee2",
+          "correlationId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "causationId": "dbd42414-04f2-4444-a8b0-24d37b85fffd",
+          "payload": {
+            "orderReference": "ORD-000004",
+            "companyCode": "GERMANFOODS",
+            "retailerCode": "AldiDe",
+            "reservations": [
+              {
+                "reservationId": "78d947e7-ebfc-451c-bf13-f9361971df47",
+                "productCode": "PRD-0002",
+                "units": 8
+              },
+              {
+                "reservationId": "c9c11d60-27ef-4b3f-b520-dce618ba2198",
+                "productCode": "PRD-0003",
+                "units": 4
+              }
+            ]
+          },
+          "occurredAt": "2026-06-04T09:01:00.000Z",
+          "publishedAt": "2026-06-04T09:01:00.000Z"
+        },
+        {
+          "id": "23c99b09-af00-403a-aecf-0ba0e51d419e",
+          "eventId": "4695bec9-4953-4edf-9a3a-22669db52f24",
+          "eventType": "order.despatched.v1",
+          "aggregateId": "bb2b8950-8686-462b-9d7d-a501f9b0a9c4",
+          "correlationId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "causationId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e",
+          "payload": {
+            "orderReference": "ORD-000004",
+            "despatchReference": "DES-000004",
+            "despatchDate": "2026-06-04T09:03:00.000Z",
+            "companyCode": "GERMANFOODS",
+            "retailerCode": "AldiDe",
+            "lines": [
+              {
+                "productCode": "PRD-0002",
+                "units": 8
+              },
+              {
+                "productCode": "PRD-0003",
+                "units": 4
+              }
+            ]
+          },
+          "occurredAt": "2026-06-04T09:03:00.000Z",
+          "publishedAt": "2026-06-04T09:03:00.000Z"
+        }
+      ],
+      "creditLedgerEntries": [
+        {
+          "id": "d98cf7df-a636-4565-a2be-1db8bd845e66",
+          "creditId": "3c30e4ac-4ca4-4594-9c8b-4e132c160a3c",
+          "orderReference": "ORD-000004",
+          "amount": 23972,
+          "type": "hold",
+          "creditDate": "2026-06-04T09:02:00.000Z"
+        },
+        {
+          "id": "69b3f231-2446-4d6a-9ca6-6355e8877f75",
+          "creditId": "3c30e4ac-4ca4-4594-9c8b-4e132c160a3c",
+          "orderReference": "ORD-000004",
+          "amount": 23972,
+          "type": "consume",
+          "creditDate": "2026-06-04T09:04:00.000Z"
+        },
+        {
+          "id": "dc6bfaf8-6439-4b9d-afe0-e52daed74439",
+          "creditId": "3c30e4ac-4ca4-4594-9c8b-4e132c160a3c",
+          "orderReference": "ORD-000004",
+          "amount": 23972,
+          "type": "release",
+          "creditDate": "2026-06-05T09:00:05.000Z"
+        }
+      ],
+      "invoice": {
+        "id": "277d4604-11e8-4d35-bcf8-2f8042425d6e",
+        "invoiceReference": "INV-000004",
+        "invoiceDate": "2026-06-04T09:04:00.000Z",
+        "amount": 23972,
+        "discount": 0,
+        "totalAmount": 23972,
+        "status": "paid",
+        "paidAt": "2026-06-05T09:00:00.000Z",
+        "items": [
+          {
+            "productCode": "PRD-0002",
+            "units": 8,
+            "price": 1849
+          },
+          {
+            "productCode": "PRD-0003",
+            "units": 4,
+            "price": 2295
+          }
+        ],
+        "payment": {
+          "id": "81a713a1-eda7-460e-b2f2-94f2a2f40416",
+          "paymentReference": "PAY-SEED-000004",
+          "amount": 23972,
+          "valueDate": "2026-06-05T09:00:00.000Z",
+          "source": "test"
+        }
+      },
+      "billingOutbox": [
+        {
+          "id": "abe76b21-dd2b-407c-b15e-fb185a826f45",
+          "eventId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e",
+          "eventType": "credit.approved.v1",
+          "aggregateId": "3c30e4ac-4ca4-4594-9c8b-4e132c160a3c",
+          "correlationId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "causationId": "fcd71b31-7de9-48d8-973d-2182dd516fbe",
+          "payload": {
+            "orderReference": "ORD-000004",
+            "retailerCode": "AldiDe",
+            "companyCode": "GERMANFOODS",
+            "creditCode": "CR-000006",
+            "currency": "EUR",
+            "heldAmount": 23972,
+            "availableCreditAfter": 476028
+          },
+          "occurredAt": "2026-06-04T09:02:00.000Z",
+          "publishedAt": "2026-06-04T09:02:00.000Z"
+        },
+        {
+          "id": "00460639-9cea-49d7-a1dc-d55c433fc484",
+          "eventId": "658626cc-07f9-4403-9f95-db5245308676",
+          "eventType": "invoice.issued.v1",
+          "aggregateId": "277d4604-11e8-4d35-bcf8-2f8042425d6e",
+          "correlationId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "causationId": "4695bec9-4953-4edf-9a3a-22669db52f24",
+          "payload": {
+            "orderReference": "ORD-000004",
+            "invoiceReference": "INV-000004",
+            "invoiceDate": "2026-06-04T09:04:00.000Z",
+            "retailerCode": "AldiDe",
+            "companyCode": "GERMANFOODS",
+            "currency": "EUR",
+            "lines": [
+              {
+                "productCode": "PRD-0002",
+                "units": 8,
+                "unitPrice": 1849
+              },
+              {
+                "productCode": "PRD-0003",
+                "units": 4,
+                "unitPrice": 2295
+              }
+            ],
+            "amount": 23972,
+            "discount": 0,
+            "totalAmount": 23972
+          },
+          "occurredAt": "2026-06-04T09:04:00.000Z",
+          "publishedAt": "2026-06-04T09:04:00.000Z"
+        },
+        {
+          "id": "4a56af22-6697-400a-8776-0447b03702d7",
+          "eventId": "ac3e1c92-a048-410a-a6f8-d1d129582109",
+          "eventType": "payment.received.v1",
+          "aggregateId": "277d4604-11e8-4d35-bcf8-2f8042425d6e",
+          "correlationId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "causationId": "284f21af-59e5-4adc-80f0-c42b8b288dd3",
+          "payload": {
+            "orderReference": "ORD-000004",
+            "invoiceReference": "INV-000004",
+            "paymentReference": "PAY-SEED-000004",
+            "currency": "EUR",
+            "amount": 23972,
+            "valueDate": "2026-06-05T09:00:00.000Z",
+            "source": "test"
+          },
+          "occurredAt": "2026-06-05T09:00:00.000Z",
+          "publishedAt": "2026-06-05T09:00:00.000Z"
+        },
+        {
+          "id": "b130f6fa-d0b6-4d9f-a258-2ea184434e43",
+          "eventId": "d075e58b-0055-4c9f-b480-dec84ab82225",
+          "eventType": "credit.released.v1",
+          "aggregateId": "3c30e4ac-4ca4-4594-9c8b-4e132c160a3c",
+          "correlationId": "d69b8a2a-b0c8-47d5-bf66-82720335518c",
+          "causationId": "ac3e1c92-a048-410a-a6f8-d1d129582109",
+          "payload": {
+            "orderReference": "ORD-000004",
+            "retailerCode": "AldiDe",
+            "companyCode": "GERMANFOODS",
+            "creditCode": "CR-000006",
+            "currency": "EUR",
+            "releasedAmount": 23972,
+            "availableCreditAfter": 500000,
+            "reason": "invoice_paid"
+          },
+          "occurredAt": "2026-06-05T09:00:05.000Z",
+          "publishedAt": "2026-06-05T09:00:05.000Z"
+        }
+      ],
+      "timeline": [
+        {
+          "eventId": "dbd42414-04f2-4444-a8b0-24d37b85fffd",
+          "eventType": "order.placed.v1",
+          "occurredAt": "2026-06-04T09:00:00.000Z",
+          "summary": "Order ORD-000004 placed for AldiDe",
+          "causationId": "13317f21-37a5-406b-9e40-9e6082f552d9"
+        },
+        {
+          "eventId": "fcd71b31-7de9-48d8-973d-2182dd516fbe",
+          "eventType": "stock.reserved.v1",
+          "occurredAt": "2026-06-04T09:01:00.000Z",
+          "summary": "Stock reserved for 2 line(s)",
+          "causationId": "dbd42414-04f2-4444-a8b0-24d37b85fffd"
+        },
+        {
+          "eventId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e",
+          "eventType": "credit.approved.v1",
+          "occurredAt": "2026-06-04T09:02:00.000Z",
+          "summary": "Credit hold of 239.72 EUR approved",
+          "causationId": "fcd71b31-7de9-48d8-973d-2182dd516fbe"
+        },
+        {
+          "eventId": "75679d7c-165f-4f01-839a-4dcd135b2db3",
+          "eventType": "order.confirmed.v1",
+          "occurredAt": "2026-06-04T09:02:30.000Z",
+          "summary": "Order confirmed (ORDRSP)",
+          "causationId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e"
+        },
+        {
+          "eventId": "4695bec9-4953-4edf-9a3a-22669db52f24",
+          "eventType": "order.despatched.v1",
+          "occurredAt": "2026-06-04T09:03:00.000Z",
+          "summary": "Despatch DES-000004 created",
+          "causationId": "ef0900b8-ee8d-4d49-aa88-1be92c1b2e0e"
+        },
+        {
+          "eventId": "658626cc-07f9-4403-9f95-db5245308676",
+          "eventType": "invoice.issued.v1",
+          "occurredAt": "2026-06-04T09:04:00.000Z",
+          "summary": "Invoice INV-000004 issued",
+          "causationId": "4695bec9-4953-4edf-9a3a-22669db52f24"
+        },
+        {
+          "eventId": "ac3e1c92-a048-410a-a6f8-d1d129582109",
+          "eventType": "payment.received.v1",
+          "occurredAt": "2026-06-05T09:00:00.000Z",
+          "summary": "Payment PAY-SEED-000004 received",
+          "causationId": "284f21af-59e5-4adc-80f0-c42b8b288dd3"
+        },
+        {
+          "eventId": "d075e58b-0055-4c9f-b480-dec84ab82225",
+          "eventType": "credit.released.v1",
+          "occurredAt": "2026-06-05T09:00:05.000Z",
+          "summary": "Credit exposure released — invoice paid",
+          "causationId": "ac3e1c92-a048-410a-a6f8-d1d129582109"
+        },
+        {
+          "eventId": "dd3b8de6-a688-419b-8409-486935921867",
+          "eventType": "order.completed.v1",
+          "occurredAt": "2026-06-05T09:00:10.000Z",
+          "summary": "Order ORD-000004 completed",
+          "causationId": "d075e58b-0055-4c9f-b480-dec84ab82225"
+        }
+      ]
+    },
+    {
+      "sequence": 5,
+      "orderId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+      "orderReference": "ORD-000005",
+      "orderDate": "2026-06-05T09:00:00.000Z",
+      "retailerCode": "AldiGb",
+      "companyCode": "UKDISTRIB",
+      "currency": "GBP",
+      "status": "completed",
+      "cancellationReason": null,
+      "lines": [
+        {
+          "productCode": "PRD-0009",
+          "description": "English Breakfast Tea 250g",
+          "quantity": 20,
+          "unitPrice": 379,
+          "lineDiscount": 0
+        },
+        {
+          "productCode": "PRD-0010",
+          "description": "Digestive Biscuits 400g",
+          "quantity": 15,
+          "unitPrice": 165,
+          "lineDiscount": 0
+        }
+      ],
+      "initialAmount": 10055,
+      "initialDiscount": 0,
+      "totalAmount": 10055,
+      "updatedAt": "2026-06-06T09:00:10.000Z",
+      "ordersOutbox": [
+        {
+          "id": "d0973162-48f6-4256-b6a8-d591453f0105",
+          "eventId": "5a8a2ffb-9e12-446c-bbd6-c1778bead192",
+          "eventType": "order.placed.v1",
+          "aggregateId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "correlationId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "causationId": "6141621e-a478-4a25-998b-230deaa388ee",
+          "payload": {
+            "orderReference": "ORD-000005",
+            "retailerCode": "AldiGb",
+            "companyCode": "UKDISTRIB",
+            "buyerGln": "5400000000072",
+            "supplierGln": "5400000000317",
+            "currency": "GBP",
+            "orderDate": "2026-06-05T09:00:00.000Z",
+            "lines": [
+              {
+                "productCode": "PRD-0009",
+                "description": "English Breakfast Tea 250g",
+                "quantity": 20,
+                "unitPrice": 379,
+                "lineDiscount": 0
+              },
+              {
+                "productCode": "PRD-0010",
+                "description": "Digestive Biscuits 400g",
+                "quantity": 15,
+                "unitPrice": 165,
+                "lineDiscount": 0
+              }
+            ],
+            "initialAmount": 10055,
+            "initialDiscount": 0,
+            "totalAmount": 10055
+          },
+          "occurredAt": "2026-06-05T09:00:00.000Z",
+          "publishedAt": "2026-06-05T09:00:00.000Z"
+        },
+        {
+          "id": "e363c871-4aeb-4a09-bc79-fc83cd73c2d0",
+          "eventId": "01d44238-1e09-4f1c-a578-8df796155111",
+          "eventType": "order.confirmed.v1",
+          "aggregateId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "correlationId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "causationId": "45a832c1-2c42-45e5-bb59-82632d452d49",
+          "payload": {
+            "orderReference": "ORD-000005",
+            "retailerCode": "AldiGb",
+            "companyCode": "UKDISTRIB",
+            "currency": "GBP",
+            "totalAmount": 10055,
+            "confirmedAt": "2026-06-05T09:02:30.000Z"
+          },
+          "occurredAt": "2026-06-05T09:02:30.000Z",
+          "publishedAt": "2026-06-05T09:02:30.000Z"
+        },
+        {
+          "id": "7e44f56d-11a2-4a11-a6fc-4d8f0602b397",
+          "eventId": "2b9bc00c-77eb-4ce7-8a64-6a270d939211",
+          "eventType": "order.completed.v1",
+          "aggregateId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "correlationId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "causationId": "7e963c20-42c5-4d2b-9306-029d368979c8",
+          "payload": {
+            "orderReference": "ORD-000005",
+            "retailerCode": "AldiGb",
+            "companyCode": "UKDISTRIB",
+            "currency": "GBP",
+            "totalAmount": 10055,
+            "completedAt": "2026-06-06T09:00:10.000Z"
+          },
+          "occurredAt": "2026-06-06T09:00:10.000Z",
+          "publishedAt": "2026-06-06T09:00:10.000Z"
+        }
+      ],
+      "reservations": [
+        {
+          "id": "0116c851-68d4-49b8-8e00-49ce168e4a77",
+          "companyCode": "UKDISTRIB",
+          "retailerCode": "AldiGb",
+          "productCode": "PRD-0009",
+          "units": 20,
+          "status": "consumed",
+          "createdAt": "2026-06-05T09:01:00.000Z",
+          "updatedAt": "2026-06-05T09:03:00.000Z"
+        },
+        {
+          "id": "3ec303dc-15cb-46db-aef3-0fb3bb2fded7",
+          "companyCode": "UKDISTRIB",
+          "retailerCode": "AldiGb",
+          "productCode": "PRD-0010",
+          "units": 15,
+          "status": "consumed",
+          "createdAt": "2026-06-05T09:01:00.000Z",
+          "updatedAt": "2026-06-05T09:03:00.000Z"
+        }
+      ],
+      "despatch": {
+        "id": "a4175b46-5df9-41ce-927e-b2604dc26cc3",
+        "despatchReference": "DES-000005",
+        "despatchDate": "2026-06-05T09:03:00.000Z",
+        "companyCode": "UKDISTRIB",
+        "retailerCode": "AldiGb",
+        "items": [
+          {
+            "productCode": "PRD-0009",
+            "units": 20
+          },
+          {
+            "productCode": "PRD-0010",
+            "units": 15
+          }
+        ]
+      },
+      "fulfillmentOutbox": [
+        {
+          "id": "70f2dea0-7944-4016-a4e0-6d04b72d89da",
+          "eventId": "839ccae2-cfe1-4447-9cbc-e53f919eb594",
+          "eventType": "stock.reserved.v1",
+          "aggregateId": "54ab1ad2-bc31-4e66-ae4e-d61604e9a0cf",
+          "correlationId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "causationId": "5a8a2ffb-9e12-446c-bbd6-c1778bead192",
+          "payload": {
+            "orderReference": "ORD-000005",
+            "companyCode": "UKDISTRIB",
+            "retailerCode": "AldiGb",
+            "reservations": [
+              {
+                "reservationId": "0116c851-68d4-49b8-8e00-49ce168e4a77",
+                "productCode": "PRD-0009",
+                "units": 20
+              },
+              {
+                "reservationId": "3ec303dc-15cb-46db-aef3-0fb3bb2fded7",
+                "productCode": "PRD-0010",
+                "units": 15
+              }
+            ]
+          },
+          "occurredAt": "2026-06-05T09:01:00.000Z",
+          "publishedAt": "2026-06-05T09:01:00.000Z"
+        },
+        {
+          "id": "723f7e46-0e05-4e5a-a676-c99773fca03b",
+          "eventId": "33e87954-5774-43ac-bc72-320d56f765cb",
+          "eventType": "order.despatched.v1",
+          "aggregateId": "a4175b46-5df9-41ce-927e-b2604dc26cc3",
+          "correlationId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "causationId": "45a832c1-2c42-45e5-bb59-82632d452d49",
+          "payload": {
+            "orderReference": "ORD-000005",
+            "despatchReference": "DES-000005",
+            "despatchDate": "2026-06-05T09:03:00.000Z",
+            "companyCode": "UKDISTRIB",
+            "retailerCode": "AldiGb",
+            "lines": [
+              {
+                "productCode": "PRD-0009",
+                "units": 20
+              },
+              {
+                "productCode": "PRD-0010",
+                "units": 15
+              }
+            ]
+          },
+          "occurredAt": "2026-06-05T09:03:00.000Z",
+          "publishedAt": "2026-06-05T09:03:00.000Z"
+        }
+      ],
+      "creditLedgerEntries": [
+        {
+          "id": "a0c10b85-4622-4111-9556-d33a88372a6e",
+          "creditId": "d7846b17-8b97-4185-ac79-5689597a3c15",
+          "orderReference": "ORD-000005",
+          "amount": 10055,
+          "type": "hold",
+          "creditDate": "2026-06-05T09:02:00.000Z"
+        },
+        {
+          "id": "9ad6e948-e2c9-4866-809f-0cb7b6a4eace",
+          "creditId": "d7846b17-8b97-4185-ac79-5689597a3c15",
+          "orderReference": "ORD-000005",
+          "amount": 10055,
+          "type": "consume",
+          "creditDate": "2026-06-05T09:04:00.000Z"
+        },
+        {
+          "id": "8615165b-8bfa-41ba-9dad-2184300f305d",
+          "creditId": "d7846b17-8b97-4185-ac79-5689597a3c15",
+          "orderReference": "ORD-000005",
+          "amount": 10055,
+          "type": "release",
+          "creditDate": "2026-06-06T09:00:05.000Z"
+        }
+      ],
+      "invoice": {
+        "id": "7f28af0c-4d7b-457d-bd4c-273fd6c3771b",
+        "invoiceReference": "INV-000005",
+        "invoiceDate": "2026-06-05T09:04:00.000Z",
+        "amount": 10055,
+        "discount": 0,
+        "totalAmount": 10055,
+        "status": "paid",
+        "paidAt": "2026-06-06T09:00:00.000Z",
+        "items": [
+          {
+            "productCode": "PRD-0009",
+            "units": 20,
+            "price": 379
+          },
+          {
+            "productCode": "PRD-0010",
+            "units": 15,
+            "price": 165
+          }
+        ],
+        "payment": {
+          "id": "cb3dbc81-acbb-4b93-87c7-adebb325d5ad",
+          "paymentReference": "PAY-SEED-000005",
+          "amount": 10055,
+          "valueDate": "2026-06-06T09:00:00.000Z",
+          "source": "test"
+        }
+      },
+      "billingOutbox": [
+        {
+          "id": "f37a4f94-0782-4ab4-867e-9e45715bfd80",
+          "eventId": "45a832c1-2c42-45e5-bb59-82632d452d49",
+          "eventType": "credit.approved.v1",
+          "aggregateId": "d7846b17-8b97-4185-ac79-5689597a3c15",
+          "correlationId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "causationId": "839ccae2-cfe1-4447-9cbc-e53f919eb594",
+          "payload": {
+            "orderReference": "ORD-000005",
+            "retailerCode": "AldiGb",
+            "companyCode": "UKDISTRIB",
+            "creditCode": "CR-000007",
+            "currency": "GBP",
+            "heldAmount": 10055,
+            "availableCreditAfter": 489945
+          },
+          "occurredAt": "2026-06-05T09:02:00.000Z",
+          "publishedAt": "2026-06-05T09:02:00.000Z"
+        },
+        {
+          "id": "1c8b8865-a9c5-4aa7-aced-3074c3e7595c",
+          "eventId": "a99944e7-9cae-48b8-9411-27a7d847431f",
+          "eventType": "invoice.issued.v1",
+          "aggregateId": "7f28af0c-4d7b-457d-bd4c-273fd6c3771b",
+          "correlationId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "causationId": "33e87954-5774-43ac-bc72-320d56f765cb",
+          "payload": {
+            "orderReference": "ORD-000005",
+            "invoiceReference": "INV-000005",
+            "invoiceDate": "2026-06-05T09:04:00.000Z",
+            "retailerCode": "AldiGb",
+            "companyCode": "UKDISTRIB",
+            "currency": "GBP",
+            "lines": [
+              {
+                "productCode": "PRD-0009",
+                "units": 20,
+                "unitPrice": 379
+              },
+              {
+                "productCode": "PRD-0010",
+                "units": 15,
+                "unitPrice": 165
+              }
+            ],
+            "amount": 10055,
+            "discount": 0,
+            "totalAmount": 10055
+          },
+          "occurredAt": "2026-06-05T09:04:00.000Z",
+          "publishedAt": "2026-06-05T09:04:00.000Z"
+        },
+        {
+          "id": "650f834c-79a2-4a95-97ce-911770e11de0",
+          "eventId": "de6b1750-cb7b-4456-87bf-7dbdfcd7c34a",
+          "eventType": "payment.received.v1",
+          "aggregateId": "7f28af0c-4d7b-457d-bd4c-273fd6c3771b",
+          "correlationId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "causationId": "c9ae9194-b17f-44da-911c-bf623cf56737",
+          "payload": {
+            "orderReference": "ORD-000005",
+            "invoiceReference": "INV-000005",
+            "paymentReference": "PAY-SEED-000005",
+            "currency": "GBP",
+            "amount": 10055,
+            "valueDate": "2026-06-06T09:00:00.000Z",
+            "source": "test"
+          },
+          "occurredAt": "2026-06-06T09:00:00.000Z",
+          "publishedAt": "2026-06-06T09:00:00.000Z"
+        },
+        {
+          "id": "f0ef2de1-cd13-43c1-a618-6dd4f5ca9f4b",
+          "eventId": "7e963c20-42c5-4d2b-9306-029d368979c8",
+          "eventType": "credit.released.v1",
+          "aggregateId": "d7846b17-8b97-4185-ac79-5689597a3c15",
+          "correlationId": "6baf7a6d-aeff-46af-a629-8abe050c8699",
+          "causationId": "de6b1750-cb7b-4456-87bf-7dbdfcd7c34a",
+          "payload": {
+            "orderReference": "ORD-000005",
+            "retailerCode": "AldiGb",
+            "companyCode": "UKDISTRIB",
+            "creditCode": "CR-000007",
+            "currency": "GBP",
+            "releasedAmount": 10055,
+            "availableCreditAfter": 500000,
+            "reason": "invoice_paid"
+          },
+          "occurredAt": "2026-06-06T09:00:05.000Z",
+          "publishedAt": "2026-06-06T09:00:05.000Z"
+        }
+      ],
+      "timeline": [
+        {
+          "eventId": "5a8a2ffb-9e12-446c-bbd6-c1778bead192",
+          "eventType": "order.placed.v1",
+          "occurredAt": "2026-06-05T09:00:00.000Z",
+          "summary": "Order ORD-000005 placed for AldiGb",
+          "causationId": "6141621e-a478-4a25-998b-230deaa388ee"
+        },
+        {
+          "eventId": "839ccae2-cfe1-4447-9cbc-e53f919eb594",
+          "eventType": "stock.reserved.v1",
+          "occurredAt": "2026-06-05T09:01:00.000Z",
+          "summary": "Stock reserved for 2 line(s)",
+          "causationId": "5a8a2ffb-9e12-446c-bbd6-c1778bead192"
+        },
+        {
+          "eventId": "45a832c1-2c42-45e5-bb59-82632d452d49",
+          "eventType": "credit.approved.v1",
+          "occurredAt": "2026-06-05T09:02:00.000Z",
+          "summary": "Credit hold of 100.55 GBP approved",
+          "causationId": "839ccae2-cfe1-4447-9cbc-e53f919eb594"
+        },
+        {
+          "eventId": "01d44238-1e09-4f1c-a578-8df796155111",
+          "eventType": "order.confirmed.v1",
+          "occurredAt": "2026-06-05T09:02:30.000Z",
+          "summary": "Order confirmed (ORDRSP)",
+          "causationId": "45a832c1-2c42-45e5-bb59-82632d452d49"
+        },
+        {
+          "eventId": "33e87954-5774-43ac-bc72-320d56f765cb",
+          "eventType": "order.despatched.v1",
+          "occurredAt": "2026-06-05T09:03:00.000Z",
+          "summary": "Despatch DES-000005 created",
+          "causationId": "45a832c1-2c42-45e5-bb59-82632d452d49"
+        },
+        {
+          "eventId": "a99944e7-9cae-48b8-9411-27a7d847431f",
+          "eventType": "invoice.issued.v1",
+          "occurredAt": "2026-06-05T09:04:00.000Z",
+          "summary": "Invoice INV-000005 issued",
+          "causationId": "33e87954-5774-43ac-bc72-320d56f765cb"
+        },
+        {
+          "eventId": "de6b1750-cb7b-4456-87bf-7dbdfcd7c34a",
+          "eventType": "payment.received.v1",
+          "occurredAt": "2026-06-06T09:00:00.000Z",
+          "summary": "Payment PAY-SEED-000005 received",
+          "causationId": "c9ae9194-b17f-44da-911c-bf623cf56737"
+        },
+        {
+          "eventId": "7e963c20-42c5-4d2b-9306-029d368979c8",
+          "eventType": "credit.released.v1",
+          "occurredAt": "2026-06-06T09:00:05.000Z",
+          "summary": "Credit exposure released — invoice paid",
+          "causationId": "de6b1750-cb7b-4456-87bf-7dbdfcd7c34a"
+        },
+        {
+          "eventId": "2b9bc00c-77eb-4ce7-8a64-6a270d939211",
+          "eventType": "order.completed.v1",
+          "occurredAt": "2026-06-06T09:00:10.000Z",
+          "summary": "Order ORD-000005 completed",
+          "causationId": "7e963c20-42c5-4d2b-9306-029d368979c8"
+        }
+      ]
+    },
+    {
+      "sequence": 6,
+      "orderId": "d8324836-41a0-44ab-8128-75b63039eda2",
+      "orderReference": "ORD-000006",
+      "orderDate": "2026-06-06T09:00:00.000Z",
+      "retailerCode": "CarrefourEs",
+      "companyCode": "IBERFOODS",
+      "currency": "EUR",
+      "status": "cancelled",
+      "cancellationReason": "credit_rejected",
+      "lines": [
+        {
+          "productCode": "PRD-0001",
+          "description": "Ration Pack Bundle",
+          "quantity": 1,
+          "unitPrice": 24999,
+          "lineDiscount": 0
+        }
+      ],
+      "initialAmount": 24999,
+      "initialDiscount": 0,
+      "totalAmount": 24999,
+      "updatedAt": "2026-06-06T09:03:30.000Z",
+      "ordersOutbox": [
+        {
+          "id": "0cd44f26-c8a6-4cc9-9083-6e7ffcfbbdbf",
+          "eventId": "2ad39a10-d4bb-49fb-9df2-cc99d8e0f727",
+          "eventType": "order.placed.v1",
+          "aggregateId": "d8324836-41a0-44ab-8128-75b63039eda2",
+          "correlationId": "d8324836-41a0-44ab-8128-75b63039eda2",
+          "causationId": "9f39157c-2a97-4e88-9cee-0dffaaf49a95",
+          "payload": {
+            "orderReference": "ORD-000006",
+            "retailerCode": "CarrefourEs",
+            "companyCode": "IBERFOODS",
+            "buyerGln": "5400000000010",
+            "supplierGln": "5400000000218",
+            "currency": "EUR",
+            "orderDate": "2026-06-06T09:00:00.000Z",
+            "lines": [
+              {
+                "productCode": "PRD-0001",
+                "description": "Ration Pack Bundle",
+                "quantity": 1,
+                "unitPrice": 24999,
+                "lineDiscount": 0
+              }
+            ],
+            "initialAmount": 24999,
+            "initialDiscount": 0,
+            "totalAmount": 24999,
+            "notes": "demo — compensation path (credit_rejected, .99 rule)"
+          },
+          "occurredAt": "2026-06-06T09:00:00.000Z",
+          "publishedAt": "2026-06-06T09:00:00.000Z"
+        },
+        {
+          "id": "d2ea0956-cf1f-4cf2-ab56-9bc6b6bd187f",
+          "eventId": "fa91097d-adb4-49ec-8bc2-1a4c4acc52cb",
+          "eventType": "order.cancelled.v1",
+          "aggregateId": "d8324836-41a0-44ab-8128-75b63039eda2",
+          "correlationId": "d8324836-41a0-44ab-8128-75b63039eda2",
+          "causationId": "4e201450-6f77-450b-8d0d-868bddf146bc",
+          "payload": {
+            "orderReference": "ORD-000006",
+            "retailerCode": "CarrefourEs",
+            "companyCode": "IBERFOODS",
+            "cancellationReason": "credit_rejected",
+            "cancelledAt": "2026-06-06T09:03:30.000Z",
+            "compensationSteps": [
+              {
+                "step": "stock_released",
+                "eventId": "4e201450-6f77-450b-8d0d-868bddf146bc",
+                "eventType": "stock.released.v1",
+                "occurredAt": "2026-06-06T09:03:00.000Z",
+                "summary": "1 unit(s) released back to stock"
+              }
+            ]
+          },
+          "occurredAt": "2026-06-06T09:03:30.000Z",
+          "publishedAt": "2026-06-06T09:03:30.000Z"
+        }
+      ],
+      "reservations": [
+        {
+          "id": "e6e4c762-90c3-4bed-aec1-f1d9a5f3ec76",
+          "companyCode": "IBERFOODS",
+          "retailerCode": "CarrefourEs",
+          "productCode": "PRD-0001",
+          "units": 1,
+          "status": "released",
+          "createdAt": "2026-06-06T09:01:00.000Z",
+          "updatedAt": "2026-06-06T09:03:00.000Z"
+        }
+      ],
+      "despatch": null,
+      "fulfillmentOutbox": [
+        {
+          "id": "9cb6e913-4ed4-40c4-945b-5bc57a810106",
+          "eventId": "3d395fda-0e19-4d6c-927f-c5c0e7938006",
+          "eventType": "stock.reserved.v1",
+          "aggregateId": "320069ba-26ec-4849-8f7e-7f83b4d39aa5",
+          "correlationId": "d8324836-41a0-44ab-8128-75b63039eda2",
+          "causationId": "2ad39a10-d4bb-49fb-9df2-cc99d8e0f727",
+          "payload": {
+            "orderReference": "ORD-000006",
+            "companyCode": "IBERFOODS",
+            "retailerCode": "CarrefourEs",
+            "reservations": [
+              {
+                "reservationId": "e6e4c762-90c3-4bed-aec1-f1d9a5f3ec76",
+                "productCode": "PRD-0001",
+                "units": 1
+              }
+            ]
+          },
+          "occurredAt": "2026-06-06T09:01:00.000Z",
+          "publishedAt": "2026-06-06T09:01:00.000Z"
+        },
+        {
+          "id": "eef2c470-38c4-4be7-81af-87b75eef5acf",
+          "eventId": "4e201450-6f77-450b-8d0d-868bddf146bc",
+          "eventType": "stock.released.v1",
+          "aggregateId": "320069ba-26ec-4849-8f7e-7f83b4d39aa5",
+          "correlationId": "d8324836-41a0-44ab-8128-75b63039eda2",
+          "causationId": "5cd7556e-6db2-414c-8910-2fe851c7db47",
+          "payload": {
+            "orderReference": "ORD-000006",
+            "companyCode": "IBERFOODS",
+            "retailerCode": "CarrefourEs",
+            "released": [
+              {
+                "reservationId": "e6e4c762-90c3-4bed-aec1-f1d9a5f3ec76",
+                "productCode": "PRD-0001",
+                "units": 1
+              }
+            ],
+            "reason": "credit_rejected"
+          },
+          "occurredAt": "2026-06-06T09:03:00.000Z",
+          "publishedAt": "2026-06-06T09:03:00.000Z"
+        }
+      ],
+      "creditLedgerEntries": [],
+      "invoice": null,
+      "billingOutbox": [
+        {
+          "id": "62da3d5a-9555-43a8-a005-c406ff37357b",
+          "eventId": "5cd7556e-6db2-414c-8910-2fe851c7db47",
+          "eventType": "credit.rejected.v1",
+          "aggregateId": "5c62308c-31fd-47ab-aa6f-a27cc545a36e",
+          "correlationId": "d8324836-41a0-44ab-8128-75b63039eda2",
+          "causationId": "3d395fda-0e19-4d6c-927f-c5c0e7938006",
+          "payload": {
+            "orderReference": "ORD-000006",
+            "retailerCode": "CarrefourEs",
+            "companyCode": "IBERFOODS",
+            "creditCode": "CR-000001",
+            "currency": "EUR",
+            "requestedAmount": 24999,
+            "availableCredit": 500000,
+            "reason": "simulated_cents_rule"
+          },
+          "occurredAt": "2026-06-06T09:02:00.000Z",
+          "publishedAt": "2026-06-06T09:02:00.000Z"
+        }
+      ],
+      "timeline": [
+        {
+          "eventId": "2ad39a10-d4bb-49fb-9df2-cc99d8e0f727",
+          "eventType": "order.placed.v1",
+          "occurredAt": "2026-06-06T09:00:00.000Z",
+          "summary": "Order ORD-000006 placed for CarrefourEs",
+          "causationId": "9f39157c-2a97-4e88-9cee-0dffaaf49a95"
+        },
+        {
+          "eventId": "3d395fda-0e19-4d6c-927f-c5c0e7938006",
+          "eventType": "stock.reserved.v1",
+          "occurredAt": "2026-06-06T09:01:00.000Z",
+          "summary": "Stock reserved for 1 line(s)",
+          "causationId": "2ad39a10-d4bb-49fb-9df2-cc99d8e0f727"
+        },
+        {
+          "eventId": "5cd7556e-6db2-414c-8910-2fe851c7db47",
+          "eventType": "credit.rejected.v1",
+          "occurredAt": "2026-06-06T09:02:00.000Z",
+          "summary": "Credit hold of 249.99 EUR rejected (simulated_cents_rule)",
+          "detail": {
+            "reason": "simulated_cents_rule",
+            "requestedAmount": 24999
+          },
+          "causationId": "3d395fda-0e19-4d6c-927f-c5c0e7938006"
+        },
+        {
+          "eventId": "4e201450-6f77-450b-8d0d-868bddf146bc",
+          "eventType": "stock.released.v1",
+          "occurredAt": "2026-06-06T09:03:00.000Z",
+          "summary": "1 unit(s) released back to stock (compensation)",
+          "causationId": "5cd7556e-6db2-414c-8910-2fe851c7db47"
+        },
+        {
+          "eventId": "fa91097d-adb4-49ec-8bc2-1a4c4acc52cb",
+          "eventType": "order.cancelled.v1",
+          "occurredAt": "2026-06-06T09:03:30.000Z",
+          "summary": "Order ORD-000006 cancelled (credit_rejected)",
+          "detail": {
+            "cancellationReason": "credit_rejected"
+          },
+          "causationId": "4e201450-6f77-450b-8d0d-868bddf146bc"
+        }
+      ]
+    }
+  ],
+  "vectors": {
+    "ids": [
+      [
+        "currency:USD",
+        "8a2ac568-0944-4507-872a-38acbce9724c"
+      ],
+      [
+        "currency:EUR",
+        "23ab1a2b-bce4-4b83-8304-6b5a1084990c"
+      ],
+      [
+        "order:1",
+        "1741d5aa-cfba-4205-a1c0-82e7a5cb8984"
+      ],
+      [
+        "retailer:CarrefourEs",
+        "0e47f181-c92e-416a-bff1-5c8d497768b1"
+      ],
+      [
+        "order:6:event:order.cancelled.v1",
+        "fa91097d-adb4-49ec-8bc2-1a4c4acc52cb"
+      ]
+    ],
+    "gln": [
+      [
+        1,
+        "5400000000010"
+      ],
+      [
+        2,
+        "5400000000027"
+      ],
+      [
+        7,
+        "5400000000072"
+      ],
+      [
+        21,
+        "5400000000218"
+      ],
+      [
+        42,
+        "5400000000423"
+      ]
+    ],
+    "ean": [
+      [
+        1,
+        "5901000000012"
+      ],
+      [
+        2,
+        "5901000000029"
+      ],
+      [
+        12,
+        "5901000000128"
+      ],
+      [
+        999999,
+        "5901009999997"
+      ]
+    ]
+  }
+}

@@ -1,6 +1,7 @@
-"""otc_seed application layer (placeholder)."""
+"""otc_seed application: the dataset, the target port and the use case that seeds every target."""
 
+from otc_seed.application.dataset import SeedDataset, default_dataset
+from otc_seed.application.ports import SeedTarget
+from otc_seed.application.run_seed import SeedReport, run_seed
 
-def run_seed() -> int:
-    """Run the seed job (placeholder; feature 12 fills it). Returns the exit code."""
-    return 0
+__all__ = ["SeedDataset", "SeedReport", "SeedTarget", "default_dataset", "run_seed"]
