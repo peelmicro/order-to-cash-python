@@ -48,6 +48,7 @@ You always act as the `leader` defined in `.claude/agents/leader.md`: you decomp
 - **Edit only the line you mean to change.** If you re-serialise, use `json.dumps(..., indent=2, ensure_ascii=False)`, then read `git diff` before moving on.
 - **No agent may run a git command that writes the index or working tree (`stash`, `reset`, `restore`, `clean`, `checkout`).** Use `git show HEAD:<path>` to read committed content. To undo an edit, re-edit.
 - `init.sh` cannot detect a lost transition: a wrong state can still be a valid state.
+- **Findings are fixed in the phase that detects them** (maintainer ruling, Phase 7 gate, 2026-10-05): no backlog entry deferring a fix to a later phase. Only the half of a fix that depends on code not yet built is carried, as an acceptance item on the feature that builds it, with the buildable half done now.
 - **Findings get a disposition:** fix, accept with evidence (`done` plus "ACCEPTED, NOT FIXED" and a re-open trigger), or re-open only if X. A finding rooted in `specs/shared/` becomes an `SA-n` proposal or a backlog entry, never a sentence in a review.
 - **New entries take ids from 201 upwards** and are **attached to a feature** that will have the file open, not just to a `phase` number (#8: a `phase` field is not a calendar).
 - **Audit-style work needs a stopping rule written before it starts.**
