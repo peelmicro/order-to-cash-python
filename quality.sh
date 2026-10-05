@@ -34,13 +34,17 @@ echo "SLOT (not implemented): contracts drift check is owned by feature 8 (contr
 section "6. pytest + coverage (overall gate: fail_under in pyproject.toml, >= 60%)"
 uv run pytest --cov --cov-report=term-missing:skip-covered
 
-section "6b. domain coverage (>= 80%)"
-# TODO(feature 7, shared_kernel): the >= 80% domain gate is NOT enforced yet. Every domain file is a
-# placeholder with zero statements, and `coverage report --fail-under=80` over zero statements
-# passes vacuously at 100% (measured). A gate that cannot fail is not a gate; feature 7 adds the
-# first real domain code and must wire `coverage report --include=<domain paths> --fail-under=80`
-# here and arm it. Until then this prints the number and does not gate.
-uv run coverage report --include='*/domain/*,packages/shared_kernel/*' --skip-covered | tail -n 3 || true
+section "6b. domain coverage (>= ${DOMAIN_COVERAGE_MIN:-80}%)"
+# Every service `domain` package plus packages/shared_kernel, measured from the data file the step
+# above wrote. `--fail-under` makes coverage exit 2 below the threshold and `set -e` stops the
+# script there. Armed in progress/impl_shared_kernel.md by LOWERING the measurement (only one test
+# file run, then this exact command: "total of 49 is less than fail-under=80", exit 2); a threshold
+# raised above the measured value is impossible at 100% because coverage rejects --fail-under above
+# 100. Population: the include globs must keep matching real
+# files; tests/architecture/test_money_guard.py owns the non-vacuity of the domain file list.
+# DOMAIN_COVERAGE_MIN exists only so the gate can be armed; the committed default is 80.
+uv run coverage report --include='*/domain/*,packages/shared_kernel/*' --skip-covered \
+    --fail-under="${DOMAIN_COVERAGE_MIN:-80}"
 
 section "7. web (apps/web): install, lint, test, build"
 # The pnpm version has ONE source: apps/web/package.json `packageManager`. It is run through npx

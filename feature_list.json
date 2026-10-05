@@ -141,7 +141,7 @@
       "phase": 5,
       "title": "packages/shared_kernel: Money (int minor units), Quantity, GLN (mod-10), OrderNumber, UniqueId, Entity, AggregateRoot, ISO 4217 table",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "dependencies = [] asserted by a test reading its pyproject.toml",
         "GLN check digit validated with real and invalid GLNs",
@@ -176,7 +176,8 @@
         "migration (async Alembic template) applies against the composed postgres and re-applies cleanly from empty; downgrade works",
         "PostgreSQL types per the plan: uuid, timestamptz(3), varchar states, bigint money, identity outbox.seq, json payloads",
         "orders.request_id with a plain unique index accepting many NULLs (test inserts two)",
-        "foreign keys verified against pg_constraint with a closed-set assertion; order_number_sequences seeded with ON CONFLICT DO NOTHING under a concurrent-first-caller test"
+        "foreign keys verified against pg_constraint with a closed-set assertion; order_number_sequences seeded with ON CONFLICT DO NOTHING under a concurrent-first-caller test",
+        "every quantity column's range is enforced at the write boundary: a test writes the column's max + 1 (2**31 for an integer column) and sees a domain refusal, not a driver error — shared_kernel's Quantity is unbounded by design (review_shared_kernel.md D8, routed here)"
       ],
       "note": "Inherits #8 ids 44 (money column width) and 45 (counter seed race) as acceptance criteria."
     },
@@ -293,7 +294,8 @@
         "idempotent under event redelivery; every step recorded",
         "saga_commands pending/sent/parked + sweeper, which never re-claims a row it already holds",
         "fast-path dispatch without head-of-line blocking, carrying trace context (#8 ids 80, 88-90)",
-        "reply decode guarded (#8 id 110)"
+        "reply decode guarded (#8 id 110)",
+        "#7's SO8 ported verbatim with orderReference ORD-000000 (wire pattern ^ORD-[0-9]{6,}$ admits it; the shared kernel's canonical parse refuses it): an inbound fact's orderReference is never parsed through the kernel's reference parse ahead of the correlation lookup, or a refusal is classified as unknown_order, never as a poison message (review_shared_kernel.md Q2, routed here)"
       ]
     },
     {
@@ -546,7 +548,8 @@
         "duplicate paymentReference yields one payment",
         "#7's assertions inventoried (from #8's inventory) and each mapped",
         "the causal-order check fails when it has checked too few edges (#8 id 105)",
-        "R49's API half against the real Gateway, with Billing's own database showing nothing changed"
+        "R49's API half against the real Gateway, with Billing's own database showing nothing changed",
+        "R1's API half: every monetary field of every Gateway response is an integer accompanied by an ISO 4217 code, discovered by shape not by name (port #8's MoneyFieldSweep, tests/Gateway.IntegrationTests/MoneyRepresentationHttpTests.cs) and armed with a wrong-shape currency and a non-integer amount; flips R1 from scoped to green"
       ]
     },
     {
@@ -659,6 +662,21 @@
         "seed_job keeps #8's seeded causal chain unchanged (dataset parity), and the difference between seeded and live chains is stated where the seed is documented"
       ],
       "note": "Found 2026-10-04 while reviewing the LinkedIn y Web plan (section 3 observation: in the live demo GIFs of #7 and #8 only the last timeline entry shows 'caused by'). Diagnosis: the web is not at fault — both timeline schemas carry causationId and #8's web (apps/web/src/lib/order-detail.ts:101-104) links an entry only when causationId equals another fact's eventId. R12 lets a fact's causationId name the triggering fact OR the command; facts emitted by RPC responders cite the command, which is never in the timeline. #8's own seed documents the divergence: src/Seed/Domain/Sagas/SagaFixtures.cs — 'one link shorter than a live saga's causal chain'. Disposition: decide at the phase 12 gate; not fixed in phase 3."
+    },
+    {
+      "id": 202,
+      "name": "kernel_surface_guard_residuals",
+      "phase": 8,
+      "title": "Kernel surface guard: recurse into subpackages, compare module names at runtime, treat pow/__pow__ like the truediv family",
+      "sdd": false,
+      "status": "pending",
+      "attached_to": "orders_aggregate (id 13), the next feature to add domain money code and the likely home of a MoneyText formatter",
+      "acceptance": [
+        "the kernel module-name allowlist population recurses into subpackages (armed: a new otc_shared_kernel/text/__init__.py with an int-only major-unit formatter fails it)",
+        "the module allowlist is also compared at runtime against vars(module) (armed: a tuple-unpacked, walrus, for-target and globals()[...] module-level name each fail it)",
+        "the AST money guard treats pow / __pow__ / math.pow / operator.pow as an attribute, like the truediv family (armed: operator.pow(10, -2) in a service domain and in the kernel)"
+      ],
+      "note": "Round 2 of review_shared_kernel.md: R2-1, R2-2 (minor) and R2-3 (nit), ACCEPTED, NOT FIXED in shared_kernel because each needs a new kernel subpackage or a deliberately unusual binding form, and Money refuses any non-int amount at construction. Re-open trigger: any feature that adds a module or subpackage to otc_shared_kernel, or money code to a domain, before this entry closes."
     }
   ]
 }

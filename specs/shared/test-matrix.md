@@ -69,7 +69,7 @@ Counted from the Status column as it actually stands, one row at a time, under t
 
 | Feature | Requirements | Rows | Green | Scoped | Not yet green |
 |---|---|---:|---:|---:|---:|
-| 1. `orders_aggregate` | R1 – R10 | 10 | 0 | 0 | 10 |
+| 1. `orders_aggregate` | R1 – R10 | 10 | 3 | 1 | 6 |
 | 2. `outbox_and_idempotency` | R11 – R18 | 8 | 0 | 0 | 8 |
 | 3. `order_saga_orchestrator` | R19 – R29 | 11 | 0 | 0 | 11 |
 | 4. `fulfillment_stock` | R30 – R36, R61 | 8 | 0 | 0 | 8 |
@@ -78,7 +78,9 @@ Counted from the Status column as it actually stands, one row at a time, under t
 | 7. `projector_read_model` | R50 – R55 | 6 | 0 | 0 | 6 |
 | 8. `observability_reliability` | R56 – R60, R62 | 6 | 0 | 0 | 6 |
 | 8.1 gateway edge protection (per-assessment gateway feature) | R63 | 1 | 0 | 0 | 1 |
-| **Total** | **R1 – R63** | **63** | **0** | **0** | **63** |
+| **Total** | **R1 – R63** | **63** | **3** | **1** | **59** |
+
+**Scoped rows, and what closing them would take.** One row is **scoped**, and it is **ratified**: `R1` (`orders_aggregate`). Its domain half is green in `packages/shared_kernel/tests/`; its unproven leg is the money representation in every API response, which cannot be tested before a Gateway response exists. The deferral was accepted by the leader in the phase 5 session (2026-10-05, `progress/history.md` › `shared_kernel`), and its closer is feature 31 `api_tests`, whose acceptance list names R1's API half. No row is scoped and unratified.
 
 ---
 
@@ -86,10 +88,10 @@ Counted from the Status column as it actually stands, one row at a time, under t
 
 | Id | Requirement (short) | Level | Test file › case | Status |
 |---|---|---|---|---|
-| **R1** | Every monetary amount is integer minor units plus an ISO 4217 code, everywhere | domain unit + API | `shared-kernel/domain/money.spec` › *represents 1 242,50 € as 124250 minor units and offers no decimal representation*<br>`api/money-representation.spec` › *every monetary field of every response is an integer accompanied by a currency code* | TODO |
-| **R2** | Cross-currency arithmetic is a domain error, never an implicit conversion | domain unit | `shared-kernel/domain/money.spec` › *raises a domain error when EUR and GBP amounts are added, subtracted or compared* | TODO |
-| **R3** | A quantity must be a strictly positive integer | domain unit | `shared-kernel/domain/quantity.spec` › *refuses zero, negative and fractional quantities and creates no value object* | TODO |
-| **R4** | A GLN is 13 digits with a valid GS1 mod-10 check digit | domain unit | `shared-kernel/domain/gln.spec` › *accepts a valid GLN and refuses wrong length, non-digits and a bad check digit* | TODO |
+| **R1** | Every monetary amount is integer minor units plus an ISO 4217 code, everywhere | domain unit + API | `shared-kernel/domain/money.spec` › *represents 1 242,50 € as 124250 minor units and offers no decimal representation*<br>`api/money-representation.spec` › *every monetary field of every response is an integer accompanied by a currency code* | SCOPED (ratified) — domain half green: `packages/shared_kernel/tests/test_money.py` › `test_r1_money_represents_1242_50_eur_as_124250_minor_units_no_decimal_representation`, `test_r1_money_defines_exactly_the_allowlisted_members_of_every_kind`, `test_r1_every_text_form_of_money_shows_minor_units_never_a_major_unit_decimal`, `test_r1_money_offers_no_division_conversion_or_rounding_dunder`, `test_r1_money_has_no_float_decimal_or_complex_in_any_signature`, `test_r1_money_refuses_an_amount_that_is_not_a_plain_int`, `test_r1_money_refuses_an_amount_beyond_the_bigint_column`; and `packages/shared_kernel/tests/test_mypy_rejects_float.py` › `test_mypy_strict_rejects_a_float_or_a_bare_int_in_money_arithmetic`. Unproven leg, in the requirement's own words: "in every fact payload, in the read model and in every API response" (no payload, read model or response exists yet). Closing it takes the black-box API test `api/money-representation.spec` run against the Gateway; the named closer is feature 31 `api_tests` (phase 18), whose acceptance list names R1's API half (added 2026-10-05). Ratification: accepted by the leader in the phase 5 session (2026-10-05), recorded in `progress/history.md` › `shared_kernel` — the leg cannot be written before a Gateway response exists; #8 ratified the same split in its phase 5 and then found its named closer had shipped without naming the row (its feature 72), which is why the closer's acceptance now carries it. |
+| **R2** | Cross-currency arithmetic is a domain error, never an implicit conversion | domain unit | `shared-kernel/domain/money.spec` › *raises a domain error when EUR and GBP amounts are added, subtracted or compared* | DONE — `packages/shared_kernel/tests/test_money.py` › `test_r2_money_raises_a_domain_error_when_eur_and_gbp_are_added_subtracted_or_compared`, `test_r2_each_ordering_operator_raises_across_currencies`, `test_r2_equality_across_currencies_is_false_not_an_error`, `test_r2_a_mismatch_at_either_operand_position_is_refused` |
+| **R3** | A quantity must be a strictly positive integer | domain unit | `shared-kernel/domain/quantity.spec` › *refuses zero, negative and fractional quantities and creates no value object* | DONE — `packages/shared_kernel/tests/test_quantity.py` › `test_r3_quantity_refuses_zero_negative_fractional_bool_and_non_int_and_creates_nothing`, `test_r3_quantity_accepts_a_strictly_positive_int`, `test_r3_quantity_has_no_float_accepting_entry_point` |
+| **R4** | A GLN is 13 digits with a valid GS1 mod-10 check digit | domain unit | `shared-kernel/domain/gln.spec` › *accepts a valid GLN and refuses wrong length, non-digits and a bad check digit* | DONE — `packages/shared_kernel/tests/test_gln.py` › `test_r4_gln_accepts_a_real_valid_gln`, `test_r4_gln_refuses_wrong_length_non_digits_and_a_bad_check_digit`, `test_r4_gln_refuses_unicode_digits_whitespace_and_signs`, `test_r4_every_single_digit_mutation_of_a_valid_gln_is_rejected`, `test_r4_the_real_vectors_discriminate_the_weights` |
 | **R5** | An order always has at least one line (**O1**) | domain unit | `orders/domain/order.spec` › *refuses to create an order with no lines and to remove the last remaining line* | TODO |
 | **R6** | Totals are recomputed on every line mutation and may not be negative (**O3**) | domain unit | `orders/domain/order-totals.spec` › *recomputes initialAmount, initialDiscount and totalAmount after each mutation and rejects a negative total* | TODO |
 | **R7** | Lines are frozen from `confirmed` onwards (**O4**) | domain unit | `orders/domain/order.spec` › *refuses to add, remove or modify a line once the order is confirmed and leaves every field unchanged* | TODO |

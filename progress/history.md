@@ -246,3 +246,51 @@ The seven files of `specs/shared/` and the four `n8n/workflows/*.json` copied fr
 **Saved:** almost the whole of #8's ~3h. The defect #8 paid a rejection round for (nested scope) and the two #8 found one feature later (kernel not scanned, `float` missed) were written into this feature's brief as acceptance criteria, so they cost an arm each instead of a review round. The Phase 1 Analog probe had already found every scaffolder trap (nested `.git`, build-script gate, tsconfig paths), so `apps/web` took minutes.
 
 **Did not save:** the instrument is new, so the scope question is new. #7's glob and #8's namespace predicate both matched *where the code is*; import-linter matches *what is imported, by module name*, and a distribution's module names are not its package name. No inherited finding could name `bson`. What found it was asking the #8 reviewer's question again in the new instrument's terms — the finding transferred as a *probe*, not as a rule.
+
+## shared_kernel (id 7, phase 5) — 2026-10-05
+
+**Effort:** 1 session, ~0.65h wall-clock, from the leader's `date` at each transition: dispatched 05:45, implementation to 05:57, review round 1 written 06:11 (**REJECTED**: 1 major, 5 minor, 2 nits), fix round finished 06:16, review round 2 approved 06:24 (**APPROVED**). (The reviewer first estimated ~0.8h from file timestamps; corrected by the leader to the measured clock.) Process: **full** (money domain). The review rounds took about two-thirds of the wall-clock; the domain code took the rest.
+**#7 baseline:** 1 session, ~1.5h; approved first pass, zero defects.
+**#8 baseline:** 1 session, ~1.25h; one reopen and one rejection (six defects), every defect in a guard.
+**Spec:** n/a (`sdd: false`). The contract is feature 7's acceptance array, plus R1–R4, `domain-model.md` §2 and `CLAUDE.md`.
+**Tests:** `./quality.sh` exit 0, 390 pytest passed (was 75 after feature 6), mypy clean on 82 files, 10 import-linter contracts kept. Coverage: domain and kernel 100% over 267 statements and 54 branches, overall 98.04%. The 6b ≥80% domain gate is wired and armed in both include halves (a service domain and the kernel). Arming tables: `progress/impl_shared_kernel.md` (implementer) and `progress/review_shared_kernel.md` (an independent re-arm: 64 runs in round 1, 20 in round 2, and 10 + 5 premise probes).
+**Test-matrix flips:**
+- R2, R3 and R4 → DONE.
+- R1 → **SCOPED (ratified)**. Ratification record: the R1 split (domain half green; the API half, money in every Gateway response, is deferred) **was accepted by the leader in the phase 5 session, 2026-10-05**. That is not the row's author, so it meets matrix rule 3(b). The closer is feature 31 `api_tests`, whose acceptance names R1's API half.
+- Summary counts 3 / 1 / 59.
+
+**Inherited #8 findings:**
+- **Guards never scanned the kernel** (#8 `shared_kernel` reopen) → **avoided**. The AST guard, the import allowlist and import-linter all cover `otc_shared_kernel`, and each is armed there.
+- **#8 `shared_kernel` D1** (the float/double surface guarded by one word) → **recurred, in a new form**, and was caught by the reviewer in round 1. The member guard allowlisted *public* names and deny-listed dunders, so `__format__`/`__repr__` printing `1242.50 EUR` and a private `_major` property passed all 66 Money tests.
+  - Fixed with three independent layers: a literal `vars(Money)` allowlist of every kind, an AST class-body allowlist that also sees `if TYPE_CHECKING:`, and a behaviour test over every text form.
+  - Exactly the probe #8's closing note asked for ("which member kinds does it inspect … dunder methods? … arm one of each"). The note transferred as a probe for the reviewer, not as a property of the first draft.
+- **D5** (sibling references not built) → **avoided**. `OrderNumber`, `DespatchReference`, `InvoiceReference` and `CreditLineReference` share one generic shape.
+- **D6** (stale build after a restore) → **avoided**. Every arm cleared `__pycache__` and `.mypy_cache` and ran with `-B`, and every restore was `cmp`-checked. One near miss: the implementer's fix-round harness crashed with a mutant planted, the mutant was removed by hand, and the leader and reviewer then `cmp`-confirmed all seven kernel sources against the reviewer's backups.
+- **D7** (exemption keyed too loosely) → **avoided**, because no float-accepting entry point and no exemption exist.
+- **`0000000000000` GLN as the only evidence** → **avoided**. Seven real vectors are checked by an independent left-to-right oracle, with a swapped-weights discrimination test and #7's exhaustive single-digit sweep (gcd(3,10)=1).
+
+**What was built:** `packages/shared_kernel` (`dependencies = []`) containing:
+- `Money`: `int` minor units, bounded to int64 at construction (#8 `long` + `checked`, #7 `isSafeInteger`); `type(...) is int` refuses `bool` and integral floats; ordering refuses across currencies while `==` returns False; no division or conversion surface.
+- `Quantity`: a strictly positive `int`, with no float entry point.
+- `GLN`: ASCII digits only.
+- The four business references: canonical, growing past six digits.
+- `UniqueId`: v4 generation; parse accepts any non-nil UUID, as #8 does.
+- `Entity` (type + id equality), `AggregateRoot` (pull/clear), `DomainError`, plus eight named errors.
+- The SA-5 ISO 4217 exponent table: 26 entries, identical to #7's, #8's and #8's JSON, with `apps/web/src/lib/currency-exponents.json` and a two-way parity test.
+
+The new guards are `test_kernel_surface.py` and the AST money guard extended with `fractions`, the truediv family and `**`/`pow`.
+
+**Deviations, all disclosed:**
+- **Canonical references** refuse `ORD-0000001` and `ORD-000000`. #8's regex and the wire pattern `^ORD-[0-9]{6,}$` admit them, and #7's SO8 test publishes `ORD-000000`. Routed to feature 16's acceptance.
+- **`Quantity` is unbounded**; the write-boundary range check is routed to feature 9's acceptance.
+- **Domain error codes** `unique_id.invalid` (#8: `unique_id.empty`) and three new reference codes. None of these codes appears in `specs/shared/`.
+
+**Rejections:** one (round 1). #8's review standard would have caught it: it is #8's D1 class, and #8's closing note names the exact probe. #7's would not have, because #7 approved its kernel first pass with 4/4 probes and never asked about member kinds.
+
+**Open, accepted, not fixed** (`review_shared_kernel.md` Round 2, R2-1 to R2-3): the kernel-surface population is not recursive (a subpackage escapes); the module allowlist misses tuple, walrus, `for` and `globals()` bindings; and the pow family written as an attribute escapes the AST guard (backstop: the `Money` construction type check). A backlog entry is proposed, attached to feature 13 `orders_aggregate`, for the leader to file.
+
+**What the reuse saved — and what it did not:**
+
+**Saved:** the domain code, again. It was correct on the first pass, and no reviewer mutant against it survived in either round. Copying `specs/shared/` and #8's exponent table made it transcription. #8's six findings were written into the brief as acceptance criteria, and five of them cost an arm each instead of a review round.
+
+**Did not save:** about 0.8h against #8's ~1.25h and #7's ~1.5h is faster, but the shape is #8's: the only rejection was a guard that inspected fewer member kinds than the invariant it guards. Python's version of the gap was new: dataclass-generated dunders (`__repr__`) cannot be guarded by name at all, so the fix needed a behaviour test beside the allowlist. Round 2 then found that each new instrument brought its own unstated premise (non-recursive population, binding forms), which is CLAUDE.md's "changing an instrument swaps its premises", observed again.
