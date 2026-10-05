@@ -66,7 +66,7 @@ Any amendment raised here will be `SA-6` onwards, applied to #7, #8 and #9 toget
 | uv | **0.12.22** | Installs the interpreter too: `uv python install 3.14` |
 | Python | **3.14** (resolved to 3.14.8) | Pinned in `.python-version` |
 | Node.js | **24.19.0** (LTS) | Pinned in `.nvmrc` — `nvm use`. **Web app only**; the backend has no Node dependency |
-| pnpm | **12.8.1** | Used only inside `apps/web` |
+| pnpm | **12.8.1** | Used only inside `apps/web`, pinned by its `packageManager`; `quality.sh` runs it as `npx pnpm@12.8.1`, so a different global pnpm does not matter |
 | Docker | 29.x + Compose | |
 
 ## Repository layout
@@ -82,12 +82,25 @@ docs/PROCESS.md      how this project is built — the process guide
 docker-compose.infra.yml   the infrastructure stack (15 services, compose project `otcpy`)
 infra/               PostgreSQL bootstrap, Kafka topic script, OTel Collector, Prometheus, Grafana, n8n import
 .env.example         every variable the compose file reads, with dev defaults
-                     — from phase 5: pyproject.toml (uv workspace), packages/, services/, apps/web/
+pyproject.toml, uv.lock   the uv workspace: dev tools, ruff, mypy --strict, pytest, coverage, import-linter contracts
+packages/            shared_kernel (Money, GLN, …, zero dependencies), contracts (generated wire models), cqrs (placeholder)
+services/            gateway, orders, fulfillment, billing, notifications, projector, seed — each domain/application/infrastructure/presentation
+tests/               architecture guards; fixtures/golden_envelopes/ (the wire-parity oracle, copied from #8)
+apps/web/            the Analog (Angular 22) app — scaffold only until phase 16
+scripts/             generate_contracts.py (models from asyncapi.yaml/openapi.yaml, --check for drift), git hooks
+quality.sh           the single quality gate
 ```
 
 ## Running what exists so far
 
-The infrastructure runs today; the services arrive from phase 8.
+The quality gate runs today — format, lint, `mypy --strict`, import-linter, the contracts drift check, pytest with coverage gates (≥60% overall, ≥80% domain) and the web app's install, Vitest and build:
+
+```bash
+uv sync
+./quality.sh            # exit 0 = every gate passed; otherwise the first failing step's exit code
+```
+
+The infrastructure runs too; the services arrive from phase 8.
 
 ```bash
 cp .env.example .env
@@ -119,7 +132,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 2 | Harness layer, copied from #8 and re-pointed | ✅ 43-feature backlog with #8's review findings as acceptance criteria; `init.sh` verified to exit 1 on 16 break cases; copy cost measured per file |
 | 3 | Shared specification, copied verbatim from #8 | ✅ six of seven files byte-identical to #8's **and** #7's (`cmp`-proven); `test-matrix.md` reset by the `SA-1` recipe, columns 1–4 identical on all 63 rows; zero stack leaks |
 | 4 | Infrastructure compose + Kafka topics & NATS subjects | ✅ PostgreSQL 18.6 replaces MS-SQL; healthy from empty volumes in 39–44 s; the database healthcheck proven unable to pass during bootstrap; n8n isolated in its own database by permissions; 6 Kafka topics and 15 NATS subjects verified against the spec |
-| 5 | uv workspace scaffold, shared kernel, contracts, architecture contracts, web scaffold | ⬜ |
+| 5 | uv workspace scaffold, shared kernel, contracts, architecture contracts, web scaffold | ✅ seven services in four layers under 10 import-linter contracts plus an import allowlist for every domain; an AST guard against `float`, `/`, `decimal` and `fractions` in domain code; `Money` in integer minor units with no major-unit surface; wire models generated from the spec with a drift check, proven against #8's 12 golden envelopes (envelope byte-exact, payload semantically equal); the Analog web app building under pnpm 12; every guard seen failing before it was trusted |
 | 6 | SQLAlchemy models + Alembic migrations for the four write databases | ⬜ |
 | 7 | Deterministic seed job | ⬜ |
 | 8 | Orders service + saga orchestrator | ⬜ |

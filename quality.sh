@@ -19,17 +19,19 @@ uv run ruff format --check
 section "2. ruff check"
 uv run ruff check
 
-section "3. mypy --strict (packages, services, tests)"
+section "3. mypy --strict (packages, services, tests, scripts)"
 uv run mypy
 
 section "4. import-linter (forbidden, layers, independence contracts)"
 uv run lint-imports
 
-section "5. contracts drift check"
-# SLOT: feature 8 (contracts_package) fills this with `uv run python scripts/generate_contracts.py --check`.
-# Nothing generates contracts yet, so there is nothing to drift; do NOT replace this with a no-op that
-# prints "ok".
-echo "SLOT (not implemented): contracts drift check is owned by feature 8 (contracts_package)"
+section "5. contracts drift check (generated models == a fresh generation from specs/shared/)"
+# Regenerates asyncapi.py, openapi.py and nullable.py in memory with the pinned
+# datamodel-code-generator and fails, naming the file, when a committed one differs. The header of
+# each file carries the first 16 hex digits of its spec's SHA-256 (a 64-bit prefix), so ANY spec edit fails here until regenerated.
+# Armed in progress/impl_contracts_package.md (a hand edit of a generated file; a property added to
+# specs/shared/asyncapi.yaml with no regeneration).
+uv run python scripts/generate_contracts.py --check
 
 section "6. pytest + coverage (overall gate: fail_under in pyproject.toml, >= 60%)"
 uv run pytest --cov --cov-report=term-missing:skip-covered

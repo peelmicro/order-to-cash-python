@@ -47,6 +47,8 @@ dev = [
     "mypy==2.4.0",
     "import-linter==2.15",
     "datamodel-code-generator==0.83.0",
+    "pyyaml==6.0.3",
+    "types-pyyaml==6.0.12.20260906",
     "asyncpg-stubs==0.31.3",
 ]
 
@@ -84,7 +86,7 @@ mypy_path = [
 ]
 explicit_package_bases = true
 namespace_packages = true
-files = ["packages", "services", "tests"]
+files = ["packages", "services", "tests", "scripts"]
 # NO global ignore_missing_imports. The ONLY override is the one library that ships no stubs.
 
 [[tool.mypy.overrides]]
@@ -112,6 +114,11 @@ filterwarnings = [
     # once a testcontainers release stops emitting it; tests/architecture/test_warning_policy.py
     # proves the filter is effective (it fails with the line removed).
     "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers",
+    # Starlette's own deprecations subclass UserWarning, not DeprecationWarning (starlette 1.7.0,
+    # starlette/exceptions.py:36), so the line above does not see them. Measured in phase 5:
+    # importing fastapi.testclient warned "Using `httpx` with `starlette.testclient` is deprecated"
+    # and the run stayed green. In-process tests use httpx.ASGITransport, as the health tests do.
+    "error::starlette.exceptions.StarletteDeprecationWarning",
     "error::pytest.PytestUnraisableExceptionWarning",
 ]
 

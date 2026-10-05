@@ -294,3 +294,93 @@ The new guards are `test_kernel_surface.py` and the AST money guard extended wit
 **Saved:** the domain code, again. It was correct on the first pass, and no reviewer mutant against it survived in either round. Copying `specs/shared/` and #8's exponent table made it transcription. #8's six findings were written into the brief as acceptance criteria, and five of them cost an arm each instead of a review round.
 
 **Did not save:** about 0.8h against #8's ~1.25h and #7's ~1.5h is faster, but the shape is #8's: the only rejection was a guard that inspected fewer member kinds than the invariant it guards. Python's version of the gap was new: dataclass-generated dunders (`__repr__`) cannot be guarded by name at all, so the fix needed a behaviour test beside the allowlist. Round 2 then found that each new instrument brought its own unstated premise (non-recursive population, binding forms), which is CLAUDE.md's "changing an instrument swaps its premises", observed again.
+
+## contracts_package (id 8, phase 5) — 2026-10-05
+
+**Effort:** 1 session, ~0.8h wall-clock (06:24 → 07:13), from the leader's `date` at each transition and the reviewer's own `date`:
+
+| Step | Time | Outcome |
+|---|---|---|
+| Dispatched | 06:24 | |
+| Implementation | to 06:43 | |
+| Review round 1 | 06:44–06:54 | **REJECTED**: 2 major, 2 minor, 3 nits |
+| Fix round | 06:56–07:07 | |
+| Review round 2 | 07:07–07:13 | **APPROVED**; 2 minor residuals and 2 nits accepted |
+
+Review round 2 started on the fix round's finished files before the leader's 07:07 mark. Process: **full** (wire contract). The review rounds and the fix took about 0.5h of the 0.8h; generation and the golden parity work took the rest.
+**#7 baseline:** 1 session, ~2.5h: implementation ~2h, including two generator surprises; approved first pass; 22 tests.
+**#8 baseline:** 1 session, ~2.7h: ~1.9h of oracle capture and gate work, ~0.25h implementation, ~0.5h review; approved first pass; 21 tests; four advisories.
+**Spec:** n/a (`sdd: false`). The contract is feature 8's five-item `acceptance` array, `asyncapi.yaml`, `openapi.yaml` and `CLAUDE.md`'s "JSON wire shape" bullet. No `R<n>` is claimed. R11 stays with `outbox_and_idempotency`, as in #8. `test-matrix.md` is untouched by this feature.
+**Tests:** `./quality.sh` exit 0 end to end (the reviewer's round-2 run):
+- 579 pytest passed (contracts 189);
+- mypy clean on 97 files (`scripts/` now included);
+- 10 import-linter contracts kept;
+- drift check green;
+- coverage: overall 99%, domain 100%;
+- web green.
+
+Arming tables: `progress/impl_contracts_package.md` (implementer, 39 arms + 15 in the fix round) and `progress/review_contracts_package.md` (an independent re-arm: 30 runs in round 1; 15 arms and 18 premise probes in round 2).
+
+**What was built:**
+- `scripts/generate_contracts.py` extracts `components.schemas` into JSON Schema:
+  - it flattens the 14 `allOf` events;
+  - it turns `int64`/`int32` into explicit bounds;
+  - it refuses unknown formats.
+  
+  It then runs the pinned `datamodel-code-generator==0.83.0` (`--no-alias`, `--snake-case-field`, base class `WireModel`), formats the output through the repository's ruff configuration, and writes `generated/{asyncapi,openapi,nullable}.py`. Each header carries the first 16 hex digits of the spec's SHA-256. `--check` (`quality.sh` section 5) names any drifted or missing file.
+- `otc_contracts.wire` holds the one configuration:
+  - one `to_camel` alias generator;
+  - `strict=True` and `frozen=True`;
+  - `None` → `null` only for the 9 spec-nullable fields (MRO-aware);
+  - `.mmmZ` instants in JSON mode;
+  - `to_wire_json`, which re-validates and writes compact JSON with raw non-ASCII.
+- `otc_contracts.facts` is the 14-entry `eventType` registry.
+- The 12 #8 goldens are under `tests/fixtures/golden_envelopes/`, `cmp`-identical to #8's and SHA-pinned.
+- A type-strict JSON comparer (`strict_json.py`).
+
+**Leader rulings:**
+- **`None` handling follows #7, not #8.** Explicit `null` for the 9 spec-nullable fields, all RPC/REST; the spec says `paidAt` is "null while `issued`". #8 omitted every null.
+- **`pyyaml` and `types-pyyaml` go in the root dev group.**
+
+Both were endorsed by the reviewer.
+
+**Inherited #7 and #8 findings:**
+- **#7 root-interface `{}` regex bug** → **avoided**. No text parsing of generated code beyond two header lines that sit behind the drift check.
+- **#7 `title` beats the key for naming** → **avoided**. Titles are stripped; class name = schema key is asserted for every named schema.
+- **#8 "check the serialiser's default instant format before writing a single payload type"** → **recurred**, caught in review round 1 (D2). The explicit formatter covered `to_wire_json` only. `model_dump_json`, `model_dump(mode="json")` and FastAPI's `response_model` wrote Pydantic's `.442000Z`. It is fixed in the fix round for direct fields. List-held and `Any`-dict instants remain as accepted residual R2-2.
+- **#8 thirteen vs fourteen facts** → **avoided**. 14 are read from the spec at test time, with a non-vacuity assertion.
+- **#8 "a spec-side probe, not a code-side one"** → **avoided**. Both the implementer and the reviewer edited `asyncapi.yaml` itself and restored it with `cp` + `cmp`.
+- **#8 A1 (envelope byte-exactness asserted token-wise)** → **avoided**. Serializer bytes are compared with golden bytes up to `"payload"`.
+- **#8 A2 (an `R<n>` cited with no validation)** → **avoided**. A `grep` finds no `R<n>` in the package.
+- **#8 A4 (nothing guards Contracts' dependencies)** → **avoided**. There is an import allowlist and a declared dependency list of exactly `pydantic==2.13.5`.
+- **#8 "`stock.rejected.v1` has no golden"** → **recurred, inherent and disclosed**. `order.saga_failed.v1` also has no golden. Both are listed in a test. Their round trips now use the type-strict comparer (D4).
+
+**Rejections:** one (round 1).
+- **D1:** the writer trusted mutable models. Assignment, `model_copy(update=)` and `model_construct` put `true` and `89.34` into money fields.
+- **D2:** the formatter was not the only path to the wire.
+- **D3:** the alias-agreement guard sampled named schemas only. An inline `warehouseGLN` survived.
+- **D4:** the no-golden round trips used Python `==`.
+
+**Would the earlier review standards have caught it?**
+- **#8's:** D2, yes, because #8's closing note names the exact check. D1 is #8-specific in reverse: C# records and `long` supplied immutability and integer typing for free, so #8 never had to ask.
+- **#7's:** no. #7 approved first pass with its own generator and had no golden oracle.
+
+**Open, accepted, not fixed** (`review_contracts_package.md` Round 2, R2-1 to R2-4):
+- **R2-1:** write-time re-validation lives only in `to_wire_json`, so `model_dump_json`, `pydantic_core.to_json` and FastAPI still write a `model_copy(update=)`/`model_construct` instance unvalidated.
+- **R2-2:** the JSON-mode instant formatter covers direct `datetime` fields only, not list-held or `Any`-dict instants. There are none in the spec today; the generic `Envelope.payload` is the likely first trigger.
+- **R2-3:** a stale `wire.py` docstring.
+- **R2-4:** dead lax `RootModel`s.
+
+A backlog entry (proposed id 203) is attached to feature 14 `outbox_and_idempotency` for the leader to file.
+
+**What the reuse saved, and what it did not:**
+
+**Saved:**
+- **The oracle.** #8 spent ~1.9h capturing the 12 goldens and ruling on payload key order; #9 copied both and spent minutes.
+- **The types,** again near-free, this time generated as #7 did.
+- **#7's generator surprises** (title naming, the regex) did not recur.
+
+**Did not save:** the same thing it did not save in #8 and in `shared_kernel`, which is proving the new stack satisfies the rule.
+- **Python-specific surfaces.** Both majors were surfaces .NET never had. A Pydantic model is mutable and has a second, idiomatic serializer (`model_dump_json`, used by FastAPI) that ignores a hand-written writer. #8's immutable records, `long` and one `JsonSerializerOptions` applied app-wide closed both by construction.
+- **Round 2 showed the same pattern again.** Each fix moved the property into a new instrument with a new unstated premise: re-validation in the writer while the serializer became a writer too; a formatter that sees fields but not containers.
+- **Overall:** ~0.8h against #7's ~2.5h and #8's ~2.7h. Faster on the clock because the oracle was inherited. Not faster at verification: half the time went to two review rounds over guards.
