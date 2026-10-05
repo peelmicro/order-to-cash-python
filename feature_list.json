@@ -171,7 +171,7 @@
       "phase": 6,
       "title": "SQLAlchemy models + Alembic migrations for otc_orders (incl. outbox, processed_events, saga_commands, saga_ignored_facts, order_number_sequences)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "migration (async Alembic template) applies against the composed postgres and re-applies cleanly from empty; downgrade works",
         "PostgreSQL types per the plan: uuid, timestamptz(3), varchar states, bigint money, identity outbox.seq, json payloads",
@@ -187,7 +187,7 @@
       "phase": 6,
       "title": "SQLAlchemy models + Alembic migrations for otc_fulfillment (stock, reservations, despatches, despatch_items + reliability tables)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "migrations run from empty",
         "round-trip integration test per table",
@@ -200,7 +200,7 @@
       "phase": 6,
       "title": "SQLAlchemy models + Alembic migrations for otc_billing, plus the processed_events-only otc_notifications",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "both migration histories apply and re-apply cleanly",
         "outbox/processed_events parity across all four databases read from information_schema and pg_indexes, never from SQLAlchemy metadata",
@@ -692,6 +692,108 @@
         "wire.py's module docstring matches the code; the dead generated RootModels (Quantity, ProductCode) are removed or documented"
       ],
       "note": "Round 2 of review_contracts_package.md: R2-1, R2-2 (minor), R2-3, R2-4 (nit), ACCEPTED, NOT FIXED in contracts_package: each route needs an API that deliberately skips validation (plain assignment is refused, frozen=True; to_wire_json re-validates), and no spec field holds a list of instants today. Re-open triggers as given in the review's R2-1 and R2-2: any code that serialises a WireModel by a path other than to_wire_json, or a spec change adding a list-held or dict-held instant, before this entry closes."
+    },
+    {
+      "id": 204,
+      "name": "orders_write_boundary_residuals",
+      "phase": 8,
+      "title": "Orders write boundary: every write into a guarded integer column is range-checked, the guard passes SQL expressions through, and the database password has no default",
+      "sdd": false,
+      "status": "pending",
+      "attached_to": "orders_acceptance (id 15); feature 16 order_saga_orchestrator inherits item (c) as the first writer of saga_commands.attempts",
+      "acceptance": [
+        "every write into a guarded integer column either goes through the ORM unit of work or calls ensure_in_range before execution — the population is `grep -n \"insert(\\|update(\\|text(\\|bulk_\" services/orders/src`, one classification per hit (sequences.py's raw ADVANCE_ORDER_SEQUENCE included)",
+        "range_guards.py's docstring and the residual pin name the ORM-enabled DML paths (insert(Model) with values or a list of dicts, update(Model), bulk_*_mappings), not 'Core', and cite the real test name test_every_integer_column_of_the_live_database_is_guarded",
+        "a ClauseElement assigned to a guarded attribute (e.g. SagaCommand.attempts + 1) passes through the guard; unit test, armed by reverting",
+        "OrdersDatabaseSettings.password has no default and boot fails when POSTGRES_APP_PASSWORD is unset (#8 review_db_orders D6, recurred in #9 F5)",
+        "(e) OrdersDatabaseSettings drops populate_by_name=True; a test sets bare USER, HOST, PORT and PASSWORD and asserts none reaches the URL (fulfillment's test_the_password_from_the_environment_builds_the_asyncpg_url is the model), armed by restoring the flag"
+      ],
+      "note": "Proposed in progress/review_db_orders.md (round 1, APPROVED) and filed by the leader 2026-10-05. F1, F2, F5. ACCEPTED, NOT FIXED in db_orders: acceptance item 5 is met on the ORM unit-of-work path. Re-open trigger: any writer in services/orders/src that uses an ORM-enabled DML statement or raw SQL on a guarded column before this entry closes. UPDATE 2026-10-05: items (b) and (c) were closed by feature 10 db_fulfillment in both range_guards.py copies (verified in progress/review_db_fulfillment.md Q2); (a), (d) and (e) remain for feature 15. Item (e) is review_db_fulfillment.md A1: the bare USER, HOST, PORT and PASSWORD variables leak into the orders URL (HOST even with the repo's .env)."
+    },
+    {
+      "id": 205,
+      "name": "instant_millisecond_agreement",
+      "phase": 8,
+      "title": "Instants are truncated to whole milliseconds before they are persisted or enveloped, so timestamptz(3)'s rounding and the wire formatter's truncation can never disagree",
+      "sdd": false,
+      "status": "pending",
+      "attached_to": "outbox_and_idempotency (id 14)",
+      "acceptance": [
+        "a test writes a .123987 instant through the outbox path and asserts the envelope's occurredAt and the stored occurred_at agree; armed by removing the truncation"
+      ],
+      "note": "Proposed in progress/review_db_orders.md (round 1, APPROVED) and filed by the leader 2026-10-05. F6 (advisory): timestamptz(3) rounds (.123987 -> .124, asserted in test_orders_json_and_timestamps.py) while otc_contracts.wire.format_instant truncates (.123). No owner before this entry."
+    },
+    {
+      "id": 206,
+      "name": "schema_instrument_widening",
+      "phase": 6,
+      "title": "Closed-set FK and index instruments also compare ON UPDATE action, deferrability and index access method",
+      "sdd": false,
+      "status": "done",
+      "attached_to": "db_fulfillment (id 10), which copies the instrument and back-ports the widening to otc_orders' test in the same change",
+      "acceptance": [
+        "the FK closed-set tuple gains confupdtype, condeferrable and condeferred; the index tuple gains pg_am.amname — in otc_fulfillment's test and in services/orders' test_orders_foreign_keys_and_indexes.py",
+        "each widening armed: an ON UPDATE CASCADE DEFERRABLE FK and a hash index each fail the test that was green on them before",
+        "the avoidable `# type: ignore[type-arg]` at test_orders_foreign_keys_and_indexes.py:122 is removed (F7)"
+      ],
+      "note": "Proposed in progress/review_db_orders.md (round 1, APPROVED) and filed by the leader 2026-10-05. F3, F7. Re-open trigger meanwhile: any migration using postgresql_using, onupdate, deferrable or match. CLOSED 2026-10-05 inside feature 10 db_fulfillment: widened tuples (plus confmatchtype) in both services' tests, each widening armed by the implementer and independently by the reviewer (deferred, MATCH FULL, brin), type: ignore removed — progress/review_db_fulfillment.md Q3. Residual sort order / INCLUDE blindness moved to 208."
+    },
+    {
+      "id": 207,
+      "name": "range_guard_expression_types",
+      "phase": 9,
+      "title": "The range guard passes a SQL expression through only when its type is in the Integer family, so PostgreSQL never silently rounds a non-integer expression into a guarded column",
+      "sdd": false,
+      "status": "pending",
+      "attached_to": "fulfillment_stock (id 17), the first writer of stock.units; orders' saga_commands.attempts writer (feature 16) inherits it through 204",
+      "acceptance": [
+        "a ClauseElement is passed through only when its SQL type is in the Integer family; Numeric, Float and NullType expressions are refused with the guard's domain error (or the residual is named in the docstring and pinned)",
+        "unit test: Stock.units * 0.5 and literal(3.7) are refused; armed by reverting",
+        "applied to every range_guards.py copy; tests/architecture/test_range_guard_parity.py enforces it"
+      ],
+      "note": "Proposed in progress/review_db_fulfillment.md (round 1, APPROVED) and filed by the leader 2026-10-05. F1: with 204(c)'s pass-through, literal(3.7) was stored as 4, Stock.units * 0.5 as 0 and Stock.units + 0.6 as 1, while a raw 3.7 is refused. Re-open trigger: any assignment of a non-literal expression to a guarded attribute before this entry closes."
+    },
+    {
+      "id": 208,
+      "name": "schema_instrument_widening_2",
+      "phase": 6,
+      "title": "The index closed-set tuple also sees sort order and key-versus-INCLUDE columns; the settings test is independent of the shell environment",
+      "sdd": false,
+      "status": "done",
+      "attached_to": "db_billing (id 11), which copies the instrument and back-ports it to orders' and fulfillment's tests in the same change",
+      "acceptance": [
+        "the index tuple gains pg_index.indoption and indnkeyatts in otc_billing's test and is back-ported to services/orders and services/fulfillment; armed with a DESC index and with an INCLUDE-versus-composite pair, each green before and red after",
+        "the settings-test fixture clears every alias variable (POSTGRES_HOST_PORT included), so the test passes with any of them exported in the shell; armed by exporting POSTGRES_HOST_PORT=5433"
+      ],
+      "note": "Proposed in progress/review_db_fulfillment.md (round 1, APPROVED) and filed by the leader 2026-10-05. F2 and N4. CLOSED 2026-10-05 inside feature 11 db_billing: indoption and indnkeyatts in all four services' index tests, armed with a DESC index and an INCLUDE-versus-composite pair; the settings-fixture alias closure is in billing's and notifications' copies (progress/review_db_billing.md Q5, Q6). Fulfillment's original instance moved to 210."
+    },
+    {
+      "id": 209,
+      "name": "closed_set_namespace_scope",
+      "phase": 11,
+      "title": "The migration-lifecycle closed sets enumerate every non-system namespace, so a table created outside public cannot pass the 'nothing else' assertions",
+      "sdd": false,
+      "status": "done",
+      "attached_to": "notifications_service (id 23), the next feature to add to otc_notifications' history",
+      "acceptance": [
+        "the relation query of all four lifecycle tests enumerates every non-system namespace (nspname NOT IN ('pg_catalog','information_schema','pg_toast') and not pg_temp% / pg_toast_temp%) and asserts the namespace set is {public}",
+        "armed with a schema-qualified table created in upgrade(), which stayed green before this change"
+      ],
+      "note": "Proposed in progress/review_db_billing.md (round 1, APPROVED) and filed by the leader 2026-10-05. M1. Re-open trigger: any migration that runs CREATE SCHEMA or schema-qualified DDL before this entry closes. CLOSED 2026-10-05 (14:53–14:55) as a LIGHT change at the maintainer's request, before the Phase 6 commit (CLAUDE.md Cost discipline): one implementer, no separate reviewer. Each of the four lifecycle tests asserts the non-system namespace set is exactly {'public'} on the fresh database, after upgrade, after downgrade and after re-upgrade (measured {'public'} on postgres:18.6). Armed in notifications with CREATE SCHEMA audit plus a table: `assert {'audit', 'public'} == {'public'}`; restored, cmp identical, green. The leader read the four test files, grep-confirmed no CREATE SCHEMA remains in any migration, and re-ran the four lifecycle tests (9 passed) plus ruff and mypy on them (progress/impl_db_billing.md, Backlog 209)."
+    },
+    {
+      "id": 210,
+      "name": "settings_test_alias_closure_all_services",
+      "phase": 8,
+      "title": "Orders' and fulfillment's settings-test fixtures clear every alias the settings class declares, as billing's and notifications' do",
+      "sdd": false,
+      "status": "pending",
+      "attached_to": "orders_acceptance (id 15), alongside 204(d)(e), which already rewrites orders' settings class and test",
+      "acceptance": [
+        "fulfillment's and orders' settings-test fixtures clear every alias and carry billing's test_the_fixture_clears_every_alias_the_settings_class_declares",
+        "armed with POSTGRES_HOST_PORT=5433 exported in the shell and with a newly added alias"
+      ],
+      "note": "Proposed in progress/review_db_billing.md (round 1, APPROVED) and filed by the leader 2026-10-05. N1 (review_db_fulfillment N4's original instance). Re-open trigger: any CI or quality.sh environment that exports a POSTGRES_* variable."
     }
   ]
 }

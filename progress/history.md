@@ -384,3 +384,255 @@ A backlog entry (proposed id 203) is attached to feature 14 `outbox_and_idempote
 - **Python-specific surfaces.** Both majors were surfaces .NET never had. A Pydantic model is mutable and has a second, idiomatic serializer (`model_dump_json`, used by FastAPI) that ignores a hand-written writer. #8's immutable records, `long` and one `JsonSerializerOptions` applied app-wide closed both by construction.
 - **Round 2 showed the same pattern again.** Each fix moved the property into a new instrument with a new unstated premise: re-validation in the writer while the serializer became a writer too; a formatter that sees fields but not containers.
 - **Overall:** ~0.8h against #7's ~2.5h and #8's ~2.7h. Faster on the clock because the oracle was inherited. Not faster at verification: half the time went to two review rounds over guards.
+
+## db_orders (id 9, phase 6) — 2026-10-05
+
+**Effort:** 1 session, ~0.6h wall-clock, from file mtimes and the agents' own `date`.
+- 10:47: brief and premise check.
+- 10:50 to 11:06: implementation, about 16 minutes.
+- 11:06 to 11:22: review, about 16 minutes. **APPROVED on the first pass.**
+
+Process: **full** (persistence).
+
+**#7 baseline:** 1 session, ~1.5h (implementation ~1h, review ~0.5h); approved first pass; 9 tables. Source: `../order-to-cash-dotnet/progress/history.md:351`.
+
+**#8 baseline:** 1 session, ~2.3h, with one rejection: 7 of 8 FKs undeclared with a green suite, and `next_value` widened to `bigint`. Source: `../order-to-cash-dotnet/progress/history.md:350`.
+
+**Spec:** n/a (`sdd: false`). The contract is feature 9's 5-item acceptance array, plus `Order To Cash - Databases.EN.md` §4, the plan's type-delta table and lines 962–974. No `R<n>` is flipped: R62's storage leg is proven, and the behaviour stays TODO for Phase 8.
+
+**Tests:**
+- 28 orders tests (18 integration on one session-scoped Docker-held `postgres:18.6`, 10 unit).
+- `./quality.sh` green with the otcpy stack **stopped**: 606 passed, 98.83 % overall, 100 % domain. The reviewer re-proved this.
+- The reviewer ran 16 independent arms (`progress/review_db_orders.md`), each `cp`, mutate, one test, restore, `cmp`, green.
+- A 9-path write-path probe of the range guard.
+
+**Inherited #8 findings:**
+- **id 44 (money column width) → avoided.** `bigint` from the first migration; the literal 6-column population was re-armed by the reviewer on a different column.
+- **id 45 (counter seed race) → avoided.** The seed is `ON CONFLICT DO NOTHING`. A sentinel runs #8's `IF NOT EXISTS … INSERT` and loses the race 30 of 30 rounds. The main test fails 3 of 3 when the seed is swapped for it.
+- **#8 db_orders review D1 (FKs undeclared, green suite) → avoided.** The FK set is closed from `pg_constraint`, armed by delete and by two different substitutions.
+- **#8 review D2 (counter widened, undisclosed) → avoided** for `next_value`. The undisclosed-type-deviation class recurred, smaller: `country` is `varchar(2)` where §4.1 says `char(2)` (F4, accepted with a ledger line).
+- **#8 review D4 (no column closure) → avoided.**
+- **#8 review D6 (credential default in source) → recurred** (F5, routed).
+- **id 85 (self-assigned ports) → avoided.**
+- **id 104 (suite hid behind a developer service) → avoided.**
+- **#8 db_fulfillment/db_billing A1, A2, A3** (timestamp read-back, diagnostic before count, index closure) → **avoided**. All three were in the leader's mid-run addendum.
+
+**What was built:**
+- An async Alembic environment and a hand-written `0001` migration: 11 tables, 8 FKs, 37 indexes, all names explicit.
+- SQLAlchemy 2 models, and `RawJson`, a `json` column that is passthrough text in both directions.
+- A write-boundary range guard: an ORM `set` listener on every integer column, raising `DomainError` subclasses with stable codes.
+- The counter SQL.
+- `OrdersDatabaseSettings`.
+- A repository-root `conftest.py`: one Docker-held container per session and a fresh database per test, for features 10 and 11 to reuse.
+
+Packages installed: sqlalchemy 2.1.3 (+ greenlet 3.5.6 via `[asyncio]`), asyncpg 0.31.0, alembic 1.20.0 (+ mako 1.4.3), pydantic-settings 2.15.0.
+
+**Deviations from the spec/plan:**
+- One index per FK column (8) beyond the spec's own indexes. PostgreSQL does not create them implicitly, as MySQL and EF Core do. Disclosed.
+- `country` is `varchar(2)` rather than §4.1's `char(2)`. #8 also widened it, to `nvarchar(2)`. **Not** disclosed by the implementer; the review accepted it, and the leader adds the ledger line.
+
+**Rejections:** none.
+
+**Open, accepted, not fixed** (`review_db_orders.md`). Filed by the leader in `feature_list.json` as ids 204–206, and the F4 ledger line added to `impl_db_orders.md`:
+- **204**, attached to feature 15:
+  - The range guard covers the ORM unit of work only (constructor, assignment, merge). ORM-enabled `insert()`/`update()`, bulk inserts and raw SQL reach the driver (F1).
+  - It refuses a valid `attempts = SagaCommand.attempts + 1` expression (F2).
+  - The settings class has a password default (F5).
+- **205**, attached to feature 14: the engine rounds sub-millisecond instants while `format_instant` truncates (F6).
+- **206**, attached to feature 10: the FK and index closed-set tuples are blind to `ON UPDATE`/`DEFERRABLE` and to the index access method (F3, F7).
+
+**What the reuse saved — and what it did not:**
+
+**Saved:** almost all of #8's ~0.87h rejection round. #8's two blocking defects were transcription failures against a document that stated the answer.
+- #9 was handed those defects, plus #8's three later advisories, as acceptance criteria.
+- Each one became a guard that was armed before review: an FK closed set, column closure, `next_value int`, index closure, timestamp read-back and the diagnostic before the count.
+- The reviewer's independent substitutions found no member missing.
+- Against #8's ~2.3h and #7's ~1.5h, ~0.6h is the first phase-6 run approved on the first pass with every acceptance guard re-armed by a second party.
+
+**Did not save:** the Python-specific surfaces, which #8's stack supplied for free. They are where every finding sits:
+- **SQLAlchemy's write paths.** There is no single write chokepoint like EF Core's `SaveChanges`, so a write-boundary guard has to choose an instrument. The chosen one, an attribute event, covers 3 of the 9 probed paths and over-refuses SQL expressions.
+- **The asyncpg dialect's `json` codec.** It silently `json.loads` on read, which forced `RawJson`.
+- **Rounding.** PostgreSQL rounds sub-millisecond instants where the wire truncates.
+
+None of these existed in #8 (`long` fields, one `SaveChanges`, `nvarchar` payloads). As in `shared_kernel` and `contracts_package`, the inherited findings transferred as guards; the new stack's own premises did not, and the reviewer found them by probing instruments, not by reading the report.
+
+## db_fulfillment (id 10, phase 6) — 2026-10-05
+
+**Effort:** 1 session, ~0.55h wall-clock, from file mtimes and the agents' own `date`.
+- 11:24–11:25: brief and premise check.
+- 11:26 to 11:40: implementation, about 14 minutes.
+- 11:40 to 11:57: review, about 17 minutes. **APPROVED on the first pass.**
+
+Process: **full** (persistence).
+
+**#7 baseline:** ~1.25h, approved first pass (`../order-to-cash-nestjs/progress/history.md:549`).
+
+**#8 baseline:** ~0.55h, approved first pass (`../order-to-cash-dotnet/progress/history.md:397`, `:482`).
+
+**The comparison:** #9 matches #8's time and is ~2.3× faster than #7. In the same time it also did three things #8's run did not:
+- back-ported two inherited fixes into the previous feature's code (204(b)(c), 206);
+- added a parity guard over a copied module;
+- had every guard re-armed by a second party.
+
+**Spec:** n/a (`sdd: false`). The contract is feature 10's 3-item acceptance array, backlog 206, 204(b)(c), `Order To Cash - Databases.EN.md` §5/§4.3 and the plan's type-delta table. No `R<n>` is claimed.
+
+**Tests:**
+- 45 new tests: 27 fulfillment integration tests (on the shared root-`conftest.py` container), 15 fulfillment unit tests and 3 parity-guard tests. With the pre-existing health test, the fulfillment-plus-parity collection is 46, matching the report.
+- `./quality.sh` green with the otcpy stack **stopped**: 655 passed, 98.99 % overall, 100 % domain, import-linter 10 kept. The reviewer re-proved it: 69.5 s wall-clock, and `docker events` shows **one** `postgres:18.6` container per run.
+- The reviewer ran 22 independent arms and probes (`progress/review_db_fulfillment.md`), each `cp`, mutate, one test, restore, `cmp`, clear caches, green.
+- A 10-path write-path probe plus a 9-expression pass-through probe.
+- A 48-fact live-catalog parity dump of `outbox`/`processed_events`, `otc_orders` against `otc_fulfillment`: identical, with a sentinel.
+
+**Inherited #8 findings:**
+- **#8 db_fulfillment A1 (no timestamp read-back) → avoided.**
+- **A2 (count before diagnostic) → avoided.**
+- **A3 (index presence-only) → avoided.**
+- **A4 (stale `current.md`) → avoided.**
+- **#8 timing risk (one container per database suite) → avoided.** One container per run.
+- **id 44 (money width) → not applicable.** There is no money column, asserted from the live catalog.
+- **id 45 (seed race) → avoided.** Sentinel 30/30, and a sibling `DO UPDATE` seed caught.
+- **#8 db_orders D1 (FKs undeclared) → avoided.**
+- **D2 (undisclosed type deviation) → recurred, smaller:** two ledger lines missing, `reservations` code widths and `despatch_number_sequences.id` (N2).
+- **D6 (credential default) → avoided** in fulfillment; it is still open in orders (204(d)).
+- **ids 85 and 104 → avoided.**
+- **#9 review_db_orders F1, F2, F3, F7 → closed here.** F1 and F2 as 204(b)(c), in both copies; F3 and F7 as 206, with a back-port to orders.
+
+**What was built:**
+- An async Alembic environment and a hand-written `0001`: 7 tables, 2 FKs, 18 indexes.
+- SQLAlchemy models.
+- `FulfillmentDatabaseSettings`, with no password default and without `populate_by_name`.
+- The counter SQL.
+- The range guard, **copied** byte-identically: its quantity map became a parameter of `install_range_guards`, so the two copies need no allowed differences.
+- `tests/architecture/test_range_guard_parity.py`: a closed member list and a census.
+- The FK tuple widened by `confupdtype`, `condeferrable`, `condeferred` and `confmatchtype`; the index tuple by `pg_am.amname`. Both widenings are in both services.
+
+Packages installed: sqlalchemy 2.1.3 (+ greenlet 3.5.6 via `[asyncio]`), asyncpg 0.31.0, alembic 1.20.0 (+ mako 1.4.3), pydantic-settings 2.15.0 — the same pins as feature 9, now also in `otc-fulfillment`.
+
+**Deviations from the spec/plan** (all type translations under the plan's delta table, or #7/#8-consistent widths):
+- `uuid`, `timestamptz(3)`, identity `seq`;
+- two FK-supporting indexes;
+- `reservations` code widths 20/20/30, of which only `retailer_code` was disclosed;
+- `despatch_number_sequences.id integer`, where #7 has `tinyint`.
+
+**Rejections:** none.
+
+**Open, accepted, not fixed** (`review_db_fulfillment.md`; proposed for the leader to file):
+- **207**, attached to feature 17 `fulfillment_stock` (F1, minor). The 204(c) pass-through lets a non-integer expression through, and PostgreSQL silently rounds it: `literal(3.7)` stored 4, and `Stock.units * 0.5` stored 0.
+- **208**, attached to feature 11 `db_billing`:
+  - the index tuple is still blind to sort order (`DESC` stayed green), and conflates `INCLUDE` with key columns (F2, minor);
+  - the settings test depends on the shell's `POSTGRES_HOST_PORT` (N4).
+- **204, extended with (e)** (A1). Orders' `populate_by_name=True` lets bare `USER`, `HOST`, `PORT` and `PASSWORD` into the database URL. `HOST` leaks even with the repository `.env`, which defines no `POSTGRES_HOST`. Items (b)(c) were closed by this feature.
+- **206 → done** (leader).
+- **Nits:** ledger lines (N1, N2); a literal-vs-literal line (N3); the parity guard is line-equal and has a one-path census (N5); the residual pin covers 4 of 6 named paths (N6); the report gave the contract count as 9, where the run gives 10 (N7).
+
+**What the reuse saved — and what it did not:**
+
+**Saved:** the whole schema and every guard shape. Feature 9 paid for both, and its review's findings arrived as acceptance criteria. The proof took ~14 minutes of implementation:
+- the closed FK, index and type sets;
+- the timestamp read-back;
+- the sentinel;
+- the live population.
+
+Nothing in the review was a transcription defect against the document.
+
+**Did not save:**
+- **The Python-specific surface.** It moved one step again. Fixing 204(c) as specified (pass SQL expressions through) opened a new, silent hole that #8's `long`-typed EF writes could never have: PostgreSQL's assignment cast rounds a numeric expression into an `integer` column.
+- **The index instrument.** It needed a second widening that no inherited finding named.
+
+As at `db_orders`, the new findings came from probing the instruments, not from reading the report.
+
+## db_billing (id 11, phase 6) — 2026-10-05 — closes Phase 6
+
+**Effort:** 1 session, ~0.85h wall-clock, from file mtimes and the agents' own `date`.
+- 11:58–12:01: status set, brief, premise check (1 FALSE, a path, corrected before dispatch).
+- 12:02 to 12:33: implementation, about 31 minutes (including a 95.2 s gate run that triggered the template mitigation, and a second gate run).
+- 12:34 to 12:50: review, about 16 minutes. **APPROVED on the first pass.**
+
+Process: **full** (persistence).
+
+**#7 baseline:** 1 session, ~0.75h (implementation ~0.5h, review ~0.25h), approved first pass (`../order-to-cash-nestjs/progress/history.md:603-609`).
+
+**#8 baseline:** 1 session, ~0.75h (implementation ~0.5h, review ~0.25h), approved first pass, six advisories (`../order-to-cash-dotnet/progress/history.md:439-443`).
+
+**The comparison: not faster.** ~0.85h against ~0.75h and ~0.75h, about 1.1× slower than both. Where the time went: the gate crossed 90 s, so this feature also built and pinned a cross-cutting test-infrastructure change (the template databases, edited into all four services' conftests) that neither #7 nor #8 had; and its parity test covers four live databases with five permanent arms, where #7 compared migration text in three apps and #8 compared six column properties.
+
+**Spec:** n/a (`sdd: false`). The contract is feature 11's 3-item acceptance array, backlog 208, `Order To Cash - Databases.EN.md` §6, §7 and §4.3, and the plan's type-delta table. No `R<n>` is claimed.
+
+**Tests:**
+- 72 tests in this feature's directories: billing 49 and notifications 12 (each including its pre-existing health test), the four-database parity test 8 (`tests/database_parity/`), the template isolation pin 3 (`tests/database_templates/`); the range-guard parity guard grew to 12 (billing a member, census at any depth over `range_guards.py` and `types.py`, CRLF).
+- `./quality.sh` green with the otcpy stack **stopped**: 734 passed (655 at feature 10), 99.15 % overall, 100 % domain, import-linter 10 kept. The reviewer re-proved it: **84.6 s** wall clock, pytest 63.6 s.
+- The reviewer ran 15 independent arms (`progress/review_db_billing.md`), each `cp`, mutate, one test, restore, `cmp`, clear caches, green. One escaped: a table in a non-`public` schema (M1, routed to 209).
+- A timing experiment: the template mitigation saves ~7 s of 62 s on the integration subset.
+
+**Inherited #8 findings:**
+- **#8 db_billing A1 (index set presence-only) → avoided.** Closed set of 22, with sort options and key-column count.
+- **A2 (parity omits identity) → avoided.** Identity kind and sequence parameters in the shape; the reviewer's BY DEFAULT-for-ALWAYS arm was named.
+- **A3 (no timestamp read-back) → avoided.** Every round trip compares instants; `paid_at` and `value_date` rounding pinned.
+- **A4 (parity test owned by one service) → avoided.** `tests/database_parity/`, no service package imported at source level.
+- **A5 (`current.md` one transition stale) → avoided.**
+- **A6 (coverage not gateable) → avoided.** One workspace coverage run, 60 % overall and 80 % domain gates.
+- **id 44 (money width) → avoided.** 7 `bigint` money columns from `0001`; 6 + 7 + 0 = 13 reconciles #8's "all 13 money columns".
+- **id 45 (seed race) → avoided.** `ON CONFLICT DO NOTHING`; sentinel lost 10 of 10 rounds; the reviewer's advance-by-2 arm caught.
+- **ids 85, 104 → avoided.** Docker-held port; gate green with the stack down.
+- **#8 db_orders D2 (undisclosed type deviation) → avoided.** Every deviation on the ledger line (N2 of feature 10 applied).
+- **#8 db_orders D6 (credential default) → avoided** (no password default, no `populate_by_name`).
+- **#9 review_db_fulfillment F2/N4 (backlog 208) → closed** as written; N5 (census hole) closed; A2 (wall clock) acted on.
+
+**What was built:**
+- Two async Alembic histories, hand-written `0001`s: `otc_billing` (8 tables, 3 FKs, 22 indexes) and `otc_notifications` (`processed_events` only).
+- SQLAlchemy models; billing's copies of `range_guards.py` and `types.py`; notifications deliberately has neither (no integer or payload column).
+- `BillingDatabaseSettings`, `NotificationsDatabaseSettings` (fulfillment's class), with 208(b)'s fixture and an alias-closure test.
+- The counter SQL for `invoice_number_sequences`.
+- The neutral four-database parity test and the root-`conftest.py` template databases with an isolation pin.
+- 208(a) back-ported to orders and fulfillment.
+
+Packages installed: sqlalchemy 2.1.3 (+ greenlet 3.5.6 via `[asyncio]`), asyncpg 0.31.0, alembic 1.20.0 (+ mako 1.4.3), pydantic-settings 2.15.0 — the same pins as features 9 and 10, now also in `otc-billing` and `otc-notifications`.
+
+**Deviations from the spec/plan** (type translations under the plan's delta, or #7/#8-consistent widths, all on the ledger): `uuid`, `timestamptz(3)`, 7 `bigint` money columns, identity `seq`, `invoice_number_sequences.id integer` (#7 `tinyint`), NO ACTION on `credit_items`/`payments` FKs (#7's value), two FK-supporting indexes.
+
+**Rejections:** none.
+
+**Open, accepted, not fixed** (`review_db_billing.md`; proposed for the leader to file):
+- **209**, attached to feature 23 `notifications_service` (M1, minor): the "nothing else" closed set is scoped to `public`; a schema-qualified table escapes it. May be taken earlier as a light test-only change.
+- **210**, attached to feature 15 `orders_acceptance` (N1): fulfillment's settings test still fails with `POSTGRES_HOST_PORT` exported; converge all four settings tests with 204(d)(e).
+- **208 → done.**
+- Nits: ledger rows without a file:line (N2); the parity process loads four model modules through `env.py` (N3). Advisory: the gate is 84.6 s, 5.4 s under the threshold (A1).
+
+**What the reuse saved — and what it did not:**
+
+**Saved:** every guard shape and every one of #8's six db_billing advisories, which arrived as acceptance criteria and were avoided first time. The review found no transcription defect against the document, for the third feature running.
+
+**Did not save:** time. #7 and #8 were both at their floor on this feature (~0.75h, their third database). #9's extra work was its own: a test-infrastructure change forced by its own gate, and parity proved from four live catalogs rather than from migration text (#7) or six column properties (#8). The new finding again came from probing the instrument (a namespace filter), not from reading the report.
+
+### Phase 6 — closing assessment
+
+| | #7 (NestJS) | #8 (.NET) | #9 (Python) |
+|---|---|---|---|
+| `db_orders` | ~1.5h, first pass | ~2.3h, **rejected** once | **~0.6h**, first pass |
+| `db_fulfillment` | ~1.25h, first pass | ~0.55h, first pass | **~0.55h**, first pass |
+| `db_billing` | ~0.75h, first pass | ~0.75h, first pass | **~0.85h**, first pass |
+| **Phase 6 total** | **~3.5h** | **~3.6h** | **~2.0h** — ~1.75× faster than #7, ~1.8× faster than #8 |
+
+Sources: #8's own closing table (`../order-to-cash-dotnet/progress/review_db_billing.md:332-341`) for #7 and #8; this file's three entries for #9.
+
+**The saving is entirely in the first feature.** #9's db_orders was ~2.5× faster than #7's and ~3.8× faster than #8's, because it received #8's rejection (FKs undeclared with a green suite) and #8's later advisories as acceptance criteria, and passed first time. db_fulfillment matched #8. db_billing was slightly slower than both. That is #8's own curve, shifted one feature earlier: the reuse dividend is largest where a baseline was still learning, and it is gone once both baselines had learned the pattern. #8's phase-6 sentence was "the spec is free, the proof is not, and one rejection costs more than two clean features save". In #9 the inherited findings removed the rejection, and that removal *is* the phase's saving; on the two features where no rejection was there to remove, #9 ran at #8's pace or slower. The extra cost has one cause: the Python-specific surfaces (SQLAlchemy's write paths, asyncpg's json codec, PostgreSQL's rounding, now the template databases and the namespace scope). No inherited finding could name these, and every #9 review finding in the phase sits on one of them.
+
+## Phase 6 — leader session log — 2026-10-05
+
+One session, 10:47 → 12:50, three features, each approved on the first review round (full process, Opus reviewers, `premise_checker` over every brief). Archived from `progress/current.md` at close.
+
+- 10:47 `db_orders` set `in_progress`. Brief (scratchpad) premise-checked: `progress/premise_db_orders.md`, 0 FALSE. Scope bounds: no repositories/relay/allocator (Phase 8); #8's later saga dead-letter columns not added (not in the plan's `saga_commands`); quantity column `integer` (#7 and #8 width) with a write-boundary DomainError.
+- 10:50–11:06 implementer → `in_review` (`progress/impl_db_orders.md`). Mid-run addendum from #8's db_fulfillment/db_billing reviews: shared session-scoped postgres container (now root `conftest.py`), index-set closure, timestamp read-back, FK diagnostic first.
+- 11:07 reviewer launched (Opus, full group).
+- 11:22 `db_orders` APPROVED round 1 → `done` (`progress/review_db_orders.md`: 0 blocking, 5 minor, 1 advisory, 3 nits). Leader filed backlog 204 (→ 15), 205 (→ 14), 206 (→ 10) and the F4 ledger line.
+- 11:25 `db_fulfillment` set `in_progress`. Ruling: `range_guards.py` is copied per service, not shared — the listener is SQLAlchemy-bound so it cannot live in `shared_kernel` (dependencies = []), and CLAUDE.md:82 allows no other shared runtime package; a parity guard over the copies replaces sharing. 204(b)(c) (docstring, ClauseElement pass-through) are pulled into feature 10 so the defect is not copied.
+- 11:26–11:40 implementer → `in_review` (`progress/impl_db_fulfillment.md`); guard copies byte-identical under `tests/architecture/test_range_guard_parity.py`; `quality.sh` 61 s (stack stopped). Implementer finding: orders' settings `populate_by_name=True` lets a bare `$USER` become the DB user — candidate for 204(d), pending the reviewer's confirmation.
+- 11:41 reviewer launched (Opus, full group).
+- Wrap-up note: feature 10 edited `services/orders` (204(b)(c), 206 back-port); the `db_orders` commit will carry orders files in their final state — say so in its body.
+- 11:57 `db_fulfillment` APPROVED round 1 → `done` (`progress/review_db_fulfillment.md`: 0 blocking, 2 minor, 2 advisory, 7 nits). Leader: 206 → `done`; 204 note ((b)(c) closed) + item (e) settings leak; filed 207 (→ 17) and 208 (→ 11); N1/N2 ledger lines added to `impl_db_fulfillment.md` (#8 citations re-checked by `grep`).
+- 11:58 `db_billing` set `in_progress`.
+- 12:01 `db_billing` brief premise-checked (`progress/premise_db_billing.md`: 1 FALSE — #7's parity test is `apps/seed/src/outbox-parity.spec.ts`; corrected in the brief before dispatch). Implementer launched ~12:02.
+- ~12:02–12:33 implementer → `in_review` (`progress/impl_db_billing.md`). `quality.sh` 95.2 s crossed the 90 s threshold → template-database mitigation in root `conftest.py` → 85.5 s; it required a 4-line `migrated_db` edit in the orders and fulfillment integration conftests (outside the brief's bound, flagged by the implementer). 208(b) applied in billing/notifications only; fulfillment's settings test still env-dependent.
+- 12:33 reviewer launched (Opus, full group).
+- 12:50 `db_billing` APPROVED round 1 → `done` (`progress/review_db_billing.md`: 0 blocking, 1 minor, 3 nits, 1 advisory; template mitigation kept, the 4-line conftest edits ruled in bounds). Leader: 208 → `done`; filed 209 (→ 23) and 210 (→ 15); N2 #7 citation added to `impl_db_billing.md`. Phase 6 closed; `current.md` reset with the Phase 7 brief.
+- 14:53–14:55 backlog **209** (`closed_set_namespace_scope`, review_db_billing M1) fixed before the commit at the maintainer's request, classified **light** (test-only): one implementer, the leader read the diff, re-ran the four lifecycle tests (9 passed) and ruff/mypy on them; armed once in notifications (`assert {'audit', 'public'} == {'public'}`). → `done`. Not re-run: the full `./quality.sh` (the maintainer's run at 14:46 predates this test-only change).

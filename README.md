@@ -84,8 +84,11 @@ infra/               PostgreSQL bootstrap, Kafka topic script, OTel Collector, P
 .env.example         every variable the compose file reads, with dev defaults
 pyproject.toml, uv.lock   the uv workspace: dev tools, ruff, mypy --strict, pytest, coverage, import-linter contracts
 packages/            shared_kernel (Money, GLN, …, zero dependencies), contracts (generated wire models), cqrs (placeholder)
-services/            gateway, orders, fulfillment, billing, notifications, projector, seed — each domain/application/infrastructure/presentation
-tests/               architecture guards; fixtures/golden_envelopes/ (the wire-parity oracle, copied from #8)
+services/            gateway, orders, fulfillment, billing, notifications, projector, seed — each domain/application/infrastructure/presentation;
+                     orders, fulfillment, billing and notifications also carry alembic/ (one migration history per database)
+conftest.py          the shared integration fixture: one Docker-held postgres:18.6 per test session, a template database per service, a fresh database per test
+tests/               architecture guards; database_parity/ (outbox/processed_events identical across the four databases, read from the live catalogs);
+                     fixtures/golden_envelopes/ (the wire-parity oracle, copied from #8)
 apps/web/            the Analog (Angular 22) app — scaffold only until phase 16
 scripts/             generate_contracts.py (models from asyncapi.yaml/openapi.yaml, --check for drift), git hooks
 quality.sh           the single quality gate
@@ -99,6 +102,8 @@ The quality gate runs today — format, lint, `mypy --strict`, import-linter, th
 uv sync
 ./quality.sh            # exit 0 = every gate passed; otherwise the first failing step's exit code
 ```
+
+Integration tests start their own PostgreSQL container through testcontainers, so the gate needs Docker but **not** the development stack — it passes with the stack stopped.
 
 The infrastructure runs too; the services arrive from phase 8.
 
@@ -120,6 +125,13 @@ docker compose -f docker-compose.infra.yml --profile n8n ps      # 12 healthy; k
 
 The stack uses #8's host ports, so only one of the three trilogy stacks can run at a time. `down -v` wipes it.
 
+The four write databases get their schema from each service's Alembic history (async template, no sync driver; the credentials come from `.env`):
+
+```bash
+for s in orders fulfillment billing notifications; do uv run alembic -c services/$s/alembic.ini upgrade head; done
+docker exec otcpy-postgres psql -U postgres -d otc_notifications -c '\d'    # processed_events and alembic_version only
+```
+
 ## How this is being built
 
 The development **process is a deliverable**, not a footnote: Spec-Driven Development plus an agent harness with a backlog state machine (`feature_list.json`, max one feature in progress), external memory (`progress/`), a specification that precedes the code, and separate leader / spec-author / implementer / reviewer subagents each with an explicitly declared model. Every large feature passes a human approval gate at its specification, and every phase is tested by a human before its commit. `docs/PROCESS.md` explains all of it; the git history is the evidence, and for this repository it reads **harness first, specification copy second, code after**.
@@ -133,7 +145,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 3 | Shared specification, copied verbatim from #8 | ✅ six of seven files byte-identical to #8's **and** #7's (`cmp`-proven); `test-matrix.md` reset by the `SA-1` recipe, columns 1–4 identical on all 63 rows; zero stack leaks |
 | 4 | Infrastructure compose + Kafka topics & NATS subjects | ✅ PostgreSQL 18.6 replaces MS-SQL; healthy from empty volumes in 39–44 s; the database healthcheck proven unable to pass during bootstrap; n8n isolated in its own database by permissions; 6 Kafka topics and 15 NATS subjects verified against the spec |
 | 5 | uv workspace scaffold, shared kernel, contracts, architecture contracts, web scaffold | ✅ seven services in four layers under 10 import-linter contracts plus an import allowlist for every domain; an AST guard against `float`, `/`, `decimal` and `fractions` in domain code; `Money` in integer minor units with no major-unit surface; wire models generated from the spec with a drift check, proven against #8's 12 golden envelopes (envelope byte-exact, payload semantically equal); the Analog web app building under pnpm 12; every guard seen failing before it was trusted |
-| 6 | SQLAlchemy models + Alembic migrations for the four write databases | ⬜ |
+| 6 | SQLAlchemy models + Alembic migrations for the four write databases | ✅ four Alembic histories; types, foreign keys (8 / 2 / 3), indexes and relations asserted as closed sets from the live catalogs, never from the ORM; `json` payloads read back byte-identical; `bigint` money from the first migration (#8 id 44 avoided); counters seeded with `ON CONFLICT DO NOTHING` under 16 concurrent first callers (#8 id 45 avoided — its racy seed, kept as a sentinel, loses every round); outbox/processed_events parity across all four databases; a write-boundary range check on every integer column; every feature approved on its first review |
 | 7 | Deterministic seed job | ⬜ |
 | 8 | Orders service + saga orchestrator | ⬜ |
 | 9 | Fulfillment service | ⬜ |
