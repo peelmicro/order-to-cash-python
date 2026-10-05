@@ -86,7 +86,7 @@ mypy_path = [
 ]
 explicit_package_bases = true
 namespace_packages = true
-files = ["packages", "services", "tests", "scripts"]
+files = ["conftest.py", "packages", "services", "tests", "scripts"]
 # NO global ignore_missing_imports. The ONLY override is the one library that ships no stubs.
 
 [[tool.mypy.overrides]]
@@ -98,6 +98,9 @@ ignore_missing_imports = true
 testpaths = ["tests", "packages", "services"]
 # importlib mode: service test directories are not packages, so identical basenames cannot collide.
 addopts = "--import-mode=importlib -ra --strict-markers --strict-config"
+markers = [
+    "integration: needs Docker (a testcontainers postgres:18.6); run by quality.sh like every test",
+]
 asyncio_mode = "auto"
 # Loop scope is chosen deliberately: "function" (a fresh loop per test) is the default so that no
 # engine, pool or client can silently outlive the loop it was created on (#8's captive-DbContext

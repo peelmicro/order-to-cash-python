@@ -9,6 +9,10 @@ dependencies = [
     "otc-shared-kernel",
     "otc-contracts",
     "otc-cqrs",
+    "sqlalchemy[asyncio]",
+    "asyncpg",
+    "alembic",
+    "pydantic-settings",
 ]
 
 [build-system]
