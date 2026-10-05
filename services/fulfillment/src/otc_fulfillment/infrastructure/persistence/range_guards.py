@@ -19,9 +19,16 @@ that takes the mapped class bypasses it and surfaces as the engine's own `DBAPIE
 the population of write paths.
 
 A SQL expression assigned to a guarded attribute (`row.attempts = Row.attempts + 1`, SQLAlchemy's
-atomic server-side increment) is a `ClauseElement`, not a value, so it passes through: there is
-nothing to range-check until the database evaluates it, and an overflow there is the engine's
-refusal (the same residual).
+atomic server-side increment) is a `ClauseElement`, not a value, so there is nothing to range-check
+until the database evaluates it, and an overflow there is the engine's refusal (the same residual).
+It passes through ONLY when its SQL type is in the `Integer` family (`Integer`, `BigInteger`,
+`SmallInteger`): PostgreSQL silently ROUNDS a non-integer expression into an integer column
+(measured: `literal(3.7)` was stored as 4, `Stock.units * 0.5` as 0, `Stock.units + 0.6` as 1,
+while a raw 3.7 is refused), so an expression typed `Numeric`, `Float` or `NullType` (an untyped
+`literal_column("x + 1")`: write `literal_column("x + 1", Integer)`) is refused with the guard's
+error. Residual: an `Integer`-typed expression that the database evaluates to a value outside the
+column, or an expression that SQLAlchemy types as `Integer` but PostgreSQL evaluates as `numeric`
+(an explicit `cast`/`type_coerce` can lie), is still the engine's refusal.
 
 The module is identical in every service that carries it (`tests/architecture/
 test_range_guard_parity.py`): the service-specific part, which columns get the quantity code, is
@@ -76,6 +83,12 @@ def ensure_in_range(
         raise error(where, value, low, high)
 
 
+def _is_integer_expression(value: ClauseElement) -> bool:
+    """True when the expression's SQL type is in the Integer family (an expression with no `type`,
+    or an untyped one, is `NullType`, which is not)."""
+    return isinstance(getattr(value, "type", None), Integer)
+
+
 def _width(column_type: TypeEngine[Any]) -> tuple[int, int] | None:
     # BigInteger and SmallInteger subclass Integer, so the exact class decides.
     return _WIDTHS.get(type(column_type))
@@ -113,10 +126,14 @@ def install_range_guards(
                 _high: int = high,
                 _error: type[IntegerOutOfRangeError] = error,
             ) -> None:
-                # NULL is the column's nullability, not its range; a SQL expression is not a value
-                # (the engine evaluates it), so it passes through.
-                if value is not None and not isinstance(value, ClauseElement):
-                    ensure_in_range(value, _low, _high, _where, _error)
+                # NULL is the column's nullability, not its range. A SQL expression is not a value
+                # (the engine evaluates it), so an Integer-typed one passes through; any other
+                # type is refused because the engine would round it silently (backlog 207).
+                if value is None or (
+                    isinstance(value, ClauseElement) and _is_integer_expression(value)
+                ):
+                    return
+                ensure_in_range(value, _low, _high, _where, _error)
 
             event.listen(instrumented, "set", _check)
             guarded.append((table, name))

@@ -636,3 +636,67 @@ One session, 10:47 → 12:50, three features, each approved on the first review 
 - 12:33 reviewer launched (Opus, full group).
 - 12:50 `db_billing` APPROVED round 1 → `done` (`progress/review_db_billing.md`: 0 blocking, 1 minor, 3 nits, 1 advisory; template mitigation kept, the 4-line conftest edits ruled in bounds). Leader: 208 → `done`; filed 209 (→ 23) and 210 (→ 15); N2 #7 citation added to `impl_db_billing.md`. Phase 6 closed; `current.md` reset with the Phase 7 brief.
 - 14:53–14:55 backlog **209** (`closed_set_namespace_scope`, review_db_billing M1) fixed before the commit at the maintainer's request, classified **light** (test-only): one implementer, the leader read the diff, re-ran the four lifecycle tests (9 passed) and ruff/mypy on them; armed once in notifications (`assert {'audit', 'public'} == {'public'}`). → `done`. Not re-run: the full `./quality.sh` (the maintainer's run at 14:46 predates this test-only change).
+
+---
+
+## seed_job (id 12, phase 7) — 2026-10-05 — closes Phase 7
+
+**Effort:** 1 session, **~2.9h wall-clock** (≈15:55 → 18:49; the start is the leader's estimate, the first artifact is the premise check at 16:09), four implementation rounds and four reviews, plus two maintainer gates. From the agents' own `date` stamps and file mtimes:
+- ≈15:55–16:09: leader research (#8's D1, the import-linter independence contract, the sentinel lever), brief, premise check (`progress/premise_seed_job.md`, 28/28 VERIFIED).
+- 16:09–16:55: round 1 — Part A (sentinel cut, light) 16:09–16:20, Part B (the seed) 16:20–16:55, Part C (parity tooling) interleaved.
+- 16:55–17:10: review round 1 (Opus) — **REJECTED**, B1: `dump8` passed `sqlcmd -W` with `-y 0`, which sqlcmd refuses before connecting; N1–N4.
+- 17:11–17:19: round 2 (B1 proven on a throwaway SQL Server, N1–N4); 17:19–17:22 re-review **APPROVED, acceptance 5 open**.
+- Gate (maintainer, ≈18:10): live #8 parity authorised; **findings are fixed in the phase that detects them** (CLAUDE.md amended); threshold ~105 s.
+- 18:18–18:29: round 3 — live parity against #8 (met), backlog 211 (counters), 212 seed half; 18:30–18:37 review round 3 (fresh Opus) — **REJECTED**, B1: the DES/INV counter fixtures mirrored the ORD suffix, so a sibling-column MAX passed; B2: ledger rows missing.
+- Second rejection → maintainer asked → "fix both". 18:45–18:47 round 4 (light); 18:47–18:49 re-check (Sonnet) **APPROVED** → 12, 211, 212 `done`.
+
+Process: **full** for the seed and 211 (persistence, concurrency); Part A and round 4 **light** (test-only / report rows).
+
+**#7 baseline:** 1 session, "~0.5h — implementation ~22 min (file timestamps 10:39–11:01), review ~1h", approved first pass (as #8 recorded it, `../order-to-cash-dotnet/progress/history.md:513`; the figure and its parts disagree — quoted, not reconciled).
+
+**#8 baseline:** 1 session, ~1.9h, **REJECTED once** (D1, unguarded timeline values), approved on round 2 (`../order-to-cash-dotnet/progress/history.md:511-512`).
+
+**The comparison: not faster.** ~2.9h against #8's ~1.9h and #7's ~0.5h/~1.5h. The scope is not like for like: #9's Phase 7 also (a) cut the gate time by a change of kind, (b) ran the live parity diff against #8's databases — #8 deferred its equivalent against #7 and never closed it — and (c) fixed the reference-counter seeding (211), which #8 needed two later features for (id 45 seed race, id 47 scan cost, phase 21). Excluding gate waits, the agents' time was ~2.2h.
+
+**Tests:** 734 → 922 (`quality.sh`, round 3, stack stopped); seed: 137 unit + 31 integration; counters +18. `quality.sh` 108.86 s (threshold re-baselined to ~105 s; re-measure at wrap-up, >110 s is a finding). Parity evidence: `progress/evidence/seed_parity/` — 19 of 20 files row-identical to #8's live databases; the 20th (live stock) shows 5 rows of #8's own 2026-09-18 traffic.
+
+**Inherited #8 / #7 findings:**
+- #8 D1 (timeline values unguarded) — **avoided**: oracle checked in first (executed from #7's TS, equal to #8's), every leaf compared with its type; 17 unpublished reviewer arms failed by name.
+- #8 D3 (weak counts) — **avoided** (exact counts, every-row comparison). #8 D6 (pure tests behind containers) — **avoided** (unit/integration split). #8 A2 (extra keys unseen) — **avoided** (key-set comparison).
+- #8 D5 (report/filesystem mismatch) — **recurred in miniature** (round-1 N2: four stale docstring paths).
+- #8 id 47 (MAX scan on every allocation) — **avoided**, EXPLAIN-pinned (`never executed` on the steady-state path). #8 id 45 (seed race) — avoided in Phase 6, still green on the new statement. #7 D6 (text MAX) — **avoided** (bigint MAX, `ORD-1000000` test).
+- #8's never-closed "parity against the previous build's live database" — **avoided** (acceptance 5 met).
+- The `MySQL GROUP_CONCAT` / `STRING_AGG` truncation class — avoided by design (rows dumped client-side); its sqlcmd cousin (256-char `nvarchar(max)` truncation without `-y 0`) was the round-1 blocker's trap.
+
+**New in #9:** service independence forbids the seed importing the services' models (#8's seed referenced them), so the seed owns Core tables and a live-schema drift check; insert-if-missing instead of #7's/#8's upsert (accepted divergence, re-open triggers in `review_seed_job.md` round 1 point 4).
+
+**Lessons:** (1) a test helper that derives one reference from another makes a sibling-column mutation invisible — "distinct values" applies to the columns a statement must NOT read; (2) a parser test fed canned output cannot see an argv error — the B1 of round 1 needed the real binary.
+
+## Phase 7 — leader session log — 2026-10-05
+
+One session, ≈15:55 → 18:49, one feature (`seed_job`) plus backlog 211 and 212, four rounds. Archived from `progress/current.md` at close.
+
+- Process sized: Part A light, Part B full; one implementer for both; Opus reviewer for B. Brief premise-checked (28/28).
+- Round 1 → REJECTED (B1 sqlcmd flags). Leader filed 211/212 from the review (later re-attached, see the gate). Round 2 (fresh implementer) → APPROVED with acceptance 5 open. Leader closed Part A after reading the diff and running the three sentinel files (`6 passed in 9.93s`).
+- Gate: the maintainer authorised the live #8 parity (start #8's mssql + mongodb only, read-only, remove after), ruled that findings are fixed in the phase that detects them (CLAUDE.md amended; memory saved), and re-baselined the gate to ~105 s. Leader re-attached 211 and 212's seed half to `seed_job`, added 212's projector half to feature 24's acceptance.
+- Round 3 (premise-checked: 1 FALSE line ref corrected; credentials note added) → parity met, 211 and 212 done; the leader removed the `otcnet-net` network the run left behind. Review round 3 → REJECTED (B1 mirrored fixtures, B2 ledger). Second rejection → maintainer: fix. Leader superseded 211's acceptance item 1 (the unconditional-aggregate shape) with the no-scan shape (review N1).
+- Round 4 (light) → re-check APPROVED → 12, 211, 212 `done`.
+
+## backlog sweep 202, 203, 204, 207, 210 (+ carries for 201, 205) — phase 7 — 2026-10-05
+
+**Why it happened in Phase 7:** at the Phase 7 gate the maintainer ruled that findings are fixed in the phase that detects them (CLAUDE.md amended), then asked for the open backlog entries from Phases 3–6 to be fixed now ("please, fix them"). The leader split them by whether their code exists: 202, 203, 204, 207, 210 fixed; 201 (projector) and 205 (outbox) need unbuilt code and were carried as acceptance items — 201 → features 24 and 29 (its seed item done by seed_job), 205 → feature 14; 203 item 2's generic-Envelope half → feature 14.
+
+**Effort:** ≈19:30 → 21:15, **~1.75h wall-clock**, five implementation rounds, four Opus reviews (one reviewer resumed across rounds 2–4), three maintainer gates (after the second, third rejection, and the stray file). Round 1 19:44–20:35 (premise check 19:44: 1 FALSE — 204(a)'s grep misses raw SQL strings), review 1 REJECTED (3 blocking: `from math import pow`; the write-path census keyed hits as a set; `to_wire_json` wrote an unvalidated model inside `Envelope.payload`). Round 2 → REJECTED (`operator.ipow`/`itruediv`/`getattr`; SQL comments, aliased DML classes, an unarmed premise). Round 3 (module ban) → REJECTED (`statistics.mean`, built-in `pow` as a value, `copy_to_table`). Round 4 — **change of kind approved by the maintainer**: a literal import ALLOW-list derived from the census (collections, dataclasses, datetime, hashlib, types, typing, uuid + first-party) and `pow`/`float`/`round` banned as names, with a **stopping rule written before the round** → APPROVED, 0 blocking. Round 5 (light, leader-closed): the allow-list test re-derives the census instead of comparing literals; a stale docstring corrected; leader read the diff and ran the file (`304 passed`).
+
+**Classification:** full (money guard, wire contract, persistence, security); round 5 light.
+
+**Baselines:** none comparable — #7 and #8 never ran a cross-phase sweep; these entries are #9's own Phase 3–6 findings (#8 analogues: the money AST guard's evolution over #8 ids 44/104; #8 review_db_orders D6 for 204(d)).
+
+**Tests:** 922 → ~1 090 (quality.sh 117 s in round 4, threshold re-baselined by the maintainer to ~125 s after review measured 126.05 / 114.94 s — the growth was Phase 7's seed suites, the sweep added <1 s).
+
+**Incident:** the round-1 reviewer created a stray untracked `packages/shared_kernel/src/otc_shared_kernel/currency.py` while planting a mutation; its own `rm` was refused by the permission classifier and it asked the leader to delete it. The leader did not (permission laundering) and asked the maintainer, who authorised the deletion. Later review requests required planting only in existing files or scratchpad copies and a `git status --short` snapshot check — no recurrence.
+
+**Lessons:**
+- **A deny-list guard loses by construction.** Three rounds closed every reported form and the reviewer found three new ones each time. The fix that ended it was a change of kind — an allow-list derived from a census — plus a stopping rule agreed with the maintainer before the round. CLAUDE.md already says "when a syntax guard keeps losing, test the behaviour"; the leader should have proposed the allow-list after the second rejection, not the third.
+- **Census before design.** One AST command (35 files, 7 stdlib roots, zero uses of pow/float/round/math/operator) made the allow-list obviously cheap; it should have been run when 202 was first briefed.
+- **Named residual with its backstop:** float-returning APIs of allowed modules (`datetime.timestamp()`, `timedelta.total_seconds()`) are caught where the value reaches `Money` (`type(...) is int`) and by `mypy --strict`, not in an untyped intermediate.

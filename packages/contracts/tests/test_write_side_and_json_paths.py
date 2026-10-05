@@ -4,23 +4,30 @@ D1 write side: an instance can be mutated or built past validation (`model_copy(
 `model_construct`); `to_wire_json` re-validates and refuses it, naming the field, and assignment is
 refused outright (`frozen=True`).
 
+Round 2 (backlog 203, review R2-1..R2-4): the validation refusal now holds on EVERY JSON path
+(`model_dump_json`, `model_dump(mode="json")`, a FastAPI `response_model`), and the `.mmmZ` instant
+holds for a list-held and a dict-held datetime.
+
 D2 one instant format: `model_dump_json()`, `model_dump(mode="json")` and a FastAPI `response_model`
 write `.mmmZ` too, not Pydantic's `.442000Z`.
 """
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from pydantic import ValidationError
+from pydantic import AwareDatetime, ValidationError
+from pydantic_core import PydanticSerializationError
 
-from otc_contracts import parse_fact, to_wire_json
+from otc_contracts import WireModel, parse_fact, to_wire_json
 from otc_contracts.generated import openapi
-from otc_contracts.generated.asyncapi import Money, OrderPlacedEvent
+from otc_contracts.generated.asyncapi import Envelope, Money, OrderPlacedEvent
 from otc_contracts.generated.openapi import OrderReferences
 
 GOLDEN_DIR = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "golden_envelopes"
@@ -129,3 +136,166 @@ def test_a_subclass_declared_elsewhere_keeps_the_explicit_nulls() -> None:
 def test_uuid_fields_stay_uuid_objects_in_python_mode() -> None:
     event = parse_fact((GOLDEN_DIR / "order_placed_v1.json").read_text("utf-8"))
     assert isinstance(event.model_dump()["eventId"], UUID)
+
+
+# ------------------------------------------- R2-1: every JSON path refuses an unvalidated instance
+# Pydantic wraps an exception raised inside a serializer: the refusal arrives as a
+# PydanticSerializationError whose message carries the ValidationError text, naming the field.
+BAD_AMOUNTS = [True, 89.34, "8934"]
+
+
+def _json_paths(model: WireModel) -> dict[str, Any]:
+    return {
+        "model_dump_json": model.model_dump_json,
+        "model_dump(mode=json)": lambda: model.model_dump(mode="json"),
+    }
+
+
+@pytest.mark.parametrize("bad", BAD_AMOUNTS, ids=repr)
+@pytest.mark.parametrize("path", ["model_dump_json", "model_dump(mode=json)"])
+def test_r2_1_a_copy_updated_past_validation_is_refused_by_every_json_path(
+    path: str, bad: object
+) -> None:
+    copied = good().model_copy(update={"amount": bad})
+    with pytest.raises(PydanticSerializationError, match="amount"):
+        _json_paths(copied)[path]()
+
+
+@pytest.mark.parametrize("bad", BAD_AMOUNTS, ids=repr)
+@pytest.mark.parametrize("path", ["model_dump_json", "model_dump(mode=json)"])
+def test_r2_1_a_constructed_model_is_refused_by_every_json_path(path: str, bad: object) -> None:
+    constructed = Money.model_construct(amount=bad, currency="EUR")
+    with pytest.raises(PydanticSerializationError, match="amount"):
+        _json_paths(constructed)[path]()
+
+
+def test_r2_1_a_nested_unvalidated_field_is_refused_by_the_parents_json_path() -> None:
+    event = parse_fact((GOLDEN_DIR / "order_placed_v1.json").read_text("utf-8"))
+    assert isinstance(event, OrderPlacedEvent)
+    broken = event.model_copy(
+        update={"payload": event.payload.model_copy(update={"total_amount": 89.34})}
+    )
+    with pytest.raises(PydanticSerializationError, match="totalAmount"):
+        broken.model_dump_json()
+
+
+async def test_r2_1_a_fastapi_response_model_refuses_an_unvalidated_instance() -> None:
+    app = FastAPI()
+
+    @app.get("/money", response_model=Money)
+    def money() -> Money:
+        return Money.model_construct(amount=89.34, currency="EUR")
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test"
+    ) as client:
+        response = await client.get("/money")
+    assert response.status_code == 500
+    assert "89.34" not in response.text
+
+
+def test_r2_1_python_mode_is_not_validated_so_the_writer_can_start_from_it() -> None:
+    constructed = Money.model_construct(amount=True, currency="EUR")
+    assert constructed.model_dump()["amount"] is True
+
+
+# ------------------------------------------------- R2-2: a list-held or dict-held instant is .mmmZ
+class _Pings(WireModel):
+    """Test-local plant: no spec field holds a list of instants today (InvoiceView-shaped)."""
+
+    at: list[AwareDatetime]
+    nested: list[list[AwareDatetime]]
+
+
+def test_r2_2_a_list_held_instant_is_written_mmmz_and_equals_to_wire_json() -> None:
+    pings = _Pings(at=[SUB_MS, SUB_MS], nested=[[SUB_MS]])
+    instant = "2026-08-30T16:20:20.442Z"
+    expected = f'{{"at":["{instant}","{instant}"],"nested":[["{instant}"]]}}'
+    assert pings.model_dump_json() == expected
+    assert to_wire_json(pings) == expected
+    assert pings.model_dump(mode="json")["at"] == ["2026-08-30T16:20:20.442Z"] * 2
+
+
+def test_r2_2_a_dict_held_instant_in_an_envelope_payload_equals_to_wire_json() -> None:
+    envelope = Envelope(
+        event_id=UUID(int=1),
+        event_type="order.placed.v1",
+        aggregate_id=UUID(int=2),
+        correlation_id=UUID(int=3),
+        causation_id=UUID(int=4),
+        occurred_at=SUB_MS,
+        payload={"orderDate": SUB_MS, "dates": [SUB_MS], "nested": {"at": SUB_MS}, "n": 1},
+    )
+    written = envelope.model_dump_json()
+    assert written == to_wire_json(envelope)
+    assert not re.search(r"\.\d{3}\d+Z", written), written  # no microsecond instant anywhere
+    payload = json.loads(written)["payload"]
+    assert payload == {
+        "orderDate": "2026-08-30T16:20:20.442Z",
+        "dates": ["2026-08-30T16:20:20.442Z"],
+        "nested": {"at": "2026-08-30T16:20:20.442Z"},
+        "n": 1,
+    }
+
+
+@pytest.mark.parametrize("held", ["direct", "in a list", "in a nested dict"])
+def test_r2_1_to_wire_json_refuses_an_unvalidated_model_held_in_an_envelope_payload(
+    held: str,
+) -> None:
+    bad = Money.model_construct(amount=89.34, currency="EUR")
+    payloads: dict[str, dict[str, Any]] = {
+        "direct": {"money": bad},
+        "in a list": {"money": [bad]},
+        "in a nested dict": {"a": {"money": bad}},
+    }
+    payload = payloads[held]
+    envelope = Envelope(
+        event_id=UUID(int=1),
+        event_type="order.placed.v1",
+        aggregate_id=UUID(int=2),
+        correlation_id=UUID(int=3),
+        causation_id=UUID(int=4),
+        occurred_at=SUB_MS,
+        payload=payload,
+    )
+    with pytest.raises(PydanticSerializationError, match="amount"):
+        envelope.model_dump_json()
+    with pytest.raises(PydanticSerializationError, match="amount"):
+        to_wire_json(envelope)
+
+
+def test_r2_2_a_datetime_less_dict_payload_is_untouched() -> None:
+    assert (
+        Envelope(
+            event_id=UUID(int=1),
+            event_type="order.placed.v1",
+            aggregate_id=UUID(int=2),
+            correlation_id=UUID(int=3),
+            causation_id=UUID(int=4),
+            occurred_at=SUB_MS,
+            payload={"a": [1, "x"], "b": {"c": None}},
+        )
+        .model_dump_json()
+        .endswith('"payload":{"a":[1,"x"],"b":{"c":null}}}')
+    )
+
+
+# ------------------------------------------------- R2-3 / R2-4: the docstring tells the truth
+def test_r2_3_the_module_docstring_no_longer_claims_what_the_code_does_not_do() -> None:
+    import otc_contracts.wire as wire
+
+    doc = wire.__doc__ or ""
+    assert "deliberately not the writer" not in doc
+    assert "when parsing" not in doc.split("Integers are strict")[1].splitlines()[0]
+    assert "NOT wire models" in doc
+
+
+def test_r2_4_the_generated_root_models_are_not_wire_models() -> None:
+    from pydantic import RootModel
+
+    from otc_contracts.generated import asyncapi
+
+    for name in ("Quantity", "ProductCode"):
+        cls = getattr(asyncapi, name)
+        assert issubclass(cls, RootModel)
+        assert not issubclass(cls, WireModel)

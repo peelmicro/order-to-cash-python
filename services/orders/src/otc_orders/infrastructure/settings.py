@@ -3,22 +3,42 @@
 Read from the same `.env` the compose file reads (`POSTGRES_APP_USER`, `POSTGRES_APP_PASSWORD`,
 `POSTGRES_DB_ORDERS`, `POSTGRES_HOST_PORT`), so the database name has one source of truth.
 `ORDERS_DATABASE_URL`, when set, wins outright (tests and deployments that carry a full URL).
+
+There is NO password default (review_db_orders F5, #8 review_db_orders D6): with neither a full URL
+nor `POSTGRES_APP_PASSWORD`, constructing the settings raises, so a service never boots on a
+credential committed to source. The compose file and `.env.example` carry the development value;
+a developer's `.env` supplies it to the Alembic CLI and the service.
 """
 
-from pydantic import AliasChoices, Field
+from typing import Self
+
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
 
 class OrdersDatabaseSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
+    # No `populate_by_name` (review_db_fulfillment A1): with it, pydantic-settings also reads the
+    # bare field names from the environment, so an unrelated `$USER` (or `$HOST`, `$PORT`,
+    # `$PASSWORD`) would silently become the database user (measured on this machine:
+    # `juanpabloperez`).
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str | None = Field(default=None, validation_alias="ORDERS_DATABASE_URL")
     host: str = Field(default="localhost", validation_alias="POSTGRES_HOST")
     port: int = Field(default=5432, validation_alias=AliasChoices("POSTGRES_HOST_PORT"))
     user: str = Field(default="otc_app", validation_alias="POSTGRES_APP_USER")
-    password: str = Field(default="otc_app_dev_password", validation_alias="POSTGRES_APP_PASSWORD")
+    # Absent means "not supplied", never a usable password: the validator below refuses it.
+    password: str | None = Field(default=None, validation_alias="POSTGRES_APP_PASSWORD")
     database: str = Field(default="otc_orders", validation_alias="POSTGRES_DB_ORDERS")
+
+    @model_validator(mode="after")
+    def _a_credential_must_be_supplied(self) -> Self:
+        if not self.database_url and not self.password:
+            raise ValueError(
+                "no database credential: set ORDERS_DATABASE_URL or POSTGRES_APP_PASSWORD"
+            )
+        return self
 
     @property
     def url(self) -> str:

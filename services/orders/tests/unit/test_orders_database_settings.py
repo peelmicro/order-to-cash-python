@@ -1,9 +1,10 @@
 """The database settings carry no password default (review_db_orders F5, #8 D6): with neither a
 full URL nor `POSTGRES_APP_PASSWORD`, boot fails; with either, the URL is assembled.
 
-Backlog 208(b): the fixture clears EVERY alias variable the settings read, so the test passes with
-any of them exported in the shell (feature 10's fixture cleared two; a developer with
-`POSTGRES_HOST_PORT=5433` exported saw the URL assertion fail on the port).
+Backlog 210 (review_db_billing N1) and 204(d), 204(e): the fixture clears EVERY alias
+variable the settings read, so the test passes with any of them exported in the shell (feature 10's
+fixture cleared two; a developer with `POSTGRES_HOST_PORT=5433` exported saw the URL assertion
+fail on the port).
 """
 
 from pathlib import Path
@@ -11,15 +12,15 @@ from pathlib import Path
 import pytest
 from pydantic import AliasChoices, ValidationError
 
-from otc_notifications.infrastructure.settings import NotificationsDatabaseSettings
+from otc_orders.infrastructure.settings import OrdersDatabaseSettings
 
 ALIAS_VARIABLES = (
-    "NOTIFICATIONS_DATABASE_URL",
+    "ORDERS_DATABASE_URL",
     "POSTGRES_HOST",
     "POSTGRES_HOST_PORT",
     "POSTGRES_APP_USER",
     "POSTGRES_APP_PASSWORD",
-    "POSTGRES_DB_NOTIFICATIONS",
+    "POSTGRES_DB_ORDERS",
 )
 
 
@@ -32,7 +33,7 @@ def _clean_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 def test_the_fixture_clears_every_alias_the_settings_class_declares() -> None:
     declared: set[str] = set()
-    for field in NotificationsDatabaseSettings.model_fields.values():
+    for field in OrdersDatabaseSettings.model_fields.values():
         alias = field.validation_alias
         if isinstance(alias, str):
             declared.add(alias)
@@ -43,7 +44,7 @@ def test_the_fixture_clears_every_alias_the_settings_class_declares() -> None:
 
 def test_boot_fails_when_no_credential_is_supplied() -> None:
     with pytest.raises(ValidationError, match="no database credential"):
-        NotificationsDatabaseSettings()
+        OrdersDatabaseSettings()
 
 
 def test_the_password_from_the_environment_builds_the_asyncpg_url(
@@ -53,13 +54,13 @@ def test_the_password_from_the_environment_builds_the_asyncpg_url(
     # unrelated variables that share a field's bare name must not leak into the URL
     for name, value in (("USER", "someone-else"), ("HOST", "elsewhere"), ("PORT", "1")):
         monkeypatch.setenv(name, value)
-    url = NotificationsDatabaseSettings().url
-    assert url == "postgresql+asyncpg://otc_app:s3cr3t-value@localhost:5432/otc_notifications"
+    url = OrdersDatabaseSettings().url
+    assert url == "postgresql+asyncpg://otc_app:s3cr3t-value@localhost:5432/otc_orders"
 
 
 def test_a_full_url_needs_no_password(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("NOTIFICATIONS_DATABASE_URL", "postgresql+asyncpg://u:p@h:1/d")
-    assert NotificationsDatabaseSettings().url == "postgresql+asyncpg://u:p@h:1/d"
+    monkeypatch.setenv("ORDERS_DATABASE_URL", "postgresql+asyncpg://u:p@h:1/d")
+    assert OrdersDatabaseSettings().url == "postgresql+asyncpg://u:p@h:1/d"
 
 
 def test_bare_user_host_port_and_password_never_reach_the_url(
@@ -76,11 +77,11 @@ def test_bare_user_host_port_and_password_never_reach_the_url(
         ("PASSWORD", "wrong-password"),
     ):
         monkeypatch.setenv(name, value)
-    url = NotificationsDatabaseSettings().url
-    assert url == "postgresql+asyncpg://otc_app:s3cr3t-value@localhost:5432/otc_notifications"
+    url = OrdersDatabaseSettings().url
+    assert url == "postgresql+asyncpg://otc_app:s3cr3t-value@localhost:5432/otc_orders"
 
 
 def test_a_bare_password_variable_is_not_a_credential(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PASSWORD", "wrong-password")
     with pytest.raises(ValidationError, match="no database credential"):
-        NotificationsDatabaseSettings()
+        OrdersDatabaseSettings()

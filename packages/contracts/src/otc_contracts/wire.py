@@ -5,16 +5,25 @@ Every decision is made here, once, and nowhere else:
 * **camelCase** on the wire through ONE mechanism: `alias_generator=to_camel` on `WireModel`. The
   generator is told `--no-alias`, so no generated field carries its own `Field(alias=...)`.
 * **compact JSON, non-ASCII raw**: written by `to_wire_json` with explicit `separators` and
-  `ensure_ascii=False`, not by whatever a library defaults to.
+  `ensure_ascii=False`, not by whatever a library defaults to. Pydantic's JSON mode happens to
+  write the same bytes; the writer does not rely on that.
 * **`Instant` as `YYYY-MM-DDTHH:MM:SS.mmmZ`** from `format_instant`, an explicit formatter.
-  Pydantic's own datetime output writes microseconds (`.442000Z`), which is why the writer starts
-  from a python-mode dump and formats datetimes itself.
+  Pydantic's own datetime output writes microseconds (`.442000Z`), so `WireModel`'s JSON-mode
+  serializer replaces every datetime it holds (directly, in a list, or in a dict such as
+  `Envelope.payload`) with `format_instant`. `model_dump_json()`, `model_dump(mode="json")` and a
+  FastAPI `response_model` therefore agree with `to_wire_json`.
 * **None**: a `None` is written as an explicit `null` only for a field that the spec declares
   nullable (`generated/nullable.py`, itself generated from the spec); every other `None` is absent.
-* **Integers are strict when parsing**: `"8934"`, `8934.0` and `True` are refused for an integer
-  field (`strict=True`); Pydantic's lax mode would turn them into `8934`/`8934`/`1`.
+* **Integers are strict**: `"8934"`, `8934.0` and `True` are refused for an integer field when
+  parsing (`strict=True`) and when writing: an instance built past validation
+  (`model_copy(update=...)`, `model_construct`) is re-validated by `to_wire_json` AND by the
+  JSON-mode serializer, so no JSON path writes it. Assignment is refused (`frozen=True`).
 
-`model_dump_json` is deliberately not the writer: it would emit microsecond instants.
+The generated `RootModel`s (`asyncapi.Quantity`, `asyncapi.ProductCode`, and the reference types in
+`openapi`) are NOT wire models: they derive from `pydantic.RootModel`, not `WireModel`, are lax, and
+nothing references them (the spec's value objects are inlined as constrained fields). The
+generator emits them from the spec's named schemas and its output is not edited, so they are
+documented here as non-wire. Do not use one to parse or write a message.
 """
 
 import json
@@ -59,13 +68,41 @@ def _nullable_for(model_type: type) -> frozenset[str]:
     return frozenset(names)
 
 
+def _holds_datetime(value: object) -> bool:
+    if isinstance(value, datetime):
+        return True
+    if isinstance(value, list | tuple):
+        return any(_holds_datetime(item) for item in value)
+    if isinstance(value, dict):
+        return any(_holds_datetime(item) for item in value.values())
+    return False
+
+
+def _json_ready(value: Any) -> Any:
+    """The JSON-mode form of a value that holds a datetime: instants through `format_instant`,
+    the rest as the wire writes it. A nested `WireModel` serialises itself."""
+    if isinstance(value, datetime):
+        return format_instant(value)
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, WireModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, list | tuple):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _json_ready(item) for key, item in value.items()}
+    return value
+
+
 class WireModel(BaseModel):
     """Base class of every generated wire model.
 
     Immutable (`frozen=True`): an attribute assignment is refused. `model_copy(update=...)` and
-    `model_construct` still skip validation, so `to_wire_json` re-validates before writing.
-    Its JSON-mode serialisation writes instants as `.mmmZ`, so `model_dump_json()`,
-    `model_dump(mode="json")` and a FastAPI `response_model` agree with `to_wire_json`.
+    `model_construct` skip validation, so the JSON-mode serializer re-validates the instance
+    before writing (as `to_wire_json` does) and raises `ValidationError` naming the field.
+    Its JSON-mode serialisation writes instants as `.mmmZ` wherever they sit (a field, a list, a
+    dict), so `model_dump_json()`, `model_dump(mode="json")` and a FastAPI `response_model` agree
+    with `to_wire_json`. Python mode is unchanged: datetimes stay objects.
     """
 
     model_config = ConfigDict(
@@ -83,14 +120,22 @@ class WireModel(BaseModel):
     def _serialize(
         self, handler: SerializerFunctionWrapHandler, info: SerializationInfo
     ) -> dict[str, Any]:
+        if info.mode_is_json():
+            # Every JSON path refuses an instance that skipped validation. Python mode does not
+            # enter this branch, so the nested dump below cannot recurse.
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")  # the wrong type warns; the validation refuses
+                python_dump = self.model_dump(mode="python")
+            type(self).model_validate(python_dump)
         data: dict[str, Any] = handler(self)
         if info.mode_is_json():
-            # Pydantic's own JSON mode writes microseconds; replace every datetime field.
+            # Pydantic's own JSON mode writes microseconds. Replace every field that holds a
+            # datetime, however deep (a list of instants, an `Any` dict payload).
             for name, field in type(self).model_fields.items():
                 key = field.serialization_alias or field.alias or name
                 value = getattr(self, name)
-                if key in data and isinstance(value, datetime):
-                    data[key] = format_instant(value)
+                if key in data and _holds_datetime(value):
+                    data[key] = _json_ready(value)
         nullable = _nullable_for(type(self))
         return {
             name: value for name, value in data.items() if value is not None or name in nullable
@@ -116,18 +161,24 @@ def to_wire_dict(model: WireModel) -> dict[str, Any]:
 def to_wire_json(model: WireModel) -> str:
     """The wire form: compact, non-ASCII raw, camelCase, `.mmmZ` instants.
 
-    What this adds beyond the model's own JSON serialisation (`model_dump_json`, which now agrees
-    on instants, None and field order): (1) it RE-VALIDATES the instance first, because
-    `model_copy(update=...)` and `model_construct` skip validation, so a bool, float or string in
-    an integer field, or a bad UUID, is refused here with the field named; (2) separators,
-    `ensure_ascii=False` and `allow_nan=False` are stated, not inherited from a library default;
-    (3) a value with no wire form (a `Decimal` in an untyped payload) raises `TypeError`.
+    The model's own JSON paths (`model_dump_json`, `model_dump(mode="json")`) now agree with it on
+    validation, instants, None and field order. What it still adds: it validates BEFORE any
+    serialization, naming the field; separators, `ensure_ascii=False` and `allow_nan=False` are
+    stated, not inherited from a library default; and a value with no wire form (a `Decimal` in an
+    untyped payload) raises `TypeError`.
     """
     with warnings.catch_warnings():
         # a field holding the wrong type makes the serializer warn; validation below is the refusal
         warnings.simplefilter("ignore")
         dumped = to_wire_dict(model)
     type(model).model_validate(dumped)
+    # `model_validate` re-checks only the top-level model: a WireModel held in an `Any` field (an
+    # `Envelope.payload` value) is already a plain dict in `dumped`. The JSON-mode dump enters every
+    # nested model's serializer, which re-validates it, so the canonical writer refuses what
+    # `model_dump_json` refuses. Its result is discarded: the bytes come from `json.dumps` below.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model.model_dump(mode="json")
     return json.dumps(
         dumped,
         separators=(",", ":"),

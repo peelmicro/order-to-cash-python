@@ -213,7 +213,7 @@
       "phase": 7,
       "title": "Deterministic one-shot seed job producing the SAME dataset as #7 and #8",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "deterministic ids by SHA-256 of 'otc-seed:'+ns, reproducing #7's skipped hex index 12 (commented)",
         "same currencies, products, retailers, companies, GLNs, credit limits and stock as #7 and #8",
@@ -264,7 +264,9 @@
         "aggregate row and outbox row written in one transaction",
         "relay claims with FOR UPDATE SKIP LOCKED, publishes keyed by correlationId and stamps published_at; skip-versus-block measured with the guard armed the other way",
         "relay loop self-scheduled; a deadlock victim and a poison payload are handled inside run_once (#8 ids 87, 111)",
-        "redelivery deduplicated via processed_events keyed on (event_id, consumer)"
+        "redelivery deduplicated via processed_events keyed on (event_id, consumer)",
+        "backlog 205 (carried in phase 7): instants are truncated to whole milliseconds before they are persisted or enveloped; a test writes a .123987 instant through the outbox path and asserts the envelope's occurredAt and the stored occurred_at agree; armed by removing the truncation",
+        "backlog 203 item 2 (carried in phase 7; the rest of 203 done there): a generic Envelope[P] whose typed payload is a WireModel holding a datetime (also in a list), built from a typed payload's python-mode dump: model_dump_json() == to_wire_json(), no microsecond instant, a model_copy(update={...: 89.34}) of the payload refused by model_dump_json and by to_wire_json; armed by reverting WireModel._serialize's _holds_datetime replacement or its model_validate"
       ]
     },
     {
@@ -418,7 +420,9 @@
         "out-of-order delivery still yields the correct final status; replaying a topic reproduces an identical document",
         "indexes created at boot and checked against the server's stored specification",
         "emits the update signal the Gateway turns into SSE, connected inside bootstrap",
-        "SA-2: the operator note reaches the cancellation entry on every compensation branch"
+        "SA-2: the operator note reaches the cancellation entry on every compensation branch",
+        "the projector's TIMELINE_ORDER_VERSION, status-rank table, 'projector:' processedEventKeys prefix and uq_order_reference index equal tests/fixtures/read_model_constants.json, the same file the seed is pinned to (backlog 212, phase 7 seed half); armed by bumping the projector's version alone",
+        "backlog 201 (carried in phase 7, its seed item done there): the phase 12 gate decides, with evidence, between (a) resolving a responder fact's command causationId to the fact that triggered the command — likely an SA-n applied to #7, #8 and #9, since the RPC requests carry no triggering-fact id today — and (b) keeping R12's semantics and rendering only what a live timeline can show"
       ]
     },
     {
@@ -520,7 +524,8 @@
         "money formatted from the ISO 4217 table exported by shared_kernel (SA-5), parity-checked both ways",
         "every error shown is that error's own problem-document text, proven by a behavioural sweep that fails every request each page makes",
         "pages: login, orders list, place order, order detail with live timeline and causal links, stock (list + replenish), billing (invoices + Register payment + credits)",
-        "inherited criteria: #8 ids 98, 100, 101, 102, 103, 106; stack label '#9 · Python / Angular'; WEB_PORT=3010"
+        "inherited criteria: #8 ids 98, 100, 101, 102, 103, 106; stack label '#9 · Python / Angular'; WEB_PORT=3010",
+        "backlog 201 (carried in phase 7): README and UI claims about 'caused by' describe live behaviour, not only seeded data, per the phase 12 gate's decision on feature 24"
       ]
     },
     {
@@ -654,14 +659,14 @@
       "phase": 12,
       "title": "Live order timelines link 'caused by' only for facts Orders emits; responder facts cite the command id, so the link is missing (inherited from #7 and #8)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "attached_to": "projector_read_model (id 24); also affects web_app (id 29) and seed_job (id 12)",
       "acceptance": [
         "the phase 12 gate decides, with evidence, between (a) resolving a responder fact's command causationId to the fact that triggered the command — likely an SA-6, applied to #7, #8 and #9, since the RPC requests carry no triggering-fact id today — and (b) keeping R12's semantics and rendering only what a live timeline can show",
         "whichever is chosen, README and UI claims about 'caused by' describe live behaviour, not only seeded data",
         "seed_job keeps #8's seeded causal chain unchanged (dataset parity), and the difference between seeded and live chains is stated where the seed is documented"
       ],
-      "note": "Found 2026-10-04 while reviewing the LinkedIn y Web plan (section 3 observation: in the live demo GIFs of #7 and #8 only the last timeline entry shows 'caused by'). Diagnosis: the web is not at fault — both timeline schemas carry causationId and #8's web (apps/web/src/lib/order-detail.ts:101-104) links an entry only when causationId equals another fact's eventId. R12 lets a fact's causationId name the triggering fact OR the command; facts emitted by RPC responders cite the command, which is never in the timeline. #8's own seed documents the divergence: src/Seed/Domain/Sagas/SagaFixtures.cs — 'one link shorter than a live saga's causal chain'. Disposition: decide at the phase 12 gate; not fixed in phase 3."
+      "note": "Found 2026-10-04 while reviewing the LinkedIn y Web plan (section 3 observation: in the live demo GIFs of #7 and #8 only the last timeline entry shows 'caused by'). Diagnosis: the web is not at fault — both timeline schemas carry causationId and #8's web (apps/web/src/lib/order-detail.ts:101-104) links an entry only when causationId equals another fact's eventId. R12 lets a fact's causationId name the triggering fact OR the command; facts emitted by RPC responders cite the command, which is never in the timeline. #8's own seed documents the divergence: src/Seed/Domain/Sagas/SagaFixtures.cs — 'one link shorter than a live saga's causal chain'. Disposition: decide at the phase 12 gate; not fixed in phase 3. CARRIED 2026-10-05 (phase 7, maintainer ruling: findings fixed in the phase that detects them; only parts needing unbuilt code are carried as acceptance items): item 1 -> feature 24's acceptance, item 2 -> feature 29's acceptance, item 3 done by seed_job (services/seed/README.md and the sagas data docstring)."
     },
     {
       "id": 202,
@@ -669,7 +674,7 @@
       "phase": 8,
       "title": "Kernel surface guard: recurse into subpackages, compare module names at runtime, treat pow/__pow__ like the truediv family",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "attached_to": "orders_aggregate (id 13), the next feature to add domain money code and the likely home of a MoneyText formatter",
       "acceptance": [
         "the kernel module-name allowlist population recurses into subpackages (armed: a new otc_shared_kernel/text/__init__.py with an int-only major-unit formatter fails it)",
@@ -684,14 +689,14 @@
       "phase": 8,
       "title": "Wire models: every JSON path refuses an unvalidated instance and writes .mmmZ for nested and list-held instants",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "attached_to": "outbox_and_idempotency (id 14), the first feature that publishes and the likeliest to build a generic Envelope",
       "acceptance": [
         "model_dump_json, model_dump(mode=\"json\") and a FastAPI response_model refuse a model_copy(update=...) or model_construct instance holding True, 89.34 or \"8934\" in an integer field; armed by removing the check",
         "model_dump_json() == to_wire_json() for a list-held instant (InvoiceView plant in a test-local subclass or generated fixture) and for a generic Envelope with a datetime in its dict payload; armed by reverting",
         "wire.py's module docstring matches the code; the dead generated RootModels (Quantity, ProductCode) are removed or documented"
       ],
-      "note": "Round 2 of review_contracts_package.md: R2-1, R2-2 (minor), R2-3, R2-4 (nit), ACCEPTED, NOT FIXED in contracts_package: each route needs an API that deliberately skips validation (plain assignment is refused, frozen=True; to_wire_json re-validates), and no spec field holds a list of instants today. Re-open triggers as given in the review's R2-1 and R2-2: any code that serialises a WireModel by a path other than to_wire_json, or a spec change adding a list-held or dict-held instant, before this entry closes."
+      "note": "Round 2 of review_contracts_package.md: R2-1, R2-2 (minor), R2-3, R2-4 (nit), ACCEPTED, NOT FIXED in contracts_package: each route needs an API that deliberately skips validation (plain assignment is refused, frozen=True; to_wire_json re-validates), and no spec field holds a list of instants today. Re-open triggers as given in the review's R2-1 and R2-2: any code that serialises a WireModel by a path other than to_wire_json, or a spec change adding a list-held or dict-held instant, before this entry closes. FIXED 2026-10-05 (phase 7 backlog sweep, progress/impl_backlog_sweep.md) except item 2's generic-Envelope half, CARRIED to feature 14's acceptance (no generic Envelope exists yet)."
     },
     {
       "id": 204,
@@ -699,7 +704,7 @@
       "phase": 8,
       "title": "Orders write boundary: every write into a guarded integer column is range-checked, the guard passes SQL expressions through, and the database password has no default",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "attached_to": "orders_acceptance (id 15); feature 16 order_saga_orchestrator inherits item (c) as the first writer of saga_commands.attempts",
       "acceptance": [
         "every write into a guarded integer column either goes through the ORM unit of work or calls ensure_in_range before execution — the population is `grep -n \"insert(\\|update(\\|text(\\|bulk_\" services/orders/src`, one classification per hit (sequences.py's raw ADVANCE_ORDER_SEQUENCE included)",
@@ -716,12 +721,12 @@
       "phase": 8,
       "title": "Instants are truncated to whole milliseconds before they are persisted or enveloped, so timestamptz(3)'s rounding and the wire formatter's truncation can never disagree",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "attached_to": "outbox_and_idempotency (id 14)",
       "acceptance": [
         "a test writes a .123987 instant through the outbox path and asserts the envelope's occurredAt and the stored occurred_at agree; armed by removing the truncation"
       ],
-      "note": "Proposed in progress/review_db_orders.md (round 1, APPROVED) and filed by the leader 2026-10-05. F6 (advisory): timestamptz(3) rounds (.123987 -> .124, asserted in test_orders_json_and_timestamps.py) while otc_contracts.wire.format_instant truncates (.123). No owner before this entry."
+      "note": "Proposed in progress/review_db_orders.md (round 1, APPROVED) and filed by the leader 2026-10-05. F6 (advisory): timestamptz(3) rounds (.123987 -> .124, asserted in test_orders_json_and_timestamps.py) while otc_contracts.wire.format_instant truncates (.123). No owner before this entry. CARRIED 2026-10-05 (phase 7 ruling): the outbox does not exist yet; the item is now feature 14's acceptance. The seed's instants were proven whole-millisecond in phase 7 (services/seed/tests/unit/test_seed_instants.py)."
     },
     {
       "id": 206,
@@ -744,7 +749,7 @@
       "phase": 9,
       "title": "The range guard passes a SQL expression through only when its type is in the Integer family, so PostgreSQL never silently rounds a non-integer expression into a guarded column",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "attached_to": "fulfillment_stock (id 17), the first writer of stock.units; orders' saga_commands.attempts writer (feature 16) inherits it through 204",
       "acceptance": [
         "a ClauseElement is passed through only when its SQL type is in the Integer family; Numeric, Float and NullType expressions are refused with the guard's domain error (or the residual is named in the docstring and pinned)",
@@ -787,13 +792,42 @@
       "phase": 8,
       "title": "Orders' and fulfillment's settings-test fixtures clear every alias the settings class declares, as billing's and notifications' do",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "attached_to": "orders_acceptance (id 15), alongside 204(d)(e), which already rewrites orders' settings class and test",
       "acceptance": [
         "fulfillment's and orders' settings-test fixtures clear every alias and carry billing's test_the_fixture_clears_every_alias_the_settings_class_declares",
         "armed with POSTGRES_HOST_PORT=5433 exported in the shell and with a newly added alias"
       ],
       "note": "Proposed in progress/review_db_billing.md (round 1, APPROVED) and filed by the leader 2026-10-05. N1 (review_db_fulfillment N4's original instance). Re-open trigger: any CI or quality.sh environment that exports a POSTGRES_* variable."
+    },
+    {
+      "id": 211,
+      "name": "number_allocators_start_above_existing_references",
+      "phase": 7,
+      "title": "Reference counters are seeded from the numeric MAX of existing references, so a seeded database can still allocate ORD/DES/INV numbers",
+      "sdd": false,
+      "status": "done",
+      "attached_to": "seed_job (id 12): fixed in phase 7 per the maintainer ruling of 2026-10-05 (findings are fixed in the phase that detects them); the counter SQL lives in services/{orders,fulfillment,billing}/.../persistence/sequences.py",
+      "acceptance": [
+        "the counter seed stays ONE atomic statement with a numeric (bigint) MAX under ON CONFLICT (id) DO NOTHING, and the MAX scan runs only when the counter row is absent (#8 id 47): INSERT ... SELECT 1, COALESCE((SELECT MAX(CAST(substring(<ref> FROM 5) AS bigint)) FROM <table>), 0) + 1 WHERE NOT EXISTS (<counter row>) ON CONFLICT (id) DO NOTHING; the earlier text (an unconditional aggregate) is superseded per review_seed_job.md round 3 N1",
+        "a test runs otc_seed (or inserts ORD-000006 / DES-000005 / INV-000005) and then allocates, expecting ORD-000007, DES-000006, INV-000006",
+        "the 16-concurrent-first-callers test and the one-round sentinel stay green on the new statement",
+        "a reference above 999999 is not compared as text (#7's D6 case)"
+      ],
+      "note": "Proposed in progress/review_seed_job.md (round 1) and filed by the leader 2026-10-05. #9's Phase 6 counter SQL seeds the constant VALUES (1, 1) (services/orders/src/otc_orders/infrastructure/persistence/sequences.py:12-14 and the fulfillment/billing copies); on a seeded database the first allocation returns ORD-000001, the insert fails on the unique reference, the rollback undoes the advance, and no order can ever be placed. #7 (order-number-allocator.ts:56-70) and #8 (id 45) seed the counter from the numeric MAX of existing references. Neither #7's nor #8's seed writes counter rows (leader grep), so the fix belongs to the allocators, not the seed."
+    },
+    {
+      "id": 212,
+      "name": "seed_timeline_constants_pinned_to_projector",
+      "phase": 7,
+      "title": "The seed's local copies of projector-owned constants are pinned to the projector's own values",
+      "sdd": false,
+      "status": "done",
+      "attached_to": "seed_job (id 12) for the seed half, done in phase 7; the projector half is acceptance item of projector_read_model (id 24), which builds the other party",
+      "acceptance": [
+        "phase 7 (seed half): the projector-owned constants live once in tests/fixtures/read_model_constants.json and a seed test fails when the seed's copies differ from it (armed)"
+      ],
+      "note": "Proposed in progress/review_seed_job.md (round 1, N5) and filed by the leader 2026-10-05. Today the seed's copies are guarded only against #7's oracle; #7 relied on 'kept in sync by inspection' (mongo.writer.ts:113-123)."
     }
   ]
 }

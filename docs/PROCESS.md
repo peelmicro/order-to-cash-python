@@ -251,7 +251,9 @@ Every process artifact in this repository: what it is for, and where it came fro
 
 > Maintained at the end of every phase. History of *how* each phase went lives in `progress/history.md`; this is only the current position.
 
-**Position: Phase 6 complete — 15 of 53 features done** (43 planned plus ten findings filed by this run). The repository holds its toolchain pins, its agent harness, the shared specification, the public README, a running infrastructure stack, the workspace every later phase builds into (seven layered services, the shared kernel, the generated wire contracts, a quality gate whose every guard has been seen failing), and the four write databases' schemas, proven against the engine rather than the ORM. The git history reads **harness → specification → code**, because a process claimed after the fact is not evidence.
+**Position: Phase 7 complete — 25 of 55 features done** (43 planned plus twelve findings filed by this run, every one of them now closed or carried as an acceptance item of the feature that builds its missing code). The repository holds its toolchain pins, its agent harness, the shared specification, the public README, a running infrastructure stack, the workspace every later phase builds into, the four write databases' schemas proven against the engine rather than the ORM, and a deterministic seed whose rows were diffed against #8's live databases. The git history reads **harness → specification → code**, because a process claimed after the fact is not evidence.
+
+Two maintainer rulings at the Phase 7 gate change how later phases run: **findings are fixed in the phase that detects them** (CLAUDE.md) — no backlog entry defers a fix whose code already exists — and the `quality.sh` wall-clock threshold is **~125 s** (stack stopped; 103 s at the Phase 7 wrap-up, 1 290 tests).
 
 | Phase | What | State |
 |---|---|---|
@@ -261,7 +263,7 @@ Every process artifact in this repository: what it is for, and where it came fro
 | 4 | Infrastructure compose (PostgreSQL) + spec-derived Kafka topology | ✅ |
 | 5 | `uv` workspace scaffold, shared kernel, contracts, import-linter contracts, `apps/web` scaffold | ✅ |
 | 6 | SQLAlchemy models + Alembic migrations for the four write databases | ✅ |
-| 7 | Deterministic seed job, row-diffed against #8's dataset | ⬜ |
+| 7 | Deterministic seed job, row-diffed against #8's dataset | ✅ |
 | 8 | Orders service — aggregate, dispatcher, outbox/idempotency, acceptance, saga orchestrator | ⬜ |
 | 9 | Fulfillment — stock reservations and DESADV creation | ⬜ |
 | 10 | Billing — buyer credit, the `.99` simulator, invoicing, remittance intake | ⬜ |
@@ -307,6 +309,9 @@ Every process artifact in this repository: what it is for, and where it came fro
 | A counter seed that checks then inserts, racing on the first ever call | #8 id 45: a primary-key violation surfaced to the caller | `INSERT … ON CONFLICT DO NOTHING`; 16 concurrent first callers per counter, with #8's shape kept as a sentinel that loses every round |
 | Index checks that were presence-only; a parity test without identity; a parity test owned by one service; read-back timestamps never asserted | #8 `db_fulfillment`/`db_billing` advisories, carried for three features | Folded into the first feature's brief: index sets closed, identity compared, parity in a neutral directory, timestamps asserted aware-UTC on read-back |
 | One database container per suite | #8: the gate grew from 67 s to 159 s across three features | One container per session from the first database feature; a template database per service when the gate approached 90 s |
+| `order_timeline` documents tested for shape, not values: blanked `causationId`s and corrupted totals passed a green suite | #8: its Phase 7 rejection (D1) | The expected documents produced by **executing #7's own code**, checked in before any writer existed, and compared leaf by leaf with types; 17 unpublished reviewer mutations each failed by name |
+| A parity claim against the previous build's live database, deferred and never closed | #8: "parity against #7's live MySQL" stayed open after its Phase 7 | Run at the gate: #8's SQL Server and MongoDB started read-only beside #9's stack, the seeded subset dumped row per line from both and diffed — 19 of 20 files identical, the 20th #8's own demo traffic |
+| A counter seeded from `MAX(reference)` that scans the orders table on **every** allocation | #8 id 47: found and fixed in its Phase 21 | A single statement whose `MAX` sits in an InitPlan behind a one-time filter; `EXPLAIN (ANALYZE)` pinned in a test (`never executed` with the counter present), armed by the unconditional aggregate |
 
 ### 11.2 Found here
 
@@ -330,3 +335,9 @@ Every process artifact in this repository: what it is for, and where it came fro
 | `populate_by_name=True` on a pydantic-settings class lets the shell's bare `USER`, `HOST`, `PORT` and `PASSWORD` become the database URL | The `db_fulfillment` implementer, measuring its own settings; widened by the reviewer; filed as 204(e) |
 | `timestamptz(3)` rounds sub-millisecond instants (`.123987` → `.124`) while the wire formatter truncates (`.123`) | Measuring the read-back instead of assuming it; filed as 205 |
 | Closed-set instruments blind to attributes a substitution can change: `ON UPDATE`, deferrability, `MATCH`, index access method, sort order, `INCLUDE` columns, and objects outside the `public` schema | Each reviewer arming against the previous feature's instrument; widened in the next feature each time (206, 208, 209) |
+| `sqlcmd` refuses `-W` together with `-y 0` before connecting — and each one-flag fix is a trap: without `-y 0` an `nvarchar(max)` payload is cut at 256 characters, without `-W` every row is padded | The reviewer running the script's exact argv against #8's own SQL Server image in a throwaway container; the parser's unit tests fed canned output and could not see it |
+| #9's counters seeded the constant `1`, so on a seeded database the first order would collide with `ORD-000001`, roll back its own advance, and **no order could ever be placed** | The seed review asking how #7 and #8 avoid the collision (both seed from the numeric `MAX` of existing references); fixed in the same phase (211) |
+| `WHERE NOT EXISTS` on an aggregate `SELECT MAX(…) FROM t` skips the scan but still emits one row, so the insert still attempts a conflict | `EXPLAIN (ANALYZE)` on a populated table, both shapes, instead of reasoning about the plan |
+| A test helper that derived the order reference from the despatch/invoice number made a counter reading the **wrong column** pass every guard | The reviewer's sibling-identifier substitution (defeat-list row 3) — "distinct values" applies to the column a statement must *not* read |
+| A deny-list money guard lost three review rounds in a row — `math.pow`, aliased `operator` functions, `getattr`, `statistics.mean`, `pow` as a value | Fixed by changing the kind of instrument: a literal import allow-list re-derived from a census of the 35 domain files (seven stdlib modules), with a stopping rule agreed with the maintainer before the round |
+| A reviewer's mutation left a stray file in the shared kernel; its own `rm` was refused, and it asked the leader to delete it | The leader declined (permission laundering) and asked the maintainer, who authorised it; later review requests plant only in existing files or scratchpad copies and end on a `git status` snapshot |

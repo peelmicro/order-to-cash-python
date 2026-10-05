@@ -60,3 +60,27 @@ def test_the_password_from_the_environment_builds_the_asyncpg_url(
 def test_a_full_url_needs_no_password(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BILLING_DATABASE_URL", "postgresql+asyncpg://u:p@h:1/d")
     assert BillingDatabaseSettings().url == "postgresql+asyncpg://u:p@h:1/d"
+
+
+def test_bare_user_host_port_and_password_never_reach_the_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """204(e) / review_db_fulfillment A1: `populate_by_name` would make pydantic-settings read the
+    bare field names, so an unrelated `$USER` became the database user. The credential below is
+    the real one; every bare name must be ignored, `PASSWORD` included."""
+    monkeypatch.setenv("POSTGRES_APP_PASSWORD", "s3cr3t-value")
+    for name, value in (
+        ("USER", "someone-else"),
+        ("HOST", "elsewhere.example"),
+        ("PORT", "9999"),
+        ("PASSWORD", "wrong-password"),
+    ):
+        monkeypatch.setenv(name, value)
+    url = BillingDatabaseSettings().url
+    assert url == "postgresql+asyncpg://otc_app:s3cr3t-value@localhost:5432/otc_billing"
+
+
+def test_a_bare_password_variable_is_not_a_credential(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PASSWORD", "wrong-password")
+    with pytest.raises(ValidationError, match="no database credential"):
+        BillingDatabaseSettings()

@@ -7,7 +7,9 @@ here by name even if no other guard recognises its spelling.
 """
 
 import ast
+import importlib
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -15,6 +17,8 @@ import otc_shared_kernel
 
 KERNEL_DIR = Path(otc_shared_kernel.__file__).parent
 
+# Keyed by dotted path below the package (`text.__init__` for a subpackage; `__init__` is the
+# package root).
 # Every name bound at module scope in each kernel module (defs, classes, assignments, imports),
 # walking into `if`/`try`/`with` blocks but not into function or class bodies. Dunders excluded.
 MODULE_NAMES: dict[str, set[str]] = {
@@ -153,8 +157,24 @@ def class_body_names(source: str, class_name: str) -> set[str]:
     raise AssertionError(f"class {class_name} not found")
 
 
+def _on_disk_modules() -> set[str]:
+    """Every .py under the kernel, recursively, keyed by dotted path (`text.__init__`)."""
+    return {
+        ".".join(p.relative_to(KERNEL_DIR).with_suffix("").parts) for p in KERNEL_DIR.rglob("*.py")
+    }
+
+
+def _source_of(module: str) -> Path:
+    return KERNEL_DIR.joinpath(*module.split(".")).with_suffix(".py")
+
+
+def _import_name(module: str) -> str:
+    dotted = "otc_shared_kernel" if module == "__init__" else f"otc_shared_kernel.{module}"
+    return dotted.removesuffix(".__init__")
+
+
 def test_the_kernel_module_population_is_the_literal_list() -> None:
-    on_disk = {p.stem for p in KERNEL_DIR.glob("*.py")}
+    on_disk = _on_disk_modules()
     assert on_disk == set(MODULE_NAMES), (
         f"a kernel module was added or removed: +{sorted(on_disk - set(MODULE_NAMES))} "
         f"-{sorted(set(MODULE_NAMES) - on_disk)}"
@@ -163,12 +183,33 @@ def test_the_kernel_module_population_is_the_literal_list() -> None:
 
 @pytest.mark.parametrize("module", sorted(MODULE_NAMES))
 def test_every_kernel_module_binds_exactly_the_allowlisted_top_level_names(module: str) -> None:
-    found = module_names((KERNEL_DIR / f"{module}.py").read_text())
+    found = module_names(_source_of(module).read_text())
     expected = MODULE_NAMES[module]
     assert found == expected, (
         f"{module}.py top-level names changed: +{sorted(found - expected)} "
         f"-{sorted(expected - found)}"
     )
+
+
+def runtime_names(module: str) -> set[str]:
+    """Every non-dunder name the imported module really holds, whatever form bound it
+    (tuple unpacking, walrus, a `for` target, `globals()[...] =`). A package holds its imported
+    submodules as attributes; those are modules the population test already lists, not names."""
+    name = _import_name(module)
+    imported = importlib.import_module(name)
+    return {
+        n
+        for n, value in vars(imported).items()
+        if not n.startswith("__")
+        and not (isinstance(value, ModuleType) and value.__name__.startswith(f"{name}."))
+    }
+
+
+@pytest.mark.parametrize("module", sorted(MODULE_NAMES))
+def test_every_kernel_module_holds_at_runtime_only_the_allowlisted_names(module: str) -> None:
+    found = runtime_names(module)
+    extra = found - MODULE_NAMES[module]
+    assert not extra, f"{module} holds names at runtime that the allowlist lacks: {sorted(extra)}"
 
 
 def test_money_class_body_binds_exactly_the_allowlisted_names_even_under_type_checking() -> None:

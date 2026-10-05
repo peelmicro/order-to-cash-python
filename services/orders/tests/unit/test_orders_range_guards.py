@@ -5,10 +5,12 @@ stable code, at assignment, before any statement exists.
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import literal_column
+from sqlalchemy import Integer, literal, literal_column
 
 from otc_orders.infrastructure.persistence.models import Order, OrderItem, SagaCommand
 from otc_orders.infrastructure.persistence.range_guards import (
@@ -72,7 +74,44 @@ def test_a_sql_expression_assigned_to_a_guarded_attribute_passes_through() -> No
     is false, and it blocks the saga sweeper's natural write."""
     command = SagaCommand(attempts=1)
     command.attempts = SagaCommand.attempts + 1  # must not raise
-    command.attempts = literal_column("attempts + 1")  # any ClauseElement
+    command.attempts = literal_column("attempts + 1", Integer)  # a typed ClauseElement
     assert command.attempts is not None
     with pytest.raises(IntegerOutOfRangeError):  # a plain int overflow is still refused
         command.attempts = 2**31
+
+
+# --- backlog 207: only an Integer-typed expression passes through --------------------------------
+# PostgreSQL silently ROUNDS a non-integer expression into an integer column (measured: literal(3.7)
+# stored as 4, `x * 0.5` as 0, `x + 0.6` as 1, while a raw 3.7 is refused), so the pass-through is
+# gated on the expression's SQL type, not on "is a ClauseElement".
+@pytest.mark.parametrize(
+    "expression",
+    [
+        pytest.param(SagaCommand.attempts * 0.5, id="integer column times a float"),
+        pytest.param(SagaCommand.attempts + 0.6, id="integer column plus a float"),
+        pytest.param(literal(3.7), id="float literal"),
+        pytest.param(literal(Decimal("3.7")), id="numeric literal"),
+        pytest.param(literal_column("attempts + 1"), id="untyped literal_column (NullType)"),
+    ],
+)
+def test_a_non_integer_typed_expression_is_refused_not_rounded_by_the_engine(
+    expression: Any,
+) -> None:
+    command = SagaCommand(attempts=1)
+    with pytest.raises(IntegerOutOfRangeError):
+        command.attempts = expression
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        pytest.param(SagaCommand.attempts + 1, id="integer column plus an int"),
+        pytest.param(SagaCommand.attempts - 1, id="integer column minus an int"),
+        pytest.param(literal(3), id="int literal"),
+        pytest.param(literal_column("attempts + 1", Integer), id="typed literal_column"),
+    ],
+)
+def test_an_integer_typed_expression_still_passes_through(expression: Any) -> None:
+    command = SagaCommand(attempts=1)
+    command.attempts = expression  # must not raise
+    assert command.attempts is expression

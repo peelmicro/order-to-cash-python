@@ -4,8 +4,11 @@ A mapped integer attribute refuses a value its column cannot hold with a `Domain
 stable code, at assignment, before any statement exists.
 """
 
+from decimal import Decimal
+from typing import Any
+
 import pytest
-from sqlalchemy import literal_column
+from sqlalchemy import Integer, literal, literal_column
 
 from otc_fulfillment.infrastructure.persistence.models import (
     DespatchItem,
@@ -81,7 +84,44 @@ def test_a_sql_expression_assigned_to_a_guarded_attribute_passes_through() -> No
     not a value: refusing it as "out of range" would be false and would block the natural write."""
     stock = Stock(units=1)
     stock.units = Stock.units - 1  # must not raise
-    stock.reserved_units = literal_column("reserved_units + 1")  # any ClauseElement
+    stock.reserved_units = literal_column("reserved_units + 1", Integer)  # typed ClauseElement
     assert stock.reserved_units is not None
     with pytest.raises(QuantityOutOfRangeError):  # a plain int overflow is still refused
         stock.units = 2**31
+
+
+# --- backlog 207: only an Integer-typed expression passes through --------------------------------
+# PostgreSQL silently ROUNDS a non-integer expression into an integer column (measured: literal(3.7)
+# stored as 4, `x * 0.5` as 0, `x + 0.6` as 1, while a raw 3.7 is refused), so the pass-through is
+# gated on the expression's SQL type, not on "is a ClauseElement".
+@pytest.mark.parametrize(
+    "expression",
+    [
+        pytest.param(Stock.units * 0.5, id="integer column times a float"),
+        pytest.param(Stock.units + 0.6, id="integer column plus a float"),
+        pytest.param(literal(3.7), id="float literal"),
+        pytest.param(literal(Decimal("3.7")), id="numeric literal"),
+        pytest.param(literal_column("units + 1"), id="untyped literal_column (NullType)"),
+    ],
+)
+def test_a_non_integer_typed_expression_is_refused_not_rounded_by_the_engine(
+    expression: Any,
+) -> None:
+    stock = Stock(units=1)
+    with pytest.raises(IntegerOutOfRangeError):
+        stock.units = expression
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        pytest.param(Stock.units + 1, id="integer column plus an int"),
+        pytest.param(Stock.units - 1, id="integer column minus an int"),
+        pytest.param(literal(3), id="int literal"),
+        pytest.param(literal_column("units + 1", Integer), id="typed literal_column"),
+    ],
+)
+def test_an_integer_typed_expression_still_passes_through(expression: Any) -> None:
+    stock = Stock(units=1)
+    stock.units = expression  # must not raise
+    assert stock.units is expression
