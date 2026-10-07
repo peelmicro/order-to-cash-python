@@ -1,0 +1,9 @@
+# Brief — implementer, feature 15 `orders_acceptance`, round 3 (light pass, maintainer-approved 2026-10-07)
+
+**Task:** close every item of "What must change (round 3)" in `progress/review_orders_acceptance.md` (items 1–8, from line 361), exactly as written there. Read the Round 2 section's probe table (P1–P8) and R2-D1 … R2-D5 for the verbatim survivors. Feature 15 is `in_progress`. No reviewer follows: the leader reads your diff and re-arms P1, P3, P4, P5 and P8 himself, so each arm must be reproducible from your record (file, line, exact edit, test node id, verbatim failure).
+
+- **R2-D4 is the only production behaviour change** (construct `OrdersRuntime` before `stack.pop_all()`); item 5 adds a read-only public accessor to `HandlerRegistry` in `packages/cqrs` (this round's bounds widen to `packages/cqrs/**` for that accessor and its test only; no change to registration or dispatch) and deletes `_ProbedRegistry`.
+- For every fix ask **"what fails if I revert this?"** and arm it (CLAUDE.md protocol: `cp` backup **inside your scratchpad or the repo-local ignored dir, never bare `/tmp`** — the previous reviewer's `/tmp` backups were lost at a session end; record a `sha256sum` of each file before mutating; restore, `cmp`, clear `__pycache__` and `.mypy_cache`, re-run green).
+- Item 8: re-run the listed round-2 arms on changed files and run `./quality.sh` once with the developer stack down (exit, duration, per-file count delta from 1877).
+- Bounds otherwise as round 1 (`progress/brief_impl_orders_acceptance.md`). Do not edit CLAUDE.md. Never `git checkout`/`restore`/`stash`.
+- Append a "Round 3" section to `progress/impl_orders_acceptance.md`. Set feature 15 to `in_review` (that line only). Return only "result in `progress/impl_orders_acceptance.md` (Round 3)" plus at most 5 lines.

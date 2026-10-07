@@ -1,0 +1,14 @@
+# Brief — reviewer, feature 15 `orders_acceptance`, round 2 (the last round without asking the maintainer)
+
+**Task:** verify the round-2 rework against your round-1 "What must change" (`progress/review_orders_acceptance.md`, items 1–7) using the implementer's "Round 2" section of `progress/impl_orders_acceptance.md`. Append a "Round 2" section to the review file. Re-run, do not re-read: each item's arms, and the round-1 mutations on every changed file (the implementer lists 11 re-run). Then probe the fixes themselves with your own mutations — #8's round 2 for this feature was lost to fixes that were unguarded (`../order-to-cash-dotnet/progress/history.md` line 786).
+
+## Specific checks
+
+1. **`services/orders/src/otc_orders/infrastructure/settings.py` was accidentally deleted in part and rebuilt by the implementer** (`OutboxRelaySettings`' two `*_seconds` properties, `KafkaSettings`, `NatsSettings`). The leader read the file twice this session: before feature 15 it held, verbatim, for `KafkaSettings` the docstring ``"""Where the producer connects (`KAFKA_BROKERS` and `KAFKA_CLIENT_ID` are #7's names)."""`` and, above the properties, the comment ``# The settings boundary: milliseconds become the float seconds `asyncio` takes. Not money.``; fields, aliases and defaults then matched what is there now. `NatsSettings` and `ServerSettings` are feature 15's own (no earlier copy). Check that no field, alias, default, validator or property was lost against `git show HEAD:services/orders/src/otc_orders/infrastructure/settings.py` plus feature 14's additions as `progress/impl_outbox_and_idempotency.md` records them, and against every test that reads these settings. A lost docstring provenance is a text item for the disposition, not a rejection by itself.
+2. **D-6** reads `HandlerRegistry`'s tables through a subclass because `packages/cqrs` was out of bounds. Rule whether that couples the test to private state the SLF001 rule exists to stop, and whether a public read accessor on `otc_cqrs` is owed (if so, it is a light change the leader can route — say so).
+3. **D-1** is a production fix (`composition.py`, `kafka_publisher.py`): probe a failure at each fallible boot step, not only Kafka down.
+4. `./quality.sh` reported exit 0, 198 s, 1877 passed (+10). Developer stack stays stopped.
+
+## Outcome
+
+On APPROVED: set 15 to `done` (that line only) and append the effort entry to `progress/history.md` exactly as the round-1 brief (`progress/brief_review_orders_acceptance.md`) specifies, both rounds included, with the leader's dispositions: Q1 CLAUDE.md wording owed to the maintainer; Q4 residual carried as an acceptance item on feature 36. On REJECTED: set 15 to `in_progress` and write "What must change"; the leader will then ask the maintainer. Bounds as in round 1. Return only "result in `progress/review_orders_acceptance.md` (Round 2)" plus the verdict and at most 5 lines.
