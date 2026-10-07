@@ -82,3 +82,6 @@ desktop.ini
 
 # init.sh backlog tripwire baseline — within-session state, not a shared artifact
 .backlog-snapshot
+
+# ---------- Arming backups (CLAUDE.md arming protocol; survives a reboot, unlike /tmp) ----------
+/.arm/

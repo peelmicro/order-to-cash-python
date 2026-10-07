@@ -1,0 +1,11 @@
+# Brief — implementer, feature 16 `order_saga_orchestrator`, round 2 (the last round without asking the maintainer)
+
+**Task:** close items 1–6 of "What must change before re-review" in `progress/review_order_saga_orchestrator.md` exactly as written (D1 settings reach for all eleven `SAGA_*` variables through the real lifespan; D2 the parked back-off in `claim_due`/`try_claim`; D3 a `sent` row never re-claimed, plus exactly one `fulfillment.stock.release` request in the mid-compensation case; D4 comment and record correction; R3.10c recorded; the listed re-runs and `./quality.sh`). Feature 16 is `in_progress` (set by the reviewer). `tasks.md` still outranks this brief.
+
+Also, from the review's routing notes:
+- In `specs/shared/test-matrix.md`, the Status cells of R24, R28 and R29 (column 5 only, a file `tasks.md` already lets you touch) name the ratification of their `TODO` halves: a sentence naming the ratification: "deferred half ratified at the feature 16 spec gate, 2026-10-06", followed by the row it rests on (`specs/order_saga_orchestrator/requirements.md` §1 row R24 for the API half → feature 31, row R28 for the e2e half → feature 32, §1.1 for R29's dead-letter case → feature 27). Derived counts stay as they are.
+- Add #8 id 56 (recurred, D1) to the record's §18 tally.
+
+**Arming:** ask "what fails if I revert this?" of every change. Backups and sha256 go in `.arm/`. Your arm tool's timeout must kill the whole process group (`start_new_session=True` and `os.killpg`, or an equivalent), because the round-1 tool left orphaned pytest children; fix the tool before the first arm and say how. Each arm in the review's item list fails its named test, with the verbatim failure naming the setting or predicate. Never `git checkout`/`restore`/`stash`. The developer stack stays stopped.
+
+**Output:** append a "Round 2" section to `progress/impl_order_saga_orchestrator.md` covering per item the change, the test, the arms with verbatim failures, the re-runs, and `quality.sh` exit / duration / count with per-file counts summing to the delta from 2350. Set feature 16 to `in_review` (that line only). No git writes. Return only "result in `progress/impl_order_saga_orchestrator.md` (Round 2)" plus at most 5 lines.
