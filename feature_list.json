@@ -228,7 +228,7 @@
       "phase": 8,
       "title": "Order aggregate + full status state machine",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "every legal transition allowed, every illegal one raises a DomainError",
         "no empty orders, no line mutation after confirmed",
@@ -244,10 +244,10 @@
       "phase": 8,
       "title": "In-process CQRS dispatcher: handler protocols + explicit registration + startup validation",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "CommandHandler, QueryHandler, EventHandler protocols and a dispatcher keyed by message type, in packages/cqrs",
-        "handlers registered explicitly in each composition root — no import-time decorators",
+        "handlers registered explicitly in each composition root — no import-time decorators (split by the leader, phase 8, as #8 did in ece0f2e then 4c6ed34/5a84e81/17ce0d1: this feature provides explicit registration with no decorator and proves it against test handlers; the per-service half is carried as an acceptance item on features 15, 17, 19, 23, 24 and 25, which build those composition roots)",
         "startup validation FAILS FAST when a command has zero handlers or more than one — proven by a test for each case",
         "every guard of the feature armed before review"
       ],
@@ -259,7 +259,7 @@
       "phase": 8,
       "title": "Transactional outbox + polling relay + idempotent consumer pattern",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "aggregate row and outbox row written in one transaction",
         "relay claims with FOR UPDATE SKIP LOCKED, publishes keyed by correlationId and stamps published_at; skip-versus-block measured with the guard armed the other way",
@@ -275,12 +275,16 @@
       "phase": 8,
       "title": "Order acceptance: orders.create NATS responder + fulfillment.stock.check client",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "synchronous stock check via NATS fulfillment.stock.check, the reply decoded as success | RpcError (#8 id 46)",
         "order id returned synchronously; rejection when the stock check fails",
         "ORD-###### allocated under FOR UPDATE with a cheap pre-check (#8 id 47)",
-        "responder shutdown isolated (#8 id 50); composition-root env reads guarded (#8 id 56)"
+        "responder shutdown isolated (#8 id 50); composition-root env reads guarded (#8 id 56)",
+        "carried from orders_aggregate review round 1 (F7, accepted with evidence there): no module outside otc_orders/domain/order.py constructs Order( — the repository mapper reaches an Order only through Order.place or Order.rehydrate; a search over services/orders/src for \"Order(\" and \"cls(\" is classified hit by hit (order.py class def, place, rehydrate; models.py is the ORM class) and the guard is armed by adding an Order( call in the mapper",
+        "carried from cqrs_dispatcher (id 43; its acceptance item 2's half that needs this service's code): the first otc_orders handlers are registered explicitly in services/orders/src/otc_orders/composition.py through otc_cqrs (no import-time decorator), and the registry is validated in the lifespan, so a command or query with zero handlers or two fails the boot — proven by a test per case against this service's composition root, armed; plus (feature 43 review round 2, residual rows F-a, F-b, F-g, F-i, F-j of progress/review_cqrs_dispatcher.md §3) a behavioural registration guard: importing every module of the service (walked) creates no HandlerRegistry/Dispatcher and calls no register_*; wiring the composition root records each register_* call's caller frame, and each registration comes from a distinct statement in composition.py; the built dispatcher's tables equal the recorded registrations; armed with F-g + F-j (an __init_subclass__ self-registration drained by a helper loop in the root) as one fixture",
+        "carried from outbox_and_idempotency (id 14; its relay is built and proven there, the wiring needs this feature's composition root, as #8 did): the orders lifespan starts the outbox relay task, owns it, and awaits it on shutdown; a relay task that dies takes readiness down (CLAUDE.md, one asyncio task class per transport) — proven by a test, armed",
+        "carried from outbox_and_idempotency review round 1 (Q2; design.md §5.2, the same limit #8 accepted): two relays running at once can publish one order's facts out of order, so the orders deployment runs at most one outbox relay per process and no multi-worker server while OUTBOX_RELAY_ENABLED=true — enforced at startup or by the composition root, proven by a test, armed"
       ]
     },
     {
@@ -289,7 +293,7 @@
       "phase": 8,
       "title": "Saga orchestrator: advances on Kafka facts, commands over NATS, both compensation paths",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "happy path reaches invoiced against stubbed responders",
         "credit.rejected releases stock and cancels the order; stock.rejected cancels without a release",
@@ -306,11 +310,12 @@
       "phase": 8,
       "title": "Saga commands adapter: terminal RpcError vs retryable transport error",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "a terminal business-outcome RpcError is classified terminal, not retried at capped backoff forever",
         "a retryable transport failure (timeout, no responder) is still retried",
-        "a saga_commands row receiving a terminal RpcError reaches a resolved end state"
+        "a saga_commands row receiving a terminal RpcError reaches a resolved end state",
+        "carried from order_saga_orchestrator review (rounds 1 and 2, progress/review_order_saga_orchestrator.md): adding the resolved terminal status (e.g. rejected) changes every status predicate of the ledger, not only the two claims — including park's `status <> 'sent'` (services/orders/src/otc_orders/infrastructure/saga/command_ledger.py:157), which would otherwise re-park a rejected row; the sweeper never re-claims a rejected row; each predicate change proven by a test, armed"
       ]
     },
     {
@@ -325,7 +330,8 @@
         "stock.rejected when insufficient; release idempotent, cannot release twice, with a deterministic event id (#8 id 49)",
         "SELECT ... FOR UPDATE in an application-fixed order on every deciding read; deadlock retry on 40P01",
         "check-then-reserve race covered by an integration test",
-        "SA-4: stock.release arbitrated against despatch.create under one lock"
+        "SA-4: stock.release arbitrated against despatch.create under one lock",
+        "carried from cqrs_dispatcher (id 43; its acceptance item 2's half that needs this service's code): the first otc_fulfillment handlers are registered explicitly in services/fulfillment/src/otc_fulfillment/composition.py through otc_cqrs (no import-time decorator), and the registry is validated in the lifespan, so a command or query with zero handlers or two fails the boot — proven by a test per case against this service's composition root, armed; plus (feature 43 review round 2, residual rows F-a, F-b, F-g, F-i, F-j of progress/review_cqrs_dispatcher.md §3) a behavioural registration guard: importing every module of the service (walked) creates no HandlerRegistry/Dispatcher and calls no register_*; wiring the composition root records each register_* call's caller frame, and each registration comes from a distinct statement in composition.py; the built dispatcher's tables equal the recorded registrations; armed with F-g + F-j (an __init_subclass__ self-registration drained by a helper loop in the root) as one fixture"
       ]
     },
     {
@@ -351,7 +357,8 @@
         "available credit = limit - active holds - open invoices",
         "ledger is append-only; over-limit hold is rejected",
         "release on compensation and on invoice paid",
-        "a per-service Kafka client_id that cannot be empty"
+        "a per-service Kafka client_id that cannot be empty",
+        "carried from cqrs_dispatcher (id 43; its acceptance item 2's half that needs this service's code): the first otc_billing handlers are registered explicitly in services/billing/src/otc_billing/composition.py through otc_cqrs (no import-time decorator), and the registry is validated in the lifespan, so a command or query with zero handlers or two fails the boot — proven by a test per case against this service's composition root, armed; plus (feature 43 review round 2, residual rows F-a, F-b, F-g, F-i, F-j of progress/review_cqrs_dispatcher.md §3) a behavioural registration guard: importing every module of the service (walked) creates no HandlerRegistry/Dispatcher and calls no register_*; wiring the composition root records each register_* call's caller frame, and each registration comes from a distinct statement in composition.py; the built dispatcher's tables equal the recorded registrations; armed with F-g + F-j (an __init_subclass__ self-registration drained by a helper loop in the root) as one fixture"
       ]
     },
     {
@@ -405,7 +412,8 @@
         "real email verified in the Mailpit inbox through its HTTP API for each of the seven notified facts",
         "console adapter used in tests via the same port; degrade on permanent failure (#8 id 73)",
         "idempotent by eventId through the durable ledger; a byte-identical redelivery leaves inbox and ledger unchanged",
-        "the notified-fact filter and every template's recipient and fields guarded (#8 ids 58, 59)"
+        "the notified-fact filter and every template's recipient and fields guarded (#8 ids 58, 59)",
+        "carried from cqrs_dispatcher (id 43; its acceptance item 2's half that needs this service's code): the first otc_notifications handlers are registered explicitly in services/notifications/src/otc_notifications/composition.py through otc_cqrs (no import-time decorator), and the registry is validated in the lifespan, so a command or query with zero handlers or two fails the boot — proven by a test per case against this service's composition root, armed; plus (feature 43 review round 2, residual rows F-a, F-b, F-g, F-i, F-j of progress/review_cqrs_dispatcher.md §3) a behavioural registration guard: importing every module of the service (walked) creates no HandlerRegistry/Dispatcher and calls no register_*; wiring the composition root records each register_* call's caller frame, and each registration comes from a distinct statement in composition.py; the built dispatcher's tables equal the recorded registrations; armed with F-g + F-j (an __init_subclass__ self-registration drained by a helper loop in the root) as one fixture"
       ]
     },
     {
@@ -422,7 +430,8 @@
         "emits the update signal the Gateway turns into SSE, connected inside bootstrap",
         "SA-2: the operator note reaches the cancellation entry on every compensation branch",
         "the projector's TIMELINE_ORDER_VERSION, status-rank table, 'projector:' processedEventKeys prefix and uq_order_reference index equal tests/fixtures/read_model_constants.json, the same file the seed is pinned to (backlog 212, phase 7 seed half); armed by bumping the projector's version alone",
-        "backlog 201 (carried in phase 7, its seed item done there): the phase 12 gate decides, with evidence, between (a) resolving a responder fact's command causationId to the fact that triggered the command — likely an SA-n applied to #7, #8 and #9, since the RPC requests carry no triggering-fact id today — and (b) keeping R12's semantics and rendering only what a live timeline can show"
+        "backlog 201 (carried in phase 7, its seed item done there): the phase 12 gate decides, with evidence, between (a) resolving a responder fact's command causationId to the fact that triggered the command — likely an SA-n applied to #7, #8 and #9, since the RPC requests carry no triggering-fact id today — and (b) keeping R12's semantics and rendering only what a live timeline can show",
+        "carried from cqrs_dispatcher (id 43; its acceptance item 2's half that needs this service's code): the first otc_projector handlers are registered explicitly in services/projector/src/otc_projector/composition.py through otc_cqrs (no import-time decorator), and the registry is validated in the lifespan, so a command or query with zero handlers or two fails the boot — proven by a test per case against this service's composition root, armed; plus (feature 43 review round 2, residual rows F-a, F-b, F-g, F-i, F-j of progress/review_cqrs_dispatcher.md §3) a behavioural registration guard: importing every module of the service (walked) creates no HandlerRegistry/Dispatcher and calls no register_*; wiring the composition root records each register_* call's caller frame, and each registration comes from a distinct statement in composition.py; the built dispatcher's tables equal the recorded registrations; armed with F-g + F-j (an __init_subclass__ self-registration drained by a helper loop in the root) as one fixture"
       ]
     },
     {
@@ -448,7 +457,8 @@
         "POST /orders/{id}/cancel succeeds through the Gateway for a cancellable order",
         "a terminal order is rejected with a domain error, not a 503",
         "SA-4 release ordering for credit_approved/confirmed; a late credit.approved after an operator cancel releases the hold and advances nothing",
-        "the operator note lands on the read-model timeline (SA-2)"
+        "the operator note lands on the read-model timeline (SA-2)",
+        "carried from order_saga_orchestrator (id 16; design.md §16 row 41, #8 id 91): the accepted-operator-cancel evidence query is guarded against a real database (testcontainers PostgreSQL), armed by substitution of a sibling identifier, and the race of an operator cancel against saga forward progress is proven in both outcomes (#8 id 62)"
       ]
     },
     {
@@ -462,7 +472,8 @@
         "the copied openapi.yaml served at /docs; a conformance test compares FastAPI's generated document against it",
         "PyJWT HS256; login rate limiting",
         "RPC timeouts mapped to HTTP status codes; GATEWAY_PORT honoured (#8 id 96)",
-        "list/detail served from MongoDB only, enforced by an import-linter contract"
+        "list/detail served from MongoDB only, enforced by an import-linter contract",
+        "carried from cqrs_dispatcher (id 43; its acceptance item 2's half that needs this service's code): the first otc_gateway handlers are registered explicitly in services/gateway/src/otc_gateway/composition.py through otc_cqrs (no import-time decorator), and the registry is validated in the lifespan, so a command or query with zero handlers or two fails the boot — proven by a test per case against this service's composition root, armed; plus (feature 43 review round 2, residual rows F-a, F-b, F-g, F-i, F-j of progress/review_cqrs_dispatcher.md §3) a behavioural registration guard: importing every module of the service (walked) creates no HandlerRegistry/Dispatcher and calls no register_*; wiring the composition root records each register_* call's caller frame, and each registration comes from a distinct statement in composition.py; the built dispatcher's tables equal the recorded registrations; armed with F-g + F-j (an __init_subclass__ self-registration drained by a helper loop in the root) as one fixture"
       ]
     },
     {
@@ -492,7 +503,9 @@
         "readiness bounded and proven against paused real containers (DB, Kafka, NATS)",
         "a repeated orders.create carrying the same requestId returns the ORIGINAL order; concurrent duplicates never place two",
         "the five metrics carry the exact series names the reused dashboard queries",
-        "no fixture runs a server with reload, proven by enumeration"
+        "no fixture runs a server with reload, proven by enumeration",
+        "carried from order_saga_orchestrator (id 16; specs/order_saga_orchestrator/design.md §9.8 item 1, #8 id 94): after the consumer retry / DLQ wrapper is added around SagaFactsConsumerTask's dispatch, feature 16's SO9 arms (tasks 3.9, 3.10, 3.12) are RE-RUN, not re-read — a genuine Kafka redelivery (restarted consumer, committed offset read from the broker), never an in-process retry, must still be what turns each test red",
+        "carried from orders_saga_terminal_rejection_classification (id 42; progress/impl_orders_saga_terminal_rejection.md question 5; #7 and #8 deferred it the same way): a saga command resolved `rejected` by a terminal RpcError today leaves the order in an intermediate status with only an ERROR log line — no order.saga_failed.v1 timeline entry and no dead letter. R29's dead-letter case covers the first transition into parked, not rejected; decide with evidence (what #7 and #8 finally shipped, what specs/shared prescribes) whether the rejected path surfaces the same way, and if specs/shared does not decide it, take it to the gate as an SA-n proposal or a recorded decision — then build and arm what is decided"
       ],
       "note": "Stopping rule for this phase is declared in the plan: findings beyond five are filed against later features."
     },
@@ -621,7 +634,8 @@
         "one Python Dockerfile with ARG SERVICE, non-root; migrate-then-run pairs for the four database services",
         "cold start timed with built images and from zero, both reported",
         "no external: true redeclaration of the network in the apps file",
-        "infra-only mode still works with apps run from the CLI"
+        "infra-only mode still works with apps run from the CLI",
+        "carried from orders_acceptance (id 15; progress/review_orders_acceptance.md Q4, accepted there with a re-open trigger): the orders service runs one replica and one uvicorn worker while OUTBOX_RELAY_ENABLED=true, or disables the relay on all but one — proven against the built compose file (replicas, worker count, relay flag read from it), armed"
       ]
     },
     {

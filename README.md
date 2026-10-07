@@ -83,9 +83,10 @@ docker-compose.infra.yml   the infrastructure stack (15 services, compose projec
 infra/               PostgreSQL bootstrap, Kafka topic script, OTel Collector, Prometheus, Grafana, n8n import
 .env.example         every variable the compose file reads, with dev defaults
 pyproject.toml, uv.lock   the uv workspace: dev tools, ruff, mypy --strict, pytest, coverage, import-linter contracts
-packages/            shared_kernel (Money, GLN, …, zero dependencies), contracts (generated wire models), cqrs (placeholder)
+packages/            shared_kernel (Money, GLN, …, zero dependencies), contracts (generated wire models, Envelope[P]), cqrs (the hand-rolled dispatcher)
 services/            gateway, orders, fulfillment, billing, notifications, projector, seed — each domain/application/infrastructure/presentation;
-                     orders, fulfillment, billing and notifications also carry alembic/ (one migration history per database)
+                     orders, fulfillment, billing and notifications also carry alembic/ (one migration history per database);
+                     orders is a running service: composition.py (the only place adapters are chosen) and main.py (the lifespan)
 conftest.py          the shared integration fixture: one Docker-held postgres:18.6 per test session, a template database per service, a fresh database per test
 tests/               architecture guards; database_parity/ (outbox/processed_events identical across the four databases, read from the live catalogs);
                      fixtures/golden_envelopes/ (the wire-parity oracle, copied from #8)
@@ -105,7 +106,7 @@ uv sync
 
 Integration tests start their own PostgreSQL container through testcontainers, so the gate needs Docker but **not** the development stack — it passes with the stack stopped.
 
-The infrastructure runs too; the services arrive from phase 8.
+The infrastructure runs too, and so does the first service, Orders (see *Running the Orders service* below).
 
 ```bash
 cp .env.example .env
@@ -132,6 +133,17 @@ for s in orders fulfillment billing notifications; do uv run alembic -c services
 docker exec otcpy-postgres psql -U postgres -d otc_notifications -c '\d'    # processed_events and alembic_version only
 ```
 
+## Running the Orders service
+
+Orders accepts an order over NATS (`orders.create`), checks stock synchronously over `fulfillment.stock.check`, allocates `ORD-######`, writes the order and its `order.placed.v1` fact in one transaction, publishes the fact to Kafka from the outbox, and drives the saga from the facts it consumes. With the stack up and migrated (above):
+
+```bash
+uv run uvicorn otc_orders.main:app --port 8101      # reads .env; one worker only while OUTBOX_RELAY_ENABLED=true
+curl -s localhost:8101/health/ready                  # {"status":"ready"} once NATS, the relay and the saga tasks run
+```
+
+Until the Fulfillment service exists (phase 9), nothing answers `fulfillment.stock.check`, so `orders.create` replies `UNAVAILABLE`; with a stand-in stock-check responder an order is placed, its `stock.reserve` command is parked with *no responder is subscribed*, and the sweeper retries it on a capped back-off — the designed recovery, which resumes on its own once a responder appears. The exact walkthrough, with the rows it leaves behind, is in `progress/impl_order_saga_orchestrator.md` §14.2.
+
 ## How this is being built
 
 The development **process is a deliverable**, not a footnote: Spec-Driven Development plus an agent harness with a backlog state machine (`feature_list.json`, max one feature in progress), external memory (`progress/`), a specification that precedes the code, and separate leader / spec-author / implementer / reviewer subagents each with an explicitly declared model. Every large feature passes a human approval gate at its specification, and every phase is tested by a human before its commit. `docs/PROCESS.md` explains all of it; the git history is the evidence, and for this repository it reads **harness first, specification copy second, code after**.
@@ -147,7 +159,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 5 | uv workspace scaffold, shared kernel, contracts, architecture contracts, web scaffold | ✅ seven services in four layers under 10 import-linter contracts plus an import allowlist for every domain; an AST guard against `float`, `/`, `decimal` and `fractions` in domain code; `Money` in integer minor units with no major-unit surface; wire models generated from the spec with a drift check, proven against #8's 12 golden envelopes (envelope byte-exact, payload semantically equal); the Analog web app building under pnpm 12; every guard seen failing before it was trusted |
 | 6 | SQLAlchemy models + Alembic migrations for the four write databases | ✅ four Alembic histories; types, foreign keys (8 / 2 / 3), indexes and relations asserted as closed sets from the live catalogs, never from the ORM; `json` payloads read back byte-identical; `bigint` money from the first migration (#8 id 44 avoided); counters seeded with `ON CONFLICT DO NOTHING` under 16 concurrent first callers (#8 id 45 avoided — its racy seed, kept as a sentinel, loses every round); outbox/processed_events parity across all four databases; a write-boundary range check on every integer column; every feature approved on its first review |
 | 7 | Deterministic seed job | ✅ the same dataset as #7 and #8 by construction (SHA-256 ids reproducing #7's skipped hex index 12, real GLN/EAN check digits); the expected timeline documents produced by executing #7's own code and checked in before any writer; every seeded value compared field by field (#8's rejection D1 avoided); **row-diffed against #8's live SQL Server and MongoDB: 19 of 20 dumps identical**, the 20th being stock #8's own demo traffic had moved; reference counters start above existing references without a scan per allocation (#8 ids 45 and 47 avoided); and, under a new rule that findings are fixed in the phase that detects them, every open finding from Phases 3–6 closed — the money guard now an import allow-list derived from a census |
-| 8 | Orders service + saga orchestrator | ⬜ |
+| 8 | Orders service + saga orchestrator | ✅ the Order aggregate with every invariant re-validated on load; the hand-rolled dispatcher with registration proven explicit; a transactional outbox (`SKIP LOCKED`, skip-versus-block measured, deadlock victim and poison row handled inside the relay) and an idempotent consumer; `orders.create` with a synchronous stock check that tells *no responder* from *timeout*; a saga orchestrator whose committed offset never passes a failed record, with no head-of-line blocking and a sweeper that never re-claims a row; terminal rejections resolved, never retried forever. **Six features, eleven review rounds (13, 43, 14, 15 and 16 two each, 42 one), every rejection a missing guard or a stale document rather than a wrong line — except one boot-path leak with Kafka down and one latent one, both fixed in the phase** |
 | 9 | Fulfillment service | ⬜ |
 | 10 | Billing service | ⬜ |
 | 11 | Notifications service | ⬜ |

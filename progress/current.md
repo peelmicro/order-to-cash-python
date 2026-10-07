@@ -1,7 +1,7 @@
 # Current session
 
-**Feature:** none — Phase 7 closed, awaiting Phase 8
-**Status:** idle
+**Feature:** none active — next `fulfillment_stock` (id 17, phase 9)
+**Status:** Phase 8 closed and committed at the full wrap-up (2026-10-07); Phase 9 not started
 **Session started:** —
 
 ## Goal
@@ -12,16 +12,27 @@
 
 ## Notes
 
-**Brief for phase 8 — Orders service + saga orchestrator (step 13).** Six features, in `feature_list.json` order: **13 `orders_aggregate` (sdd)**, 43 `cqrs_dispatcher`, **14 `outbox_and_idempotency` (sdd)**, 15 `orders_acceptance`, **16 `order_saga_orchestrator` (sdd)**, 42 `orders_saga_terminal_rejection_classification`. #8's most expensive phase (≈19 h 54 min on the comparable subset against #7's ≈11 h 18 min, plan) and the one with the most inherited findings. One session per phase may not hold all six: close a feature cleanly (state, history entry) before the session ends.
+**Resume point:** Phase 8 is done: features 13, 43, 14, 15, 16 and 42 are committed, with each spec commit before its implementation commit (`git log`). Phase 9 starts in a **fresh session** (CLAUDE.md, one session per phase) from this file. The `otcpy` developer stack is **stopped** except `otcpy-n8n`; restart it with `docker compose -p otcpy -f docker-compose.infra.yml start` when a live check needs it. The dev database still holds **ORD-000007 with a parked `stock.reserve` row** from feature 16's live walkthrough. That is deliberate: when feature 17's `fulfillment.stock.reserve` responder first runs against the live stack, the sweeper should issue that row and the saga should advance. Record what happens; it is the first live proof of the park-and-resume story.
 
-- **First action:** feature 13 is `pending` + `sdd: true` → one `spec_author` writes `specs/orders_aggregate/{requirements,design,tasks}.md` → **stop at the human gate**. The same for 14 and 16 when their turn comes. Per CLAUDE.md, go to each gate with a recommendation and evidence (check what #8 and #7 did first), never a menu; and never forbid in a brief what the approved `tasks.md` mandates.
-- **Process:** full for all six (saga, money domain, persistence, wire contract). `premise_checker` over every brief; Opus reviewer. At most one rejection round without asking.
-- **New rules from the Phase 7 gate (2026-10-05):** (1) **findings are fixed in the phase that detects them** — no backlog entry for a fix whose code exists; only the half needing unbuilt code is carried, as an acceptance item on the feature that builds it (CLAUDE.md). (2) `quality.sh` threshold **~125 s** (stack stopped); wrap-up run 103.24 s, 1 290 passed. (3) When a syntax guard loses twice, propose a change of kind (allow-list from a census, or a behaviour test) and a stopping rule before the next round — the Phase 7 sweep lost three rounds before doing so.
-- **Carried into Phase 8 features (read their last acceptance items):** feature 14 has 205 (instant truncation through the outbox path) and 203's generic-Envelope half (`model_dump_json` and `to_wire_json` both refuse an unvalidated payload; list-held instants). Feature 15 inherits 211's counters (`services/*/…/persistence/sequences.py`: the no-scan `MAX` seed is already there — the allocator only needs the lock-and-advance in the caller's transaction) and 204(d)(e) are already done (orders settings: no password default, no `populate_by_name`).
-- **Guards Phase 8 will meet:** `tests/architecture/test_write_path_population.py` fails on any new unclassified write path in `services/*/src` — classify each new writer in its `EXPECTED` counter; the range guard (207) refuses a non-Integer SQL expression, so write `Model.col + 1` with an Integer type; the money guard is an import allow-list (`collections, dataclasses, datetime, hashlib, types, typing, uuid` + first-party) and forbids the names `pow`, `float`, `round` in any domain — a new stdlib import in a domain is a deliberate allow-list edit whose census test fails until something uses it.
-- **#8's baselines:** `../order-to-cash-dotnet/progress/history.md` — orders_aggregate :629, cqrs_dispatcher :676, outbox_and_idempotency :730, orders_acceptance :773, order_saga_orchestrator :821, terminal_rejection_classification :872 (each quotes #7's figure). Every inherited #8 finding gets **avoided / recurred** in the effort entry.
-- **Plan items to honour** (Plan Phase 8): `rehydrate` validates invariants on every load; every dispatcher guard armed before review; relay `FOR UPDATE SKIP LOCKED` with skip-versus-block **measured**, self-scheduled `asyncio.sleep`, deadlock victim and poison payload inside `run_once` (#8 ids 87, 111); `processed_events` keyed `(event_id, consumer)`; `success | RpcError` decoded explicitly; sweeper must not re-claim a row it holds; fast path without head-of-line blocking and with trace context; nine of twelve error codes terminal; a live `order.placed.v1` compared with the golden envelope.
-- **Commits:** one per feature; each spec commit before its implementation commit.
+**Brief for phase 9 — Fulfillment service (Plan step 14).** Two features, in `feature_list.json` order: **17 `fulfillment_stock` (sdd)** and 18 `fulfillment_despatch` (sdd false). Range-guard backlog 207 is already done.
+
+- **First action:** feature 17 is `pending` + `sdd: true` → one `spec_author` writes `specs/fulfillment_stock/{requirements,design,tasks}.md` → **stop at the human gate**. Brief it with the rule the maintainer gave in Phase 8: a decision #7 and #8 agree on, with no Python-forced difference, is **adopted and cited, never offered** as a gate option. Go to the gate with a recommendation and evidence (check what #8 and #7 did first, verified by command).
+- **Process:** full group for both (persistence, the stock responders the saga calls, concurrency). Premise-check every brief; Opus reviewer; at most one rejection round without asking; findings fixed in the phase that detects them.
+- **Baselines:** #8 `../order-to-cash-dotnet/progress/history.md` — fulfillment_stock :999 (three review rounds, two blocking defects of one shape), fulfillment_despatch :1126, Phase 9 closing assessment :1167. #7 `../order-to-cash-nestjs/progress/history.md` — :842 and :863. #7's spec is at `../order-to-cash-nestjs/specs/fulfillment_stock/`, #8's at `../order-to-cash-dotnet/specs/fulfillment_stock/`. #8 backlog entries in the Fulfillment area, to be mapped by the spec as avoided or assigned: ids **49** (deterministic release event id; already on 17's acceptance list), **50** (responder shutdown isolation; Orders' responder already solved it in Phase 8, so port that, don't re-derive it), **51**, **54**, **79**, **95**, **101**. Read each before writing a task.
+- **Already carried on feature 17:** the per-service `otc_cqrs` registration item from feature 43, with the behavioural registration guard; read its last acceptance item.
+- **What Phase 8 built that Phase 9 reuses** (read it, don't re-derive it):
+  - Orders' `composition.py` / `main.py` / readiness / boot-cleanup pattern (feature 15, rounds 1–3).
+  - The settings→adapter reach test. #8 id 56 **recurred three times** in Phase 8 (15 D-2, 15 R2-D5, 16 D1), so write it with the composition root, not after review.
+  - The canonical `idempotent_consumer.py`: its parity guard's case 1 goes live when Fulfillment carries a copy, and case 3 when Fulfillment consumes Kafka.
+  - Feature 15's stand-in stock-check responder and its `success | RpcError` contract. Fulfillment must answer with codes from the closed `RpcError` enum; feature 42 classifies nine of them as terminal, so a code chosen wrongly here parks or rejects Orders' commands.
+- **Lessons from Phase 8 to put in every brief:**
+  - Ask "what fails if I revert this?" of every fix. Feature 15's second rejection was four repairs that survived their own reversion, exactly #8's round-2 note for the same feature.
+  - Before review, list every branch of a hand-built loop or adapter (cancel, pace, retry, send-raises, ack-fails) and name the test that drives each.
+  - Every multi-claim test needs one mutation per claim.
+  - Negative assertions need a control row.
+  - Arming backups go in `.arm/` with a recorded `sha256`, never `/tmp`, and timeouts kill the whole process group (CLAUDE.md, amended at this wrap-up).
+- **`quality.sh` threshold:** the maintainer set ~125 s at the Phase 7 gate. The Phase 8 wrap-up figure is in `progress/history.md` (feature 16's addendum). The saga's container-backed integration suite dominates it, with Kafka's consumer-group join as the measured cost, so revisiting the threshold is the maintainer's call.
+- **Plan items to honour** (Plan Phase 9): `StockItem` reservation lifecycle with `reserved_units ≤ units`; the `stock.check/reserve/release/list/replenish` responders; `SELECT … FOR UPDATE` in an application-fixed order on every deciding read; deadlock retry on `40P01` with a concurrency test; a deterministic event id for releases (#8 id 49); `SA-4`'s arbitration of `stock.release` against `despatch.create` under one lock; `DespatchAdvice` consuming reservations; one commit per feature.
 
 ---
 
