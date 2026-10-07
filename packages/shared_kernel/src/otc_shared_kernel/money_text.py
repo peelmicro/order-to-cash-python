@@ -5,7 +5,7 @@ in threes by a single ASCII space, `.` and the fraction digits when the exponent
 ` <CURRENCY>`. Integer arithmetic only (`divmod`, never `/`).
 """
 
-from otc_shared_kernel import exponent_of
+from otc_shared_kernel.currency_exponent import exponent_of
 
 
 def format_money(minor_units: int, currency: str) -> str:

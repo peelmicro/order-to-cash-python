@@ -23,13 +23,20 @@ from otc_shared_kernel.errors import (
     InvalidUniqueIdError,
     QuantityMustBePositiveError,
 )
+from otc_shared_kernel.event_envelope import (
+    EVENT_TYPE_PATTERN,
+    IncompleteDomainEventEnvelopeError,
+    validate_domain_event_envelope,
+)
 from otc_shared_kernel.gln import GLN
 from otc_shared_kernel.money import Money
+from otc_shared_kernel.money_text import format_money
 from otc_shared_kernel.quantity import Quantity
 from otc_shared_kernel.unique_id import UniqueId
 
 __all__ = [
     "DEFAULT_EXPONENT",
+    "EVENT_TYPE_PATTERN",
     "GLN",
     "NON_DEFAULT_EXPONENTS",
     "AggregateRoot",
@@ -39,6 +46,7 @@ __all__ = [
     "DespatchReference",
     "DomainError",
     "Entity",
+    "IncompleteDomainEventEnvelopeError",
     "InvalidBusinessReferenceError",
     "InvalidCurrencyCodeError",
     "InvalidGlnError",
@@ -51,4 +59,6 @@ __all__ = [
     "QuantityMustBePositiveError",
     "UniqueId",
     "exponent_of",
+    "format_money",
+    "validate_domain_event_envelope",
 ]

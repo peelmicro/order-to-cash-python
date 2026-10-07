@@ -57,13 +57,19 @@ dev = [
 target-version = "py314"
 line-length = 100
 src = ["packages/*/src", "services/*/src", "tests"]
+# ruff 0.16 formats ```python blocks inside Markdown; specs/ is spec text (specs/shared/ is byte-identical
+# with #7 and #8), never a formatting target. Found by feature 13's review (F4), when a repo-wide
+# `ruff format` rewrote specs/orders_aggregate/design.md.
+extend-exclude = ["specs"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "S", "RUF", "SIM", "C4", "PT"]
+# SLF001 (private-member access): nothing outside a class may reach its private state, e.g. a
+# HandlerRegistry's handler tables (feature 43 review round 2, residual F-c). Tests are exempt below.
+select = ["E", "F", "W", "I", "UP", "B", "ASYNC", "S", "RUF", "SIM", "C4", "PT", "SLF001"]
 
 [tool.ruff.lint.per-file-ignores]
 # asserts and hard-coded values are what tests are made of
-"**/tests/**" = ["S101", "S105", "S106"]
+"**/tests/**" = ["S101", "S105", "S106", "SLF001"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -233,6 +239,32 @@ forbidden_modules = [
     "opentelemetry",
     "otc_cqrs",
 ]
+
+[[tool.importlinter.contracts]]
+id = "fact-producer-confinement"
+name = "No service's application or presentation layer imports the Kafka client (R14: only the relay's adapter publishes)"
+type = "forbidden"
+# `domain-purity` already forbids aiokafka in every `domain`; the FactPublisher protocol lives in
+# `infrastructure.outbox`, so `layers-<service>` already keeps `application` from reaching it. This
+# contract closes the other two layers directly (OI16). Every service is listed: a contract that
+# named only orders would pass for the next service that imports the client from a handler.
+source_modules = [
+    "otc_gateway.application",
+    "otc_gateway.presentation",
+    "otc_orders.application",
+    "otc_orders.presentation",
+    "otc_fulfillment.application",
+    "otc_fulfillment.presentation",
+    "otc_billing.application",
+    "otc_billing.presentation",
+    "otc_notifications.application",
+    "otc_notifications.presentation",
+    "otc_projector.application",
+    "otc_projector.presentation",
+    "otc_seed.application",
+    "otc_seed.presentation",
+]
+forbidden_modules = ["aiokafka"]
 
 [[tool.importlinter.contracts]]
 id = "layers-gateway"

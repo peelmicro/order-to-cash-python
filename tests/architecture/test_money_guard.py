@@ -8,17 +8,17 @@ domain; see the sweep sentinels below). `//` (floor division of ints) is allowed
 
 Round 4, change of instrument (maintainer-approved, final): rounds 1-3 kept a DENY-list of numeric
 modules and lost to the next module (`statistics.mean`). The guard now holds an ALLOW-list, a
-literal derived by census (AST over the 35 files in `services/*/src/otc_*/domain/**` and
+literal derived by census (AST over the 47 files in `services/*/src/otc_*/domain/**` and
 `packages/shared_kernel/src/**`; absolute imports found: `collections` (`.abc`), `dataclasses`,
-`datetime`, `hashlib`, `types`, `typing`, `uuid`, plus first-party `otc_shared_kernel` and the
-service's own package, e.g. `otc_seed`). `ALLOWED_ROOTS` is exactly that set; the importing
-service's own package is added per file. Any other absolute import, in any form (`import x`,
-`import x as y`, `import x.y`, `from x import ...`, `from x import *`, `__import__("x")`,
-`importlib.import_module("x")`), fails by name, and so does any reference to `__import__` /
-`import_module` (a domain has no reason to import dynamically). The builtin names `pow`, `float`
-and `round` are refused as a Name reference ANYWHERE (call, alias `_p = pow`, `reduce(pow, ...)`,
-`map(pow, ...)`, annotation); census: `sum` x5, `divmod` x1, `abs` x1 are used, `pow`, `float`,
-`round` are not. The `getattr` / `__getattribute__` reflection ban is kept.
+`datetime`, `enum`, `hashlib`, `re`, `types`, `typing`, `uuid`, plus first-party
+`otc_shared_kernel` and the service's own package, e.g. `otc_seed`). `ALLOWED_ROOTS` is exactly
+that set; the importing service's own package is added per file. Any other absolute import, in any
+form (`import x`, `import x as y`, `import x.y`, `from x import ...`, `from x import *`,
+`__import__("x")`, `importlib.import_module("x")`), fails by name, and so does any reference to
+`__import__` / `import_module` (a domain has no reason to import dynamically). The builtin names
+`pow`, `float` and `round` are refused as a Name reference ANYWHERE (call, alias `_p = pow`,
+`reduce(pow, ...)`, `map(pow, ...)`, annotation); census: `sum` x5, `divmod` x1, `abs` x1 are
+used, `pow`, `float`, `round` are not. The `getattr` / `__getattribute__` reflection ban is kept.
 
 Redundant after the allow-list (removed): the numeric-module deny-list and its import / from-import
 / dynamic-import branches, and the call-position `pow(...)` exponent rule (a bare `pow` is now
@@ -88,7 +88,7 @@ def _annotation_strings(tree: ast.AST) -> list[tuple[ast.expr, int]]:
 TRUEDIV_NAMES = {"truediv", "itruediv", "__truediv__", "__rtruediv__", "__itruediv__"}
 # The ALLOW-list (a literal, derived by census, see the docstring). Anything else fails by name.
 ALLOWED_ROOTS = frozenset(
-    {"collections", "dataclasses", "datetime", "hashlib", "types", "typing", "uuid"}
+    {"collections", "dataclasses", "datetime", "enum", "hashlib", "re", "types", "typing", "uuid"}
     | {"otc_shared_kernel"}
 )
 # Builtins that are float sources or `**` by another name, refused as a bare name anywhere.

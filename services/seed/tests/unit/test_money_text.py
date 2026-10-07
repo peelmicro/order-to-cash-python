@@ -9,7 +9,7 @@ strings are typed here, not produced by the function.
 import pytest
 
 from otc_seed.domain.data.sagas import SAGAS
-from otc_seed.domain.money_text import format_money
+from otc_shared_kernel import format_money
 
 
 @pytest.mark.parametrize(

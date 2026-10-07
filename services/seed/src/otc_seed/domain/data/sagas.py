@@ -44,8 +44,7 @@ from otc_seed.domain.data.currencies import CURRENCIES
 from otc_seed.domain.data.products import product_by_code
 from otc_seed.domain.data.retailers import retailer_by_code
 from otc_seed.domain.deterministic import deterministic_id
-from otc_seed.domain.money_text import format_money
-from otc_shared_kernel import DespatchReference, InvoiceReference, OrderNumber
+from otc_shared_kernel import DespatchReference, InvoiceReference, OrderNumber, format_money
 
 type Payload = Mapping[str, Any]
 
