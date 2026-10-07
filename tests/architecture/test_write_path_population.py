@@ -193,8 +193,79 @@ def hits(source: str) -> Counter[tuple[str, str]]:
 # classification is the comment). Empty for a service means "no write path exists yet".
 EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
     "orders": {
+        # kernel `Money.add` arithmetic, not a write: the domain imports no driver (domain-purity
+        # contract). Three calls in `compute_totals`: the running initial amount, the running line
+        # discounts, and the line discounts plus the (zero) order-level discount. Counts read from
+        # `scan_service("orders")`, never predicted.
+        "domain/totals.py": Counter({("call", "add"): 3}),
+        # Feature 14. The idempotent consumer's dedup row: `INSERT ... ON CONFLICT DO NOTHING`
+        # through a Core `insert` (imported as `pg_insert`, which the instrument resolves to
+        # `insert` and counts as an aliased-import hit) executed once. NO GUARDED COLUMN:
+        # `processed_events` has no integer column (uuid, varchar and timestamptz only).
+        "infrastructure/messaging/idempotent_consumer.py": Counter(
+            {("import", "insert as pg_insert"): 1, ("call", "execute"): 1, ("call", "insert"): 1}
+        ),
+        # The relay's stamp: `session.execute(update(Outbox)...values(published_at=...))`. NO
+        # GUARDED COLUMN: it writes one timestamptz and no integer (`seq` is never assigned).
+        "infrastructure/outbox/relay.py": Counter({("call", "execute"): 1, ("call", "update"): 1}),
+        # The writer's `session.add(Outbox(...))`, one per event: GUARDED (the ORM unit of work, so
+        # `install_range_guards` fires on every integer column of the row).
+        "infrastructure/outbox/writer.py": Counter({("call", "add"): 1}),
         # DDL defaults `server_default=text("0")` and `text("'{}'")`: schema, not a write. Two.
         "infrastructure/persistence/models.py": Counter({("call", "text"): 2}),
+        # Feature 14's repository, six `add`, one `update`, one `delete`, two `execute`, each
+        # classified (counts read from `scan_service("orders")`, never predicted):
+        #  * `session.add` x3 (the new `orders` row, a new `order_items` row on insert, a new
+        #    `order_items` row on update): GUARDED (the ORM unit of work, `install_range_guards`
+        #    fires on every integer column, `order_items.quantity` included);
+        #  * `set.add` x3 (`self._loaded.add` twice, `kept.add` once): a Python set, not a write;
+        #  * `self._written_events.update(...)`: `set.update`, not a write;
+        #  * `session.delete(item)`: NO GUARDED COLUMN (a delete writes no value);
+        #  * `session.execute(select(...))` x2 (`_load`'s two reads): SELECTs, not writes.
+        "infrastructure/persistence/order_repository.py": Counter(
+            {
+                ("call", "add"): 6,
+                ("call", "update"): 1,
+                ("call", "delete"): 1,
+                ("call", "execute"): 2,
+            }
+        ),
+        # Feature 15, the allocator: `session.execute(text(...))` x3 of the three `sequences.py`
+        # constants below (seed, lock, advance), counted here as three `execute` and three `text`.
+        # The two writes are classified at their constants; the third is a SELECT ... FOR UPDATE.
+        # NO CALLER-SUPPLIED INTEGER reaches any of them, so there is nothing to range-check.
+        "infrastructure/persistence/order_number_allocator.py": Counter(
+            {("call", "execute"): 3, ("call", "text"): 3}
+        ),
+        # Feature 15, the reference catalogue: `session.execute(select(...))` x3 (retailer,
+        # company, products). SELECTs, not writes (currency uses `session.scalar`).
+        "infrastructure/persistence/reference_catalog.py": Counter({("call", "execute"): 3}),
+        # Feature 15, the responder: `in_flight.add(task)`, a Python `set.add`, not a write.
+        "presentation/orders_create_responder.py": Counter({("call", "add"): 1}),
+        # Feature 16, the saga's owed-command queue: `session.execute(pg_insert(SagaCommand)...
+        # .on_conflict_do_nothing(...).returning(...))`, one statement (`pg_insert` is the aliased
+        # import the instrument resolves to `insert`, counted as an import hit and a call). NO
+        # GUARDED COLUMN: `attempts` is never written (the server default `0` applies), so this
+        # ORM-enabled insert writes no integer column at all. Counts read from `scan_service`.
+        "infrastructure/saga/command_queue.py": Counter(
+            {("import", "insert as pg_insert"): 1, ("call", "execute"): 1, ("call", "insert"): 1}
+        ),
+        # Feature 16 and 42, the ledger: five ORM-enabled `update(SagaCommand)` statements
+        # (`try_claim`, `claim_due`, `mark_sent`, `reject`, `park`) through ONE `session.execute` in
+        # `_execute`. Three write NO GUARDED COLUMN (`try_claim` and `claim_due` write two
+        # timestamps, `mark_sent` a status and two timestamps). `park` and (feature 42) `reject`
+        # write `attempts` (int4) and are each `ensure_in_range`: the caller's total is
+        # range-checked BEFORE the statement runs, because an ORM-enabled update bypasses the
+        # attribute guard (`range_guards.py`'s residual).
+        "infrastructure/saga/command_ledger.py": Counter(
+            {("call", "update"): 5, ("call", "execute"): 1}
+        ),
+        # Feature 16, the ignored-fact recorder: `session.add(SagaIgnoredFact(...))`, GUARDED (the
+        # ORM unit of work, so `install_range_guards` fires on every integer column of the row;
+        # the table has none).
+        "infrastructure/saga/ignored_facts.py": Counter({("call", "add"): 1}),
+        # Feature 16, the fast path: `self._children.add(task)`, a Python `set.add`, not a write.
+        "infrastructure/saga/fast_path.py": Counter({("call", "add"): 1}),
         # Raw SQL constants; each is executed inside the caller's transaction. SEED writes the one
         # counter row (id, next_value: both computed by the statement itself, no caller-supplied
         # integer); ADVANCE is `next_value + 1`, a server-side expression on a counter the same

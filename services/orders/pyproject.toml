@@ -13,6 +13,8 @@ dependencies = [
     "asyncpg",
     "alembic",
     "pydantic-settings",
+    "aiokafka",
+    "nats-py>=2.16.0",
 ]
 
 [build-system]

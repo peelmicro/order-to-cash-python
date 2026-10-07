@@ -59,6 +59,20 @@ def format_instant(value: datetime) -> str:
     )
 
 
+def wire_instant(value: datetime) -> datetime:
+    """The one millisecond truncation: an aware instant, in UTC, cut (never rounded) to `.mmm`.
+
+    `timestamptz(3)` ROUNDS (`.123987` is stored as `.124`) while `format_instant` TRUNCATES
+    (`.123`); every instant the outbox path stores or writes goes through here first, so the stored
+    value, the envelope's `occurredAt` and every payload instant are the same millisecond (OI19).
+    A naive datetime is refused: it has no instant. A non-UTC offset is converted to UTC.
+    """
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("an Instant must be timezone-aware; a naive datetime has no instant")
+    utc = value.astimezone(UTC)
+    return utc.replace(microsecond=utc.microsecond // 1000 * 1000)
+
+
 def _nullable_for(model_type: type) -> frozenset[str]:
     """Nullable wire names of a generated class and of every generated base (a subclass declared
     elsewhere keeps its explicit `null`s)."""
