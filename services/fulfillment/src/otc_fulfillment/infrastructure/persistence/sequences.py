@@ -1,6 +1,6 @@
 """The counter SQL for `despatch_number_sequences` (`DES-######`).
 
-The allocator proper is Phase 9 (fulfillment's despatch feature).
+The allocator proper is `despatch_number_allocator.py` (feature 18).
 
 Seeding is `INSERT ... SELECT ... WHERE NOT EXISTS (counter row) ... ON CONFLICT DO NOTHING`: ONE
 statement whose atomicity is the engine's, so sixteen first-ever callers cannot race a check against

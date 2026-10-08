@@ -85,3 +85,6 @@ desktop.ini
 
 # ---------- Arming backups (CLAUDE.md arming protocol; survives a reboot, unlike /tmp) ----------
 /.arm/
+
+# ---------- Maintainer scratch (local logs of manual runs; never committed) ----------
+/temp/

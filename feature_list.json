@@ -324,7 +324,7 @@
       "phase": 9,
       "title": "StockItem aggregate + reservation lifecycle (reserve / release / consume)",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "invariant reserved_units <= units enforced in the aggregate",
         "stock.rejected when insufficient; release idempotent, cannot release twice, with a deterministic event id (#8 id 49)",
@@ -340,10 +340,11 @@
       "phase": 9,
       "title": "DespatchAdvice (DESADV) creation consuming reservations",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "reservations move to consumed",
-        "order.despatched.v1 emitted via the outbox"
+        "order.despatched.v1 emitted via the outbox",
+        "carried from fulfillment_stock (id 17; progress/review_fulfillment_stock.md D4, specs/fulfillment_stock/design.md §6.3 and §15): despatch.create takes the SA-4 lock through StockReads.stock_keys_of_order + StockRepository.lock_order_items exactly as stock.release does; the release-versus-despatch race is integration-tested in both outcomes (release wins → no reservation to consume; despatch wins → release answers PRECONDITION_FAILED); the despatch half of FS25's lock test (#8 id 79); the in-lock re-read relies on the pinned READ COMMITTED, with its ported-idiom ledger row (#8 id 54)"
       ]
     },
     {
