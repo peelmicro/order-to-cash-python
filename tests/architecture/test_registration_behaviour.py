@@ -34,7 +34,60 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SERVICES = ["orders"]  # services that have a composition root with `build_dispatcher`
+SERVICES = ["orders", "fulfillment"]  # services whose composition root has `build_dispatcher`
+
+# `PlaceOrderCommand` (feature 15), the ten saga fact commands and the five dispatch-owed events
+# (feature 16); Fulfillment (feature 17): three commands, two queries, no events (no post-commit
+# in-process hop is owed: the relay is its only post-commit obligation).
+TABLES: dict[str, dict[str, list[str]]] = {
+    "orders": {
+        "commands": [
+            "otc_orders.application.commands.place_order.PlaceOrderCommand",
+            *(
+                f"otc_orders.application.saga.fact_commands.Handle{name}FactCommand"
+                for name in (
+                    "OrderPlaced",
+                    "StockReserved",
+                    "StockRejected",
+                    "StockReleased",
+                    "CreditApproved",
+                    "CreditRejected",
+                    "OrderDespatched",
+                    "InvoiceIssued",
+                    "PaymentReceived",
+                    "CreditReleased",
+                )
+            ),
+        ],
+        "queries": [],
+        "events": [
+            f"otc_orders.application.saga.dispatch_events.{name}"
+            for name in (
+                "OrderPlacedFactRecorded",
+                "OrderMarkedStockReserved",
+                "CreditRejectionRecorded",
+                "OrderConfirmedBySaga",
+                "OrderMarkedDespatched",
+            )
+        ],
+    },
+    "fulfillment": {
+        "commands": [
+            f"otc_fulfillment.application.messages.{name}"
+            for name in (
+                "ReserveStockCommand",
+                "ReleaseStockCommand",
+                "ReplenishStockCommand",
+                "CreateDespatchCommand",
+            )
+        ],
+        "queries": [
+            f"otc_fulfillment.application.messages.{name}"
+            for name in ("CheckStockQuery", "ListStockQuery")
+        ],
+        "events": [],
+    },
+}
 
 PROBE = textwrap.dedent(
     """
@@ -181,38 +234,11 @@ def test_a_service_registers_only_from_its_composition_root_and_its_tables_match
     assert violations(result) == []
     registrations = [e for e in result["events"] if e["what"] in KINDS]
     assert registrations, "the probe saw no registration at all: it would pass for anything"
-    # The population is a literal: `PlaceOrderCommand` (feature 15), the ten saga fact commands and
-    # the five dispatch-owed events (feature 16), sorted as the probe reports them.
-    assert result["tables"]["commands"] == sorted(
-        [
-            "otc_orders.application.commands.place_order.PlaceOrderCommand",
-            *(
-                f"otc_orders.application.saga.fact_commands.Handle{name}FactCommand"
-                for name in (
-                    "OrderPlaced",
-                    "StockReserved",
-                    "StockRejected",
-                    "StockReleased",
-                    "CreditApproved",
-                    "CreditRejected",
-                    "OrderDespatched",
-                    "InvoiceIssued",
-                    "PaymentReceived",
-                    "CreditReleased",
-                )
-            ),
-        ]
-    )
-    assert result["tables"]["events"] == sorted(
-        f"otc_orders.application.saga.dispatch_events.{name}"
-        for name in (
-            "OrderPlacedFactRecorded",
-            "OrderMarkedStockReserved",
-            "CreditRejectionRecorded",
-            "OrderConfirmedBySaga",
-            "OrderMarkedDespatched",
-        )
-    )
+    # The population is a literal per service (TABLES), sorted as the probe reports it.
+    expected = TABLES[service]
+    assert result["tables"]["commands"] == sorted(expected["commands"])
+    assert result["tables"]["queries"] == sorted(expected["queries"])
+    assert result["tables"]["events"] == sorted(expected["events"])
 
 
 # ---- the instrument must be able to fail: fixture packages

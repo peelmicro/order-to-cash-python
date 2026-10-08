@@ -5,8 +5,8 @@ and `presentation` package. It cannot say WHICH infrastructure module may hold W
 the saga adds the second client. This test reads the AST of every `services/*/src/**/*.py` and
 asserts:
 
-1. the modules that import `aiokafka` are exactly the literal set below (the relay's publisher and
-   the saga's subscriber);
+1. the modules that import `aiokafka` are exactly the literal set below (Orders' relay publisher,
+   Fulfillment's copy of it, and the saga's subscriber);
 2. the publisher names no consumer-side name and the subscriber no producer-side name.
 
 An AST is read so that a mention in a comment, a docstring or a string is not an import, and
@@ -25,7 +25,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PUBLISHER = "otc_orders.infrastructure.outbox.kafka_publisher"
 SUBSCRIBER = "otc_orders.infrastructure.messaging.kafka_fact_subscriber"
-EXPECTED_IMPORTERS = {PUBLISHER, SUBSCRIBER}
+# Feature 17: Fulfillment's relay copy is the second producer (parity-guarded against Orders').
+FULFILLMENT_PUBLISHER = "otc_fulfillment.infrastructure.outbox.kafka_publisher"
+EXPECTED_IMPORTERS = {PUBLISHER, SUBSCRIBER, FULFILLMENT_PUBLISHER}
 CONSUMER_SIDE = {"AIOKafkaConsumer", "TopicPartition", "ConsumerRecord"}
 PRODUCER_SIDE = {"AIOKafkaProducer"}
 
@@ -83,18 +85,20 @@ def violations(found: dict[str, set[str]]) -> list[str]:
             f"the modules importing aiokafka are {sorted(found)}, "
             f"expected {sorted(EXPECTED_IMPORTERS)}"
         )
-    if consumer_names := found.get(PUBLISHER, set()) & CONSUMER_SIDE:
-        problems.append(f"the publisher names consumer-side {sorted(consumer_names)}")
+    for publisher in (PUBLISHER, FULFILLMENT_PUBLISHER):
+        if consumer_names := found.get(publisher, set()) & CONSUMER_SIDE:
+            problems.append(f"the publisher names consumer-side {sorted(consumer_names)}")
     if producer_names := found.get(SUBSCRIBER, set()) & PRODUCER_SIDE:
         problems.append(f"the subscriber names producer-side {sorted(producer_names)}")
     return problems
 
 
-def test_the_modules_importing_aiokafka_are_exactly_the_publisher_and_the_subscriber() -> None:
+def test_the_modules_importing_aiokafka_are_exactly_the_two_publishers_and_the_subscriber() -> None:
     found = survey(REPO_ROOT)
 
     assert violations(found) == []
     assert "AIOKafkaProducer" in found[PUBLISHER], "the census sees the publisher's real import"
+    assert "AIOKafkaProducer" in found[FULFILLMENT_PUBLISHER], "and Fulfillment's"
     assert "AIOKafkaConsumer" in found[SUBSCRIBER], "and the subscriber's"
 
 
@@ -111,10 +115,24 @@ def tree_with(tmp_path: Path, files: dict[str, str]) -> dict[str, set[str]]:
 
 PUBLISHER_FILE = "orders/src/otc_orders/infrastructure/outbox/kafka_publisher.py"
 SUBSCRIBER_FILE = "orders/src/otc_orders/infrastructure/messaging/kafka_fact_subscriber.py"
+FULFILLMENT_PUBLISHER_FILE = (
+    "fulfillment/src/otc_fulfillment/infrastructure/outbox/kafka_publisher.py"
+)
 CLEAN = {
     PUBLISHER_FILE: "from aiokafka import AIOKafkaProducer\n",
     SUBSCRIBER_FILE: "from aiokafka import AIOKafkaConsumer\n",
+    FULFILLMENT_PUBLISHER_FILE: "from aiokafka import AIOKafkaProducer\n",
 }
+
+
+def test_sentinel_a_consumer_import_added_to_fulfillments_publisher_is_reported(
+    tmp_path: Path,
+) -> None:
+    files = CLEAN | {
+        FULFILLMENT_PUBLISHER_FILE: "from aiokafka import AIOKafkaProducer, AIOKafkaConsumer\n"
+    }
+    [problem] = violations(tree_with(tmp_path, files))
+    assert "publisher names consumer-side ['AIOKafkaConsumer']" in problem
 
 
 def test_sentinel_the_clean_pair_is_accepted(tmp_path: Path) -> None:

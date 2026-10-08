@@ -288,8 +288,45 @@ EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
             }
         ),
     },
-    # Same two constants, same classification as orders' (no caller-supplied integer reaches them).
+    # Feature 17 added the stock write path; counts read from `scan_service("fulfillment")`, never
+    # predicted. The guarded integer columns (`stock.units`, `stock.reserved_units`,
+    # `reservations.units`) are written ONLY by attribute assignment or constructor in
+    # `infrastructure/persistence/stock_mapper.py` (design 9.2), which the scan does not count
+    # because an assignment is not a call: it is the guarded path (the range guard is an ORM
+    # attribute event). Any `update(Stock).values(...)`, `insert(...)` or `text()` write that gets
+    # added anywhere shows up below as an unclassified hit.
     "fulfillment": {
+        # The relay copy's stamp (parity-guarded against Orders'): `session.execute(update(Outbox)
+        # ...values(published_at=...))`. NO GUARDED COLUMN: it writes one timestamptz.
+        "infrastructure/outbox/relay.py": Counter({("call", "execute"): 1, ("call", "update"): 1}),
+        # The writer copy's `session.add(Outbox(...))`, one per event: GUARDED (the ORM unit of
+        # work, so `install_range_guards` fires on every integer column of the row).
+        "infrastructure/outbox/writer.py": Counter({("call", "add"): 1}),
+        # `session.execute(select(...))` x2 (`availability`, `stock_keys_of_order`): SELECTs, not
+        # writes (`list` reads through `session.scalar` / `scalars`).
+        "infrastructure/persistence/stock_reads.py": Counter({("call", "execute"): 2}),
+        # `self._session.add(created)`: a NEW reservation row built by `stock_mapper`'s constructor
+        # call. GUARDED (the ORM unit of work: `reservations.units` is range-checked when the
+        # constructor assigns it). Every other row it writes was loaded under `FOR UPDATE` and is
+        # changed by attribute assignment in the mapper. No upsert, no `ON CONFLICT` (ledger L6).
+        "infrastructure/persistence/stock_repository.py": Counter({("call", "add"): 1}),
+        # Feature 18, the `DES-` allocator (the Orders allocator's shape): three `execute` and three
+        # `text` over the constants of `sequences.py` below (seed, lock, advance). The two writes
+        # are classified at their constants; the third is a SELECT ... FOR UPDATE. NO
+        # CALLER-SUPPLIED INTEGER reaches any of them (`next_value` is read from the row and
+        # advanced in SQL), so there is nothing to range-check.
+        "infrastructure/persistence/despatch_number_allocator.py": Counter(
+            {("call", "execute"): 3, ("call", "text"): 3}
+        ),
+        # Feature 18: `session.add(Despatch(...))` and, in the line loop, `session.add(DespatchItem
+        # (...))`. GUARDED (the ORM unit of work: `despatch_items.units` is range-checked when the
+        # constructor assigns it). Plain INSERTs, no upsert and no `ON CONFLICT` (ledger L6): the
+        # `despatches.order_reference` unique key is F8's last line, not a write path.
+        "infrastructure/persistence/despatch_repository.py": Counter({("call", "add"): 2}),
+        # `in_flight.add(task)`: a Python `set.add`, not a write.
+        "presentation/stock_responder.py": Counter({("call", "add"): 1}),
+        # Same two constants, same classification as orders' (no caller-supplied integer reaches
+        # them).
         "infrastructure/persistence/sequences.py": Counter(
             {
                 (

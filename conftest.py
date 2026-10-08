@@ -47,6 +47,7 @@ a container (seconds).
 
 import asyncio
 import uuid
+import warnings
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,6 +60,7 @@ from alembic import command
 from alembic.config import Config
 from pymongo import AsyncMongoClient
 from testcontainers.community.mongodb import MongoDbContainer
+from testcontainers.community.nats import NatsContainer
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
@@ -317,3 +319,40 @@ def kafka_server() -> Iterator[KafkaServer]:
         bootstrap_servers = f"{host}:{port}"
         asyncio.run(_create_topics(bootstrap_servers, KAFKA_FACT_TOPICS))
         yield KafkaServer(bootstrap_servers=bootstrap_servers)
+
+
+# ------------------------------------------------------------------ NATS (feature 15, moved by 17)
+
+NATS_IMAGE = "nats:2.14.5-alpine"  # the compose pin (docker-compose.infra.yml)
+
+
+@dataclass(frozen=True)
+class NatsServer:
+    url: str  # nats://host:port, the port assigned and held by Docker
+
+
+@pytest.fixture(scope="session")
+def nats_server() -> Iterator[NatsServer]:
+    """ONE Docker-held NATS (core only, no JetStream: the deployed server's shape) per session.
+
+    Sync, no loop: every client a test needs is created and closed in that test's own loop. The
+    port is Docker's; the suite never talks to the composed NATS on 4222. Feature 15 wrote it in
+    Orders' conftest; feature 17 (the second user) moved it here, body unchanged, so both services'
+    suites share one Docker-held server.
+    """
+    container = NatsContainer(NATS_IMAGE)
+    with warnings.catch_warnings():
+        # testcontainers 4.15.0's own `NatsContainer.start()` readiness wait calls its deprecated
+        # `wait_for_logs(<str>)` (measured: DeprecationWarning from
+        # testcontainers/core/waiting_utils.py, under `error::DeprecationWarning`). It is the
+        # library's warning, not ours: ignored for exactly this message, exactly around `start()`.
+        warnings.filterwarnings(
+            "ignore",
+            message="The wait_for_logs function with string or callable predicates is deprecated",
+            category=DeprecationWarning,
+        )
+        container.start()
+    try:
+        yield NatsServer(url=container.nats_uri())
+    finally:
+        container.stop()

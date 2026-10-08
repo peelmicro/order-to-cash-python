@@ -6,8 +6,7 @@ The shared container and `fresh_database` live in the repository-root `conftest.
 import asyncio
 import json
 import uuid
-import warnings
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,7 +30,6 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from testcontainers.community.nats import NatsContainer
 
 from otc_orders.composition import OrdersRuntime
 from otc_orders.domain.order import Order
@@ -276,6 +274,14 @@ def place_order(reference_data: ReferenceData) -> PlaceOrder:
 # ------------------------------------------------------------- feature 14: relay, broker, planting
 
 
+class NatsServerShape(Protocol):
+    """The shape of the root conftest's `NatsServer` (moved there by feature 17; not imported: see
+    `FreshDatabase`)."""
+
+    @property
+    def url(self) -> str: ...
+
+
 class KafkaServerShape(Protocol):
     """The shape of the root conftest's `KafkaServer` (not imported: see `FreshDatabase`)."""
 
@@ -476,43 +482,9 @@ def row_planter(migrated_db: FreshDatabase) -> RowPlanter:
 
 # --------------------- feature 15: NATS, the stand-in Fulfillment, the host
 
-NATS_IMAGE = "nats:2.14.5-alpine"  # the compose pin (docker-compose.infra.yml)
-
-
-@dataclass(frozen=True)
-class NatsServer:
-    url: str  # nats://host:port, the port assigned and held by Docker
-
-
-@pytest.fixture(scope="session")
-def nats_server() -> Iterator[NatsServer]:
-    """ONE Docker-held NATS (core only, no JetStream: the deployed server's shape) per session.
-
-    Sync, no loop: every client a test needs is created and closed in that test's own loop. The
-    port is Docker's; the suite never talks to the composed NATS on 4222. It lives in this
-    conftest, not the repository root one, because feature 15 is the first user and its brief
-    bounds the files it may touch; the next service that needs it moves it up.
-    """
-    container = NatsContainer(NATS_IMAGE)
-    with warnings.catch_warnings():
-        # testcontainers 4.15.0's own `NatsContainer.start()` readiness wait calls its deprecated
-        # `wait_for_logs(<str>)` (measured: DeprecationWarning from
-        # testcontainers/core/waiting_utils.py, under `error::DeprecationWarning`). It is the
-        # library's warning, not ours: ignored for exactly this message, exactly around `start()`.
-        warnings.filterwarnings(
-            "ignore",
-            message="The wait_for_logs function with string or callable predicates is deprecated",
-            category=DeprecationWarning,
-        )
-        container.start()
-    try:
-        yield NatsServer(url=container.nats_uri())
-    finally:
-        container.stop()
-
 
 @pytest_asyncio.fixture(loop_scope="function")
-async def nats_client(nats_server: NatsServer) -> AsyncIterator[NatsClient]:
+async def nats_client(nats_server: NatsServerShape) -> AsyncIterator[NatsClient]:
     """A caller's connection (what the Gateway is to `orders.create`), closed in this loop."""
     client = await nats.connect(nats_server.url)
     try:
@@ -549,7 +521,7 @@ StandInFactory = Callable[[Behaviour], Awaitable[StandInStockCheck]]
 
 
 @pytest_asyncio.fixture(loop_scope="function")
-async def stand_in_stock_check(nats_server: NatsServer) -> AsyncIterator[StandInFactory]:
+async def stand_in_stock_check(nats_server: NatsServerShape) -> AsyncIterator[StandInFactory]:
     """`await stand_in_stock_check(behaviour)`: started on its own connection, closed with the
     test (so no subscription outlives the test that made it on the shared server)."""
 
@@ -611,7 +583,7 @@ def host_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     migrated_db: FreshDatabase,
-    nats_server: NatsServer,
+    nats_server: NatsServerShape,
     kafka_server: KafkaServerShape,
 ) -> HostEnv:
     """`host_environment(**overrides)`: the environment a real deployment would carry, set through
