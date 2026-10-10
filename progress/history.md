@@ -950,3 +950,258 @@ One session, ≈15:55 → 18:49, one feature (`seed_job`) plus backlog 211 and 2
 **Leader addendum (2026-10-08, Phase 9 close).** The three items the closing assessment lists as owed are closed in this phase. Feature 17's **N-1**: `specs/fulfillment_stock/design.md` ledger row L15 and `requirements.md`'s FS24/FS25 traceability rows now also name the round-2 guards (docs-only). Feature 18's **N1/N2** (light, test-only): edited by `test_maintainer` (`progress/impl_fulfillment_despatch_n1_n2.md`), one `ruff format` reflow by the leader, then armed by the leader with backups and `sha256` in `.arm/leader18/`. **R21** (outbox write removed from `despatch_repository.py`) → `AssertionError: exactly one order.despatched.v1 in the outbox`. **R16** (fast path removed from `despatch_creation.create`) → `Failed: the repeat waited on the held stock row: F8's fast path did not answer before the transaction`. Each restore was confirmed with `cmp`, and both affected files re-ran green (14 passed). The `ORD-000007` dev-data stall is carried in the Phase 10 brief.
 
 **Phase 9 session record (leader, 2026-10-07 → 2026-10-08).** One session, as CLAUDE.md requires. Every brief was premise-checked before dispatch: seven checks, which caught four false or conflicting claims of the leader's own before they reached a subagent (Fulfillment's empty packages described as absent; a fixture path; the arms forbidden by a `src` bound; the registration guard's pinned literal). The leader also fixed one gate blocker after the maintainer's `quality.sh` run: ruff formats Python blocks inside Markdown, and the leader's N1/N2 record quoted the pre-format snippet. **Maintainer rulings at the Phase 9 gate (2026-10-08):** (1) the `quality.sh` wall-clock reference is re-baselined from ~125 s (Phase 7) to **~360 s**, with 320.2 s measured at the wrap-up (stack stopped; `2784 passed in 286.35s`). (2) When a later feature of a phase extends files an earlier feature created and neither is committed yet, the commits split **by file**, and the earlier commit's body says that the shared files carry their final content (Phase 8's 15/16 split was the unstated precedent). Also: `/temp/` (the maintainer's local run logs) is git-ignored.
+
+## billing_credit (id 19, phase 10) — 2026-10-09 — opens Phase 10
+
+**Classification:** full group (money domain, persistence and locking, wire contract, the saga's compensation step). `sdd: true`. The sequence was spec_author, a human gate (G1, the zero-amount hold, approved as recommended), an implementer, then an Opus reviewer with arming and the defeat list. **Round 1 REJECTED** (3 blocking defects, all guards); **round 2 APPROVED** (`progress/review_billing_credit.md` §§0–9 and § Round 2).
+
+**Effort:** 1 leader session spanning 2026-10-08 → 2026-10-09. Agent time, as the leader measured it plus the reviewers' own records, comes to **≈5 h 06 min** in total:
+
+| Step | Time |
+|---|---|
+| spec_author | ≈26 min (1 563 s) |
+| implementer, in two runs | ≈25 min + ≈86 min (the first run stopped when the session ended and was resumed with its context) |
+| premise checks before round 1 (three) | ≈3 min |
+| review round 1 | ≈42 min |
+| fix round | ≈77 min (4 633 s) |
+| premise checks before round 2 (two) | <2 min |
+| review round 2 | ≈45 min |
+
+The human gate is not counted. **Passes:** 1 implementation + 1 fix round + 2 review rounds (1 rejection).
+
+**Baselines (quoted from the files):**
+
+| Build | Total | Outcome |
+|---|---|---|
+| #7 (`../order-to-cash-nestjs/progress/history.md:882`) | **≈3 h 15 min** | 1 rejection: the port-refusal branch emitted no fact |
+| #8 (`../order-to-cash-dotnet/progress/history.md:1215`) | **≈5 h 39 min** (comparable subset ≈4 h 20 min) | 1 rejection, 4 blocking defects, all guards |
+| **#9** | **≈5 h 06 min** | **1 rejection, 3 blocking defects, all guards** |
+
+That makes #9 **≈0.90× #8** on the total and **≈1.57× #7**. As in #7 and #8, no finding in either round was a wrong line of shipped behaviour, and `src/` was byte-identical across the fix round (`find -newer` empty). What was not faster: the implementation alone (≈1 h 51 min) ran ≈1.3× #7's ≈1 h 25 min, and the fix round (≈77 min) was 2.3× #8's ≈33 min. It was spent mostly on the two instruments: a parity guard that now compares the whole file outside the docstring, and a census that reads declarations and cross-checks them against imported `MetaData`. That is harness cost, not Python cost.
+
+**Tests:** 2 784 (A2, before the feature) → 3 111 (round 1) → **3 154** (round 2: +42 parity sentinel cases, +1 `summarise` case). `specs/shared/test-matrix.md` has R37 – R41 → DONE. R42 – R44 belong to feature 20.
+
+**Gates** (round-2 reviewer's run, developer stack down):
+
+- `./quality.sh` exit 0 in **353 s** (`3154 passed in 327.79s`)
+- coverage 97.42 % overall / 99 % domain
+- `mypy --strict` clean on 551 files
+- import-linter: 11 kept, 0 broken
+
+Other runs: round 1 349 s; the implementer 366 s; A2 331 s. The maintainer's reference is ~360 s.
+
+**What was built:**
+
+- The `BuyerCredit` aggregate with an append-only ledger (`hold` / `consume` / `release`). `consume` is numerically neutral, so R40 is an identity rather than a branch.
+- `summarise`, with an int64 check on every per-order and per-line sum.
+- Three NATS subjects (`billing.credit.hold`, `.release`, `.list`) behind a bounded responder (`pool_size = bound + 1`), with one `AsyncSession` per request.
+- The line lock: `SELECT … FOR UPDATE` at pinned `READ COMMITTED`, with the committed-exposure scalar read after the lock and `CAST(… AS bigint)`. `22003` maps to `CreditLedgerOverflowError` → `DOMAIN_ERROR`.
+- Billing's outbox: nine parity-guarded copies of Orders' family, emitting `credit.approved.v1` / `credit.rejected.v1` / `credit.released.v1`.
+- The credit-decision port (feature 20's seam), whose adapter reason type cannot name `over_limit`.
+- `BC34`'s Kafka client-id pattern in all three producer services.
+- Explicit `otc_cqrs` registration, which discharges feature 43's carried item.
+
+No migration was added, and no package was installed beyond task A3.
+
+**The rejection (round 1), every item a missing guard:**
+
+- **D1:** the release path's `availableCreditAfter` (the fact, and both reply branches) could be replaced by the credit limit with the whole Billing suite green (U8, U9, U10). Every fixture released the line's only exposure, so the fixture satisfied the relation by accident.
+- **D2:** the parity instrument compared neither the lines before a copy's docstring nor the rest of its closing line. An import-time statement hidden there passed parity, ruff and mypy.
+- **D3:** the census recognised one textual form of `__tablename__ = "outbox"`.
+
+Round 2 closed each one, and the reviewer re-armed it:
+
+- U8, U9 and U10 went RED in the named tests. Two further mutations of the reviewer's own (the pre-release value, and limit − released) were also RED.
+- The Q1 mutation went RED, naming both regions.
+- Every round-1 form went RED, including a BinOp table name inside `persistence/`, caught by the import cross-check.
+- The new `MIRRORS_NOT_OWNERS = {"seed"}` exclusion was ruled correct. The seed writes already-published rows and owns no migration, and #7 and #8 write the same rows through the services' own schemas. The exclusion was also shown to fail when it goes stale or absorbs a sibling.
+- N1 and N2 were closed. N3 is **ACCEPTED, NOT FIXED** (cosmetic message; re-open on any edit to `credit_repository.py:63-66` or to `UnknownCreditEntryTypeError`'s constructor).
+
+**Open at approval (non-blocking; disposition FIX NOW, light, test-only, before feature 19's commit; the leader runs the arms):** all three are in `tests/architecture/test_outbox_copy_parity.py` and are described in review § R2.6.
+
+- **R2-1:** the parity instrument does not check the *canonical's* preamble or closing-line tail. Round 1's Q1 mutation applied to Orders' `relay.py` passes parity, ruff, format and mypy: arm D2i must go RED, and D2h too.
+- **R2-2:** P6's claim that the import cross-check covers forms the scan cannot read holds only for `persistence/*.py`. Arm D3g (`Table("out" + "box", …)` in `infrastructure/messaging/`) must go RED, or the claim must be narrowed.
+- **R2-3:** no sentinel arms a comment-only tail. Arm IM1 must go RED.
+
+**Carried / routed:** round 1's `specs/shared/` gap (`saga.md` §2 has no `credit.release` row) is filed as backlog **213**, attached to feature 41. Feature 43's registration item was discharged (round 1, G6).
+
+**Inherited findings (`design.md` §17):**
+
+- **Avoided:**
+  - #8 ids 49 (the id port at every fact and entry site), 50, 51, 53, 54 (pinned READ COMMITTED, probed both ways), 55 / A6, 56, 63, 67, 68, 76, 85, 87, 102, 111.
+  - #8 feature-19 D1 (the prescribed mutation was run: six `[ARM]` tasks were sampled at random in round 1, all matching), #8 D4 and #8 A1.
+  - #7 feature-19 D1 (the port-refusal fact) and #7 N1.
+- **Assigned:** #8 id 57 → feature 22; ids 41 / 62 / 66 / 71 → feature 41; 74 → 27; 84 → 25; 100 → 24.
+- **Recurred:** **#7 W3 / N5 and #8 D3**, *a fact field whose corruption survives the suite*, recurred as round-1 **D1** (`credit.released.v1`'s `availableCreditAfter` and both reply branches) and was fixed in round 2. **#9's own feature-17 rejection class** (unplanned call-site mutations surviving the suite) recurred as U8 – U10. Task J1 had enumerated the `release(` / `save(` call sites, but not the result fields built after them. Also fixed in round 2.
+- **#9's own instrument lesson** (*changing an instrument swaps its premises*) recurred twice:
+  - round-1 D2 / D3, closed;
+  - round 2's R2-1, the canonical operand, the premise nobody wrote down, open as fix-now.
+
+**Review round 2 findings R2-1 – R2-3, closed 2026-10-09 as a LIGHT change** (CLAUDE.md, Cost discipline: test-only): one implementer (≈3 min, 192 s), no separate reviewer. `tests/architecture/test_outbox_copy_parity.py` only: the canonical operand's preamble and closing-line tail are now checked (R2-1); the import cross-check walks the scan's whole population, `infrastructure/**/*.py` minus `__init__.py` (R2-2, option a); a comment-only closing-line tail has its own sentinel (R2-3). Arms D2h, D2i, D3g and IM1 were each seen RED by the implementer and restored with `cmp` (`progress/impl_billing_credit.md` § Review round 2 findings). The leader read the fix sites, confirmed with `git status` that Orders' `relay.py` is back to HEAD and that the D3g file is gone, and re-ran the file: **94 passed** (88 before), `ruff check`, `ruff format --check` and `mypy` clean. R2-1 is closed in the same phase that found it.
+
+## billing_credit_simulator (id 20, phase 10) — 2026-10-09 — approved first pass
+
+**Classification:** full group, because R44 is a wire / saga-compensation claim (the leader's reason). `sdd: false`, so there was no spec phase and no human gate; the design is feature 19's seam (`specs/billing_credit/design.md` §15.1). The sequence was implementer, then an Opus reviewer with arming and the defeat list. **Round 1 APPROVED**: 0 blocking defects, 2 non-blocking items FIX NOW (light), 1 nit (`progress/review_billing_credit_simulator.md`).
+
+**Effort:** 1 leader session, one implementation pass and one review pass. Wall-clock runs from the first artefact (`progress/brief_impl_billing_credit_simulator.md` and its premise check, ≈10:07) to the verdict (≈10:58): **≈51 min**.
+
+| Step | Time |
+|---|---|
+| premise check (implementer brief) | ≈35 s (the leader's measurement) |
+| implementer | ≈31 min (1 878 s, the leader's measurement) |
+| premise check (review brief) | <1 min |
+| review | ≈18 min (≈10:40 → ≈10:58; 6.4 min of it `quality.sh`, ≈2 min the R16 clamp arm on its 130 s NATS timeout) |
+
+**Baselines (quoted from the files):**
+
+| Build | Total, first artefact → verdict | Outcome |
+|---|---|---|
+| #7 (`../order-to-cash-nestjs/progress/history.md:903`) | **≈39 min** | approved first pass, 6 non-blocking findings |
+| #8 (`../order-to-cash-dotnet/progress/history.md:1261`) | **≈1 h 04 min** | approved first pass, 3 non-blocking findings (N1, A1, N2) |
+| **#9** | **≈51 min** | **approved first pass, 0 blocking, 2 FIX NOW + 1 nit** |
+
+That makes #9 **≈0.80× #8** and **≈1.3× #7**. **Not faster than #7:** the implementation (≈31 min against #7's ≈20) carried what #7 only probed. That is the committed 200 000-draw measured theory (#8's), a 20-value refusal table for Python's own `float()` coercions, three lifespan tests through `create_app()`, and 20 arms. The review was the same length as #7's (≈18 min). It spent its time on 17 arms of its own, a real `quality.sh` run and a parse probe, against #7's coverage run and its 200 000-draw throwaway probe.
+
+**Tests:** 3 160 → **3 234** (+74). The reviewer's `quality.sh` (developer stack down): exit 0, **382 s**, `3234 passed in 356.11s`. Coverage 97.42 % overall and 99 % domain; import-linter 11 kept, 0 broken. `specs/shared/test-matrix.md` R42–R44 → DONE (39 green, 1, 23 pending of 63).
+
+**What was built:**
+
+- `infrastructure/credit/simulator.py`: the `.99` rule is evaluated first and consumes no draw; then a strict `random() < rate` on an injected plain callable; the constructor refuses a non-finite or out-of-range rate.
+- `CreditSimulatorSettings.failure_rate` (`CREDIT_FAILURE_RATE`, default 0, empty = 0): an ASCII numeral regex, then `float`, then finite and range checks, via a `BeforeValidator`. The decorator census forbids `@field_validator`.
+- The composition root binds the simulator by default, as in #7 `app.module.ts:142` and #8 `BillingProgramConfiguration.cs:36`.
+- The `.env.example` entry, the reach-test literal and the conftest variable.
+
+No `domain/`, `application/` or `presentation/` file changed (BC15; `find -newer` lists 12 files). No package was installed.
+
+**Approval evidence:** 17 reviewer arms, all RED in a named test, each restored by `cp` with `cmp=True`.
+
+- The ordering: the swap (R1) and the `.99` branch consuming a draw (R2), both at rate 1 with a source returning 0.
+- `rate * 0.5` (R8), caught only by the measured theory; `<=` (R9), caught only by the boundary test.
+- The composition read deleted (R3), and `/ 100` at the constructor (R10).
+- Always-approve bound by default (R4); the literal entry removed (R5); a sibling alias (R14).
+- The cents reason corrupted at the wire (R6); `requestedAmount` ↔ `availableCredit` transposed in the shared payload builder (R7).
+- `re.ASCII` dropped (R11); the rate branch returning the cents reason (R12); clamping (R13 unit; R16 lifespan, see N1).
+- The predicate reading `available_credit` (R15); the fixture guard made a no-op (R17).
+
+**Open at approval (FIX NOW, light, one batch before feature 20's commit; the leader runs the arm):**
+
+- **N1:** `integration/test_credit_simulator.py:136-152`. Under a clamp, the lifespan refusal test fails only on a 130 s NATS connection timeout, which does not name R43. Monkeypatch the root's NATS connect to `pytest.fail("R43: the boot reached NATS …")`. R16 / A13 must then fail within seconds, naming R43. The clamp is already killed by name at unit level (R13).
+- **N2:** the impl report's ported-idiom ledger lacks the #7 and #8 line citations (`simulator-credit-decision.ts:54/58/66/76/82/91`, `SimulatorCreditDecision.cs:49/60/70/119/125/126/130`). It also lacks two rows: the accepted-spelling set, where #7 refuses `1e-1`, `+0.5`, `1.` and `-0` but #8 and #9 accept them; and Python's `%` sign semantics, unreachable because BC33 refuses negative amounts at `credit_wire.py:59`.
+- **N3 (nit):** `conftest.py:377` still says "approving adapter".
+
+**Record corrections:** #7 N6 was already closed at HEAD (inherited from #8's back-port), not "not touched". O1 (`1.0000000000000001` → 1.0) is ACCEPTED WITH EVIDENCE as trilogy-identical; re-open if any build adopts a decimal-exact parse. Nothing is rooted in `specs/shared/`, so no SA and no backlog entry.
+
+**Inherited findings:**
+
+- **Avoided:**
+  - #8 A1, #8 N1, #8 N2 / #7 N2;
+  - #7 N1 (the R44 key sets are compared to each other), #7 N3, #7 N5;
+  - #7 N6 (by inheritance).
+- **Not applicable:** #7 N4.
+- **Recurred:** #9's own arming-message class (feature 16 N1, feature 18 N1/N2) as N1. Nothing from #8's backlog recurred.
+
+**Review findings N1 – N3 and record corrections RC1 – RC2, closed 2026-10-09 as a LIGHT change** (CLAUDE.md, Cost discipline: test-only plus record): one implementer (≈2 min, 125 s), no separate reviewer. N1: `test_r43_a_bad_rate_refuses_to_boot_naming_the_value_before_connecting` now replaces the root's NATS connect with a `pytest.fail` naming R43 and the value, so the clamp mutation fails in 8.5 s with `R43: the boot reached NATS with CREDIT_FAILURE_RATE='1.5': not refused` (it failed in 131 s on `NoServersError` before). N2: the ported-idiom ledger carries file-and-line citations and the two missing rows (accepted spellings, where #7 and #8 disagree; Python's `%` sign, unreachable behind `BC33`). N3: the `billing_host` docstring names the simulator default. The leader confirmed that `settings.py` is byte-identical to the pre-arm backup and to the reviewer's, and re-ran `test_credit_simulator.py` + `test_credit_simulator_settings.py` (**46 passed**), with `ruff check`, `ruff format --check` and `mypy` clean.
+
+## billing_invoicing (id 21, phase 10) — 2026-10-10 — approved first pass
+
+**Classification:** full group (money domain, saga command responder, wire contract, persistence, a two-aggregate transaction). `sdd: true`: spec_author, the human gate (G1 adopted as recommended, `progress/spec_billing_invoicing.md` § Gate ruling), implementer with the live walkthrough, then an Opus reviewer with arming and the defeat list. **Round 1 APPROVED**: 0 blocking defects; 5 non-blocking items FIX NOW (light: N1, N2 design-text corrections; N3 one assertion in the retryability guard; N4, N5 comments) and 1 routing item for the leader (R1: feature 22's acceptance list must carry BI8's lock-order binding) — `progress/review_billing_invoicing.md`.
+
+**Effort:** 1 spec pass + 1 human gate + 1 implementation pass (live walkthrough included) + 1 review pass, plus three premise checks.
+
+| Step | Time |
+|---|---|
+| spec_author | ≈28 min (1 685 s, the leader's measurement) |
+| human gate | the maintainer's wait, not counted |
+| premise checks (spec brief, implementer brief, review brief) | 3 × <1 min |
+| implementer, live walkthrough included | ≈4 h 08 min (14 887 s, the leader's measurement) |
+| review | ≈30 min active (21:07 → ≈21:20 and 05:27 → ≈05:44; the machine was in S3 suspend from ≈21:20 to 05:27:13, `journalctl`, excluded); 6 min 14 s of it `quality.sh` |
+| **Total of measured agent time** | **≈5 h 09 min** |
+
+**Baselines (quoted from the files):**
+
+| Build | Total, first spec artefact → verdict | Outcome |
+|---|---|---|
+| #7 (`../order-to-cash-nestjs/progress/history.md:922`) | **≈1 h 51 min** | approved on round 2; 2 blocking (N1 0/60 boxes ticked, N2 discount check inside the transaction) |
+| #8 (`../order-to-cash-dotnet/progress/history.md:1305`) | **≈3 h 16 min** | approved on round 2; 3 blocking (D1, D2, D3 — line 1366 "3/3 blocking defects closed"; its "two survived" paragraph counts the mutation survivors D1 and D2 only) |
+| **#9** | **≈5 h 09 min** | **approved first pass, 0 blocking** |
+
+That makes #9 **≈1.58× #8** and **≈2.8× #7**: **not faster.** The implementation alone (≈4 h 08 min) exceeds #8's whole feature. It bought 54 of 54 `[ARM]` tasks armed through 158 arm rows, a J1 sweep that mutated every call site of every hand-built seam (two missing tests found and added), and the live walkthrough. #8 spent its time differently: a fix pass and a second review (≈44 min) after its suite let a zeroed discount and a corrupted payment fact through. #9's spec pre-empted both, and the reviewer's 54 arms found no code defect, so the second round was never needed. The spec pass (≈28 min) was ≈1.5× #8's (≈19 min).
+
+**Tests:** 3 234 → **3 415** (+181). The reviewer's `quality.sh` (developer stack down): exit 0, 374 s, `3415 passed in 354.54s`, coverage 97.46 % overall and 98 % domain, import-linter 11 kept / 0 broken. `specs/shared/test-matrix.md` R45, R46 → DONE (41 green, 1 scoped, 21 pending of 63, re-derived from the rows).
+
+**What was built:** the `Invoice` aggregate (`InvoiceState = Issued | Paid(paid_at)` as one attribute; totals derived from the lines; `mark_paid` delivered uncalled and returning its fact for feature 22), the `billing.invoice.issue` / `.list` route entries on the one `CreditResponder`, the issue unit (fast path; then line lock → plain re-read → currency → `consume` → `INV-` counter → `Invoice.issue` → both saves in one `run()`), the `INV-` allocator over backlog 211's seed, the invoice reads, mapper and repository, and G1's offset clamp on all three list readers (`billing.invoice.list`, `billing.credit.list`, `fulfillment.stock.list`). No migration, no package, no `services/orders/` change. `R40`'s `consume` has its first live caller; the live walkthrough issued `INV-000006` for `ORD-000008` and `INV-000007` for a fresh discounted order `ORD-000010` (59 243 / 777 / 58 466), both reaching `invoiced` unattended with available credit unchanged by the consume.
+
+**Approval evidence:** 54 reviewer arms, 52 red on a named assertion, each restored by `cp` with `cmp` identical. The discount zeroed at six sites (decoder, aggregate, column, fact, list mapper, list wire); the most plausible wrong value at each total; the lock order, `consume` placement and BC38's zero hold; the `INV-` seed and continuation; the clamp at each of three sites; a sibling `RpcError` code at all eight mapping sites; six randomly drawn `[ARM]` tasks (seed 20261009: B8, C1, C5, E2, F4, G6) re-run exactly; nine unplanned call-site mutations, including both fact families (deletion and wire corruption) and the ledger row most likely to be assumed (asyncpg's `UUID` subclass). Two survivors, both explained: the hold → exposure split (killed by feature 19's `summarise` guards when widened) and the integration BI5 residue (killed by the unit entry guard, as the spec's placement lesson predicts).
+
+**Open at approval (FIX NOW, light, one batch before feature 21's commit):** N1 `design.md` §6.2 / §13.3 and `tasks.md` F6 describe race and F6 loser outcomes the code does not produce (observed `PRECONDITION_FAILED`, `INTERNAL_ERROR` 23505, `UNAVAILABLE` 40001). N2 `design.md` §5.2, L41, §16.2 and `requirements.md` BI23 still say `@final` (the code uses an `__init_subclass__` refusal; reviewer's recommendation to the maintainer: accept, do not widen the decorator census). N3 the retryability guard reads terminal-ness from Orders' set for `PRECONDITION_FAILED` only; assert it for every domain-refusal input (BI25), armed by mapping `DomainError` to `INTERNAL_ERROR`. N4 two test comments overclaim (a residue assertion's message; the race header). N5 `credit_repository.py`'s docstring omits the relay's `update(Outbox)`. **R1 (leader):** add BI8's lock-order binding to feature 22's acceptance list.
+
+**Inherited findings:**
+
+- **Avoided:** #8 ids 45, 47, 49, 53/55, 54, 57 (seam), 65, 72, 85, 102; #8 D1, D2, D3, R2-N1, R2-N3, N6; #7 N1, N2/N10, N3, N4/N5, N7, N8 — each with the arm or guard in `progress/review_billing_invoicing.md` §7.
+- **Recurred (this run's own):** a design prescribing a decorator the census forbids (caught by `quality.sh`); a spec predicting failure outcomes it had not measured (N1, defeat-list row 9's stale-premise class); a residue assertion worded as an entry claim, in a message only (N4a, #7 N10's class); a #8 guard classified **Ported** with its terminal-set assertion dropped (N3, the "port the guards too" class). Nothing from #8's backlog recurred.
+
+**Would #7's or #8's standard have caught the open items?** N1 and N2: no — neither predecessor's review compared the design's predicted failure outcomes with the observed ones. N3: #8's yes — #8's own BI25 test read the terminal set (`BillingErrorMapperTests.cs:173-184`), and #9's port dropped that assertion while classifying the file **Ported**. N4a: #7's yes (it is #7's N10 class).
+
+**Review findings N1 – N5 and routing item R1, closed 2026-10-10 as a LIGHT change** (CLAUDE.md, Cost discipline: spec text, comments, one test assertion): one implementer (≈1 min, 69 s), no separate reviewer. N1 / N2: `specs/billing_invoicing/{design,requirements,tasks}.md` now state the race outcomes the code produces and the runtime finality refusal (no `@final` remains; the census is not extended, review §4.7). N3: `tests/architecture/test_billing_rpc_error_retryability.py` asserts every `DOMAIN_ERRORS` input maps into Orders' `TERMINAL_RPC_ERROR_CODES`; arm Q6f (`credit_rpc_errors.py:82` → `Code.internal_error`) failed with `CreditLimitExceededError is answered INTERNAL_ERROR, which Orders' saga adapter would retry; BI25/BI26 require a terminal code`. N4 / N5: comments and one docstring. R1: the leader added the BI8 lock-order binding to feature 22's acceptance. The leader confirmed that `credit_rpc_errors.py` is byte-identical to its backup and that `credit_repository.py` differs from the reviewer's backup only in its module docstring (AST compare), and re-ran the retryability file (**3 passed**) and Billing's unit tests (**470 passed**).
+
+## billing_remittance_intake (id 22, phase 10) — 2026-10-10 — approved first pass; closes the order-to-cash cycle end to end for the first time in #9
+
+**Classification:** full group (money domain, saga facts, persistence, wire contract). `sdd: false`: the design is the seam features 19 and 21 cut (`specs/billing_credit/design.md` §15.3, `specs/billing_invoicing/design.md` §15.1). There is no spec phase and no human gate. The implementer ran the live walkthrough, then an Opus reviewer armed the guards and walked the defeat list. **Round 1 APPROVED**: 0 blocking defects; 2 non-blocking items FIX NOW (light: N1, a `type: ignore[attr-defined]` on `result.rowcount` in `invoice_repository.py:132`; N2, a ledger and docstring claim that the writer's per-row flush carries R47's ordering, which reviewer arm RV16 showed is not load-bearing on this path); 1 routing item for the leader (R1: feature 25 must map `billing.payment.register`'s `RpcError`s to `openapi.yaml:673-675`, not port #8's classifier verbatim). Full record: `progress/review_billing_remittance_intake.md`.
+
+**Effort:** 1 implementation pass (live walkthrough included) + 1 review pass, plus two premise checks.
+
+| Step | Time |
+|---|---|
+| premise checks (implementer brief, review brief) | 2 × <1 min (≈43 s for the review brief, the leader's measurement) |
+| implementer, live walkthrough included | ≈57 min (3 423 s, the leader's measurement; mtimes 05:41:34 → 06:38:36) |
+| review | ≈23 min (brief 06:41:02 → verdict ≈07:04 CEST); 6 min 56 s of it `quality.sh`, ≈11 min the 22 reviewer arms and 5 re-run implementer arms |
+| **Total of measured agent time** | **≈1 h 21 min** |
+
+**Baselines (quoted from the files):**
+
+| Build | Total, first artefact → verdict | Outcome |
+|---|---|---|
+| #7 (`../order-to-cash-nestjs/progress/history.md:943`) | **≈1 h 01 min** (48 + 13) | approved first pass, 0 blocking |
+| #8 (`../order-to-cash-dotnet/progress/history.md:1376`) | **≈1 h 28 min** (56 + 32) | approved first pass, 0 blocking |
+| **#9** | **≈1 h 21 min** (57 + 23, premise checks under a minute each) | **approved first pass, 0 blocking** |
+
+That makes #9 **≈0.92× #8** and **≈1.33× #7**: **slightly faster than #8, not faster than #7.** The implementation took #8's time (57 vs 56 min) and delivered more. It ran 83 arms against #8's seven. It closed #8's N3 as a refusal where #8 discarded the `None`, and closed #8's N1 (id 57) and N2 by construction where #8 shipped them as findings. It extended #7's N11 to amount and currency per `openapi.yaml:673`. It added a UNIQUE-backstop race across credit lines and the BI8 held-lock probe. The live walkthrough moved `ORD-000008` and `ORD-000010` to `completed`. The review was shorter than #8's (23 vs 32 min). It ran 22 mutations of its own, re-ran 5 of the implementer's 83 at random, and ran one `quality.sh`; it did not re-run the Billing suite separately.
+
+**Tests:** 3 415 → **3 492** (+77). The reviewer's `quality.sh` (developer stack down): exit 0, 416 s, `3492 passed in 392.45s`, coverage 97.47 % overall and 98 % domain, import-linter 11 kept / 0 broken, mypy strict clean over 593 files. `specs/shared/test-matrix.md`: R47 → DONE; R48 and R49 keep their API halves TODO for feature 31 (the route is feature 25's), with the integration halves DONE. Totals: 42 green, 1 scoped, 20 pending of 63.
+
+**What was built:** `billing.payment.register`, a route entry on the one `CreditResponder` with no rename. The unit:
+1. the R48 fast path, outside any transaction;
+2. resolve the invoice, unlocked;
+3. one clock read;
+4. inside `run()`, lock the credits row (BI8's first lock);
+5. re-read the invoice, plain;
+6. the under-lock R48 dedup;
+7. `Invoice.mark_paid`, which raises R49's three refusals and returns `PaymentReceived`;
+8. `BuyerCredit.release(INVOICE_PAID)` caused by that fact's `event_id` (#8 id 57), with `None` refused as `credit.not_outstanding`;
+9. the guarded `UPDATE … WHERE status = 'issued'`, the `payments` INSERT (`23505` on `uq_payments_payment_reference` → `PaymentReferenceReusedError`) and outbox row 1;
+10. the release entry and outbox row 2.
+
+No migration, no package, no change under `services/orders/`.
+
+**The three departures from #7 / #8, ruled KEEP (review §2):**
+1. Refusing a payment whose release has nothing outstanding follows R47's text, which #7 / #8's discard violated, and #9's gated designs. The state is unreachable through the saga (`domain-model.md:200`, `saga.md:233-257`).
+2. A reference reused with another amount or currency is decided by `openapi.yaml:672-673` and `asyncapi.yaml:3696`.
+3. `INVOICE_NOT_PAYABLE` / `PAYMENT_MISMATCH` are decided by the `RpcError` contract ("`code` is stable and machine-readable"; the two enum values have no other possible producer) and R49's "machine-readable reason". Both codes are terminal in Orders' set. Feature 31's HTTP script stays #7's and #8's provided feature 25 maps the codes (routing item R1).
+
+**Approval evidence:**
+- 22 reviewer arms, 20 killed by a named assertion.
+- The two survivors, both explained: RV03, because the broker test does not assert `reason` while the outbox test does (RV03b killed); and RV16, the per-row flush (N2).
+- Both mutation families on the facts: the swap killed at the broker (RV01); valid-value payload corruption killed at the outbox and the broker (RV17 / RV17b `valueDate`, RV18 `amount`, RV03b `reason`, RV04 `availableCreditAfter` = the limit).
+- BI8 inverted at an infrastructure site (RV06) and defeated behind a matching call log (RV07), both killed by the held-lock race.
+- The gross substituted for the net at the domain site (RV05) killed.
+- 5 / 5 randomly chosen implementer arms reproduced their recorded messages.
+- Acceptance 2 re-searched independently with planted sentinels (the guard went 3 failed, then 5 passed after removal).
+
+**Inherited findings:**
+- **Avoided:** #8 id 57; #8 feature-22 review N1, N2, N3, A1, A2, A3; #8 id 54; #7 N11 (extended); #8 ids 48, 49, 53 / 55, 63, 74, 102 (impl §11, each with its guard).
+- **Did not recur:** #8 N12, N13.
+- **Recurred (this run's own):** a ported-idiom ledger row whose mechanism claim had not been armed (N2). The property held and was guarded, but the attributed link was not load-bearing. This is the class the Phase 8 gate made binding, caught here by probing the claim rather than the behaviour.
+
+**Would #7's or #8's standard have caught the open items?** N1: no; neither reviewed typing escapes. N2: no; neither probed a claimed ordering link apart from the ordering itself (#7's and #8's reviews armed the swap only). R1: #8's yes in effect, because its Gateway was built later against its own Billing codes. #9's dotted `details.code` make a verbatim port fail silently, which only a cross-feature read shows.
+
+**Review findings N1 – N2 and routing item R1, closed 2026-10-10 as a LIGHT change** (CLAUDE.md, Cost discipline; the leader classified N1 light although it touches a persistence statement, because it changes only the statement's static type — the SQL is unchanged — and is guarded by an existing test plus one arm): one implementer (≈2 min, 104 s), no separate reviewer. N1: `invoice_repository.py`'s `rowcount` read goes through `cast("CursorResult[Any]", …)` instead of `# type: ignore[attr-defined]`, so Billing's `src` holds no `type: ignore`; arm: dropping the `status == "issued"` guard failed `test_mark_paid_on_an_invoice_that_is_not_issued_is_a_transient_failure_and_writes_nothing` with `DID NOT RAISE StoreUnavailableError`, restored with `cmp`. N2: `payment_register.py`'s docstring and the impl record's "Emission order" row now attribute R47's ordering to call order plus the `Identity` `seq` (review RV16). R1: the leader filed the Gateway's payment-error mapping on feature 25's acceptance. The leader diffed `invoice_repository.py` against the reviewer's backup (the statement unchanged, only the cast and import added), confirmed `grep -rn "type: ignore" services/billing/src` is empty, and re-ran the two payment integration files and `test_write_path_population.py` (**90 passed**).
