@@ -74,3 +74,20 @@ async def test_a_list_is_answered_while_a_test_transaction_holds_a_listed_row_fo
         assert len(reply["items"]) == 3
     finally:
         await hold.rollback()
+
+
+async def test_bi37_a_page_past_int64_answers_an_empty_page_with_the_true_total(
+    fulfillment_host: Any, db: Any, rpc: Any
+) -> None:
+    await seed(db)
+    past_int64 = (1 << 63) // 25 + 2  # offset (page - 1) x 25 is above 2**63 - 1
+
+    far = await rpc("fulfillment.stock.list", {"page": past_int64, "pageSize": 25})
+
+    assert "page" in far, f"BI37: expected an empty page, got {far}"  # not an RpcError
+    assert far["page"]["total"] == 3, "the page is empty but the total is the true one"
+    assert far["items"] == []
+    # the control: page 1 returns the three rows
+    first = await rpc("fulfillment.stock.list", {"page": 1, "pageSize": 25})
+    assert first["page"]["total"] == 3
+    assert len(first["items"]) == 3

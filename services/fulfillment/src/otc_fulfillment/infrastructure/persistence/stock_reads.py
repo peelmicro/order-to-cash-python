@@ -21,6 +21,8 @@ from otc_fulfillment.infrastructure.persistence.despatch_repository import load_
 from otc_fulfillment.infrastructure.persistence.models import Reservation as ReservationRow
 from otc_fulfillment.infrastructure.persistence.models import Stock
 
+MAX_OFFSET = (1 << 63) - 1  # PostgreSQL's bigint OFFSET; asyncpg refuses anything above (G1, BI37)
+
 
 class SqlAlchemyStockReads:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
@@ -76,7 +78,7 @@ class SqlAlchemyStockReads:
                     select(Stock)
                     .where(*filters)
                     .order_by(Stock.company_code, Stock.product_code)
-                    .offset((page - 1) * page_size)
+                    .offset(min((page - 1) * page_size, MAX_OFFSET))
                     .limit(page_size)
                 )
             ).all()

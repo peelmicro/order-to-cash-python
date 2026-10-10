@@ -381,7 +381,7 @@
       "phase": 10,
       "title": "Invoice aggregate (INVOIC) with issued -> paid state machine",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "issued on order.despatched",
         "paid_at set exactly when status becomes paid",
@@ -399,7 +399,8 @@
         "idempotent by payment_reference",
         "no internal payment timer anywhere (an absence claim, answered by enumeration including n8n/workflows/)",
         "emits payment.received.v1 and credit.released.v1 caused by it (#8 id 57)",
-        "the cycle closes end to end without changes under services/orders"
+        "the cycle closes end to end without changes under services/orders",
+        "lock order credits row -> invoices row (feature 21 BI8 binding, specs/billing_invoicing/requirements.md BI8 and design.md §15.1: resolve the invoice unlocked, lock the credits row, re-read the invoice, then update it); the two outbox rows in one transaction, payment.received.v1 first (filed by the leader 2026-10-10 from progress/review_billing_invoicing.md R1)"
       ]
     },
     {
