@@ -88,7 +88,11 @@ class KafkaSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     brokers: str = Field(default="localhost:9092", validation_alias="KAFKA_BROKERS")
-    client_id: str = Field(default="otc-orders", validation_alias="KAFKA_CLIENT_ID")
+    client_id: str = Field(
+        default="otc-orders",
+        validation_alias="KAFKA_CLIENT_ID",
+        pattern=r"^[A-Za-z0-9._-]+$",
+    )
 
 
 class NatsSettings(BaseSettings):

@@ -353,7 +353,7 @@
       "phase": 10,
       "title": "BuyerCredit aggregate + hold/release/consume ledger",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "available credit = limit - active holds - open invoices",
         "ledger is append-only; over-limit hold is rejected",
@@ -843,6 +843,20 @@
         "phase 7 (seed half): the projector-owned constants live once in tests/fixtures/read_model_constants.json and a seed test fails when the seed's copies differ from it (armed)"
       ],
       "note": "Proposed in progress/review_seed_job.md (round 1, N5) and filed by the leader 2026-10-05. Today the seed's copies are guarded only against #7's oracle; #7 relied on 'kept in sync by inspection' (mongo.writer.ts:113-123)."
+    },
+    {
+      "id": 213,
+      "name": "saga_command_table_lacks_credit_release",
+      "phase": 13,
+      "title": "specs/shared/saga.md §2's command table has no credit.release row, although §4.3 and §5 issue it and asyncapi.yaml names the orchestrator as its caller",
+      "sdd": false,
+      "status": "pending",
+      "attached_to": "orders_cancel_responder (id 41), the feature that first issues credit.release from the orchestrator (SA-4 release ordering)",
+      "acceptance": [
+        "an SA-n proposal (human-gated, applied byte-identically to #7, #8 and #9 in one session) adds the credit.release row to saga.md §2 — caller Orchestrator, responder Billing, the idempotency key as billing_credit's design states it — or the gate rules the omission intentional, with the ruling recorded in every README registry",
+        "until then no #9 test or document cites saga.md §2 as the source of credit.release's contract; it cites §4.3 / §5 and asyncapi.yaml requestCreditRelease"
+      ],
+      "note": "Found by feature 19 billing_credit's review round 1 (progress/review_billing_credit.md §7), 2026-10-09; filed by the leader after confirming it: saga.md §2 lists stock.check, stock.reserve, stock.release, despatch.create, credit.hold, invoice.issue, payment.register only, while lines 235, 241, 255 and 303-304 issue credit.release. #8 narrated the same gap with 'owner feature 41' but never filed it; #9's specs/billing_credit/requirements.md §1.2 item 1 narrated it again. A finding rooted in specs/shared/ is an SA-n proposal or a backlog entry, never a sentence in a review (CLAUDE.md)."
     }
   ]
 }

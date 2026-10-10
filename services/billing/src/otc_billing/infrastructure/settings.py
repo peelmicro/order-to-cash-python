@@ -9,9 +9,11 @@ nor `POSTGRES_APP_PASSWORD`, constructing the settings raises, so a service neve
 credential committed to source.
 """
 
-from typing import Self
+import math
+import re
+from typing import Annotated, Any, Self
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, BeforeValidator, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -51,3 +53,132 @@ class BillingDatabaseSettings(BaseSettings):
             port=self.port,
             database=self.database,
         ).render_as_string(hide_password=False)
+
+
+class OutboxRelaySettings(BaseSettings):
+    """The relay's knobs (Orders' variable names and defaults, shared: one `.env`, one relay shape).
+
+    Same rule as `BillingDatabaseSettings`: a `validation_alias` per field and NO
+    `populate_by_name`, so a bare `$ENABLED` or `$BATCH_SIZE` in the shell never becomes a setting.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    enabled: bool = Field(default=True, validation_alias="OUTBOX_RELAY_ENABLED")
+    poll_interval_ms: int = Field(default=250, validation_alias="OUTBOX_POLL_INTERVAL_MS")
+    batch_size: int = Field(default=100, validation_alias="OUTBOX_BATCH_SIZE")
+    publish_timeout_ms: int = Field(default=5000, validation_alias="OUTBOX_PUBLISH_TIMEOUT_MS")
+
+    # The settings boundary: milliseconds become the float seconds `asyncio` takes. Not money.
+    @property
+    def poll_interval_seconds(self) -> float:
+        return self.poll_interval_ms / 1000
+
+    @property
+    def publish_timeout_seconds(self) -> float:
+        return self.publish_timeout_ms / 1000
+
+
+class KafkaSettings(BaseSettings):
+    """Where the producer connects. `KAFKA_BROKERS` is shared with Orders; the client id has its own
+    variable, `BILLING_KAFKA_CLIENT_ID` (default `otc-billing`, #7's and #8's value): the shared
+    `KAFKA_CLIENT_ID` holds `otc-orders` in `.env`, so a shared name would put Orders' id on
+    Billing's connection.
+
+    The client id is constrained to `^[A-Za-z0-9._-]+$` (BC34): aiokafka substitutes a default only
+    for `None` and sends an empty string verbatim (measured), so an empty or blank variable must
+    fail the boot, naming the variable. A pattern, not `min_length=1`: `" "` passes a length check.
+
+    Same rule as `BillingDatabaseSettings`: a `validation_alias` per field and NO
+    `populate_by_name`.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    brokers: str = Field(default="localhost:9092", validation_alias="KAFKA_BROKERS")
+    client_id: str = Field(
+        default="otc-billing",
+        validation_alias="BILLING_KAFKA_CLIENT_ID",
+        pattern=r"^[A-Za-z0-9._-]+$",
+    )
+
+
+class NatsSettings(BaseSettings):
+    """The NATS client's settings (`NATS_URL`: #7's name and default)."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    url: str = Field(default="nats://localhost:4222", validation_alias="NATS_URL")
+
+
+class ServerSettings(BaseSettings):
+    """How many worker processes the server was told to run (`WEB_CONCURRENCY`, which uvicorn reads
+    for its own `--workers` default). The composition root refuses more than one worker while the
+    outbox relay is enabled (`outbox_and_idempotency/design.md` 5.2)."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    web_concurrency: int = Field(default=1, validation_alias="WEB_CONCURRENCY")
+
+
+class ResponderSettings(BaseSettings):
+    """The responder's bound (`design.md` 8.2): the most `billing.credit.*` requests handled at
+    once. A bound below 1 would handle nothing, so it is refused at boot, naming the variable."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    max_concurrent_requests: int = Field(
+        default=16, validation_alias="BILLING_MAX_CONCURRENT_REQUESTS"
+    )
+
+    @model_validator(mode="after")
+    def _the_bound_is_at_least_one(self) -> Self:
+        if self.max_concurrent_requests < 1:
+            raise ValueError(
+                "BILLING_MAX_CONCURRENT_REQUESTS must be at least 1 (a bound below 1 would "
+                f"handle no request), got {self.max_concurrent_requests}"
+            )
+        return self
+
+
+# A plain ASCII decimal numeral: digits with an optional point and exponent, an optional sign. What
+# `float()` also accepts and a rate must not: `nan` / `inf` / `infinity`, digit-group underscores
+# (`1_0` is 10.0) and non-ASCII digits (`\u0660.\u0665` is 0.5). `re.ASCII` pins `\d` to 0-9.
+_RATE_NUMERAL = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?", re.ASCII)
+
+
+def _parse_failure_rate(raw: Any) -> float:
+    """A finite number in the closed interval [0, 1]; the empty string is `0`; else a ValueError
+    naming the variable and the offending value (a `BeforeValidator`, not a decorator: the census
+    of decorators under `services/` is a guard)."""
+    if raw == "":
+        return 0.0
+    refusal = f"CREDIT_FAILURE_RATE must be a number in the closed interval [0, 1]; got {raw!r}"
+    if isinstance(raw, str):
+        if not _RATE_NUMERAL.fullmatch(raw.strip()):
+            raise ValueError(refusal)
+        rate = float(raw.strip())
+    elif isinstance(raw, int | float) and not isinstance(raw, bool):
+        rate = float(raw)
+    else:
+        raise ValueError(refusal)
+    if not (math.isfinite(rate) and 0 <= rate <= 1):
+        raise ValueError(refusal)
+    return rate
+
+
+class CreditSimulatorSettings(BaseSettings):
+    """`CREDIT_FAILURE_RATE` (R43): the proportion of fitting holds the simulator refuses with
+    `simulated_failure_rate`. Absent or the empty string means `0` (deterministic). Anything that
+    is not a finite number in the closed interval `[0, 1]` fails the boot, naming the variable and
+    the offending value: it is never clamped and never silently defaulted, because either would make
+    a demo non-reproducible for invisible reasons (#7 and #8 agree).
+
+    Same rule as the other classes: a `validation_alias` and NO `populate_by_name`.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    failure_rate: Annotated[float, BeforeValidator(_parse_failure_rate)] = Field(
+        default=0.0, validation_alias="CREDIT_FAILURE_RATE"
+    )

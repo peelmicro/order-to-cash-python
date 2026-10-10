@@ -91,7 +91,9 @@ class KafkaSettings(BaseSettings):
 
     brokers: str = Field(default="localhost:9092", validation_alias="KAFKA_BROKERS")
     client_id: str = Field(
-        default="otc-fulfillment", validation_alias="FULFILLMENT_KAFKA_CLIENT_ID"
+        default="otc-fulfillment",
+        validation_alias="FULFILLMENT_KAFKA_CLIENT_ID",
+        pattern=r"^[A-Za-z0-9._-]+$",
     )
 
 

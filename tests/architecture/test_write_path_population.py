@@ -344,7 +344,54 @@ EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
             }
         ),
     },
+    # Feature 19 added the credit ledger's write path; counts read from `scan_service("billing")`,
+    # never predicted. `credit_items.amount` is written ONLY by the `CreditItem(...)` constructor in
+    # `infrastructure/persistence/credit_mapper.py` (a constructor is not a call the scan counts:
+    # it is the guarded path, the range guard being an ORM attribute event). The `credits`
+    # row is never assigned. No `update(`, `delete(` or `on_conflict_*` is written by the service.
     "billing": {
+        # The relay copy's stamp (parity-guarded against Orders'): `session.execute(update(Outbox)
+        # ...values(published_at=...))`. NO GUARDED COLUMN: it writes one timestamptz.
+        "infrastructure/outbox/relay.py": Counter({("call", "execute"): 1, ("call", "update"): 1}),
+        # The writer copy's `session.add(Outbox(...))`, one per event: GUARDED (the ORM unit of
+        # work, so `install_range_guards` fires on every integer column of the row).
+        "infrastructure/outbox/writer.py": Counter({("call", "add"): 1}),
+        # `session.execute(select(CreditItem...))` in the list view: a SELECT, not a write.
+        "infrastructure/persistence/credit_reads.py": Counter({("call", "execute"): 1}),
+        # `text(...)` + `session.execute(...)` of the committed-exposure scalar: a SELECT (no DML
+        # `text` exists, design 9.1); `session.add(credit_mapper.new_item_row(...))`: a NEW ledger
+        # row built by the mapper's constructor call. GUARDED (the ORM unit of work: the range
+        # guard fires on `credit_items.amount`). Plain INSERTs, no upsert, no `ON CONFLICT` (L19).
+        "infrastructure/persistence/credit_repository.py": Counter(
+            {("call", "text"): 1, ("call", "add"): 1, ("call", "execute"): 1}
+        ),
+        # Feature 21 (counts read from `scan_service("billing")`, each classified):
+        # the counter allocator's THREE `text(...)` + THREE `session.execute(...)`: the seed
+        # (`INSERT ... WHERE NOT EXISTS ... ON CONFLICT DO NOTHING`), the `SELECT ... FOR UPDATE`
+        # and the advance (`UPDATE ... SET next_value = next_value + 1`). The ONLY textual DML in
+        # the service (L26): it bypasses the ORM range guard on `next_value` (the residual
+        # `range_guards.py` names) and the engine refuses an overflow; `sequences.py`'s two DML
+        # entries below are its constants. A fourth `execute(text(...))` here is a new write path.
+        "infrastructure/persistence/invoice_number_allocator.py": Counter(
+            {("call", "execute"): 3, ("call", "text"): 3}
+        ),
+        # The invoice repository's TWO `session.add(...)`: the header row (flushed first, the lines'
+        # foreign key) and the line rows (one site, in a loop). GUARDED (the ORM unit of work: the
+        # range guard fires on the invoice's three totals and on `invoice_items.units|price`).
+        # Plain INSERTs, no upsert: issuing never updates an invoice.
+        # Feature 22 (`billing.payment.register`; counts read from `scan_service("billing")`):
+        # a THIRD `session.add(...)`, the `payments` row built by `invoice_mapper.new_payment_row`
+        # (GUARDED: the ORM unit of work fires the range guard on `payments.amount`), and the
+        # service's FIRST AND ONLY `update(Invoice)` + its `session.execute(...)`: `status`,
+        # `paid_at`, `updated_at` of ONE invoice `WHERE id = :id AND status = 'issued'`, executed
+        # under the `credits` line lock (BI8). It writes no guarded integer column (a text, a
+        # timestamptz and a timestamptz), so it bypasses no range guard. A second `update(` here
+        # is a new write path.
+        "infrastructure/persistence/invoice_repository.py": Counter(
+            {("call", "add"): 3, ("call", "execute"): 1, ("call", "update"): 1}
+        ),
+        # `in_flight.add(task)`: a Python `set.add`, not a write.
+        "presentation/credit_responder.py": Counter({("call", "add"): 1}),
         "infrastructure/persistence/sequences.py": Counter(
             {
                 (

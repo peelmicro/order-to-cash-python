@@ -838,9 +838,11 @@ name = "otc-billing"
 version = "0.1.0"
 source = { editable = "services/billing" }
 dependencies = [
+    { name = "aiokafka" },
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "fastapi" },
+    { name = "nats-py" },
     { name = "otc-contracts" },
     { name = "otc-cqrs" },
     { name = "otc-shared-kernel" },
@@ -851,9 +853,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiokafka" },
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "fastapi" },
+    { name = "nats-py", specifier = ">=2.16.0" },
     { name = "otc-contracts", editable = "packages/contracts" },
     { name = "otc-cqrs", editable = "packages/cqrs" },
     { name = "otc-shared-kernel", editable = "packages/shared_kernel" },

@@ -34,11 +34,17 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SERVICES = ["orders", "fulfillment"]  # services whose composition root has `build_dispatcher`
+SERVICES = [
+    "orders",
+    "fulfillment",
+    "billing",
+]  # services whose composition root has `build_dispatcher`
 
 # `PlaceOrderCommand` (feature 15), the ten saga fact commands and the five dispatch-owed events
 # (feature 16); Fulfillment (feature 17): three commands, two queries, no events (no post-commit
-# in-process hop is owed: the relay is its only post-commit obligation).
+# in-process hop is owed: the relay is its only post-commit obligation); Billing (features 19, 21):
+# three commands (hold, release, issue invoice), two queries (credit list, invoice list), no events
+# (it consumes no fact and owes no in-process hop either).
 TABLES: dict[str, dict[str, list[str]]] = {
     "orders": {
         "commands": [
@@ -84,6 +90,22 @@ TABLES: dict[str, dict[str, list[str]]] = {
         "queries": [
             f"otc_fulfillment.application.messages.{name}"
             for name in ("CheckStockQuery", "ListStockQuery")
+        ],
+        "events": [],
+    },
+    "billing": {
+        "commands": [
+            f"otc_billing.application.messages.{name}"
+            for name in (
+                "HoldCreditCommand",
+                "ReleaseCreditCommand",
+                "IssueInvoiceCommand",
+                "RegisterPaymentCommand",
+            )
+        ],
+        "queries": [
+            f"otc_billing.application.messages.{name}"
+            for name in ("ListCreditQuery", "ListInvoicesQuery")
         ],
         "events": [],
     },

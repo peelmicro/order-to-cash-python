@@ -204,3 +204,22 @@ def test_a_concurrency_bound_below_one_is_refused_naming_the_variable(
         ValidationError, match="FULFILLMENT_MAX_CONCURRENT_REQUESTS must be at least 1"
     ):
         load_settings()
+
+
+@pytest.mark.parametrize("value", ["", " ", "otc fulfillment", "otc/fulfillment"])
+def test_bc34_an_empty_or_blank_client_id_fails_naming_the_variable(
+    clean_environment: pytest.MonkeyPatch, value: str
+) -> None:
+    clean_environment.setenv("POSTGRES_APP_PASSWORD", "baseline-password")
+    clean_environment.setenv("FULFILLMENT_KAFKA_CLIENT_ID", value)
+
+    try:
+        load_settings()
+    except ValidationError as error:
+        message = str(error)
+    else:
+        pytest.fail(f"BC34: FULFILLMENT_KAFKA_CLIENT_ID={value!r} was accepted (it would boot)")
+    assert "FULFILLMENT_KAFKA_CLIENT_ID" in message, "the failure does not name the variable"
+    # the control: a well-formed id is accepted
+    clean_environment.setenv("FULFILLMENT_KAFKA_CLIENT_ID", "otc-fulfillment-Ok_1.v2")
+    assert load_settings().kafka.client_id == "otc-fulfillment-Ok_1.v2"

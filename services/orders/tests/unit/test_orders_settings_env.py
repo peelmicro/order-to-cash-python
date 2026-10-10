@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 from pydantic_settings import BaseSettings
 
 import otc_orders
@@ -180,3 +181,22 @@ def test_the_defaults_are_the_documented_ones(clean_environment: pytest.MonkeyPa
         5000,
     )
     assert settings.server.web_concurrency == 1
+
+
+@pytest.mark.parametrize("value", ["", " ", "otc orders", "otc/orders"])
+def test_bc34_an_empty_or_blank_client_id_fails_naming_the_variable(
+    clean_environment: pytest.MonkeyPatch, value: str
+) -> None:
+    clean_environment.setenv("POSTGRES_APP_PASSWORD", "baseline-password")
+    clean_environment.setenv("KAFKA_CLIENT_ID", value)
+
+    try:
+        load_settings()
+    except ValidationError as error:
+        message = str(error)
+    else:
+        pytest.fail(f"BC34: KAFKA_CLIENT_ID={value!r} was accepted: the service would boot with it")
+    assert "KAFKA_CLIENT_ID" in message, "the failure does not name the variable"
+    # the control: a well-formed id is accepted
+    clean_environment.setenv("KAFKA_CLIENT_ID", "otc-orders-Ok_1.v2")
+    assert load_settings().kafka.client_id == "otc-orders-Ok_1.v2"
