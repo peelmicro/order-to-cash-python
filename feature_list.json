@@ -368,7 +368,7 @@
       "phase": 10,
       "title": "Credit-check simulator (.99 rule + CREDIT_FAILURE_RATE)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "rejects total_amount % 100 == 99 deterministically, evaluated BEFORE the failure-rate draw (ordering guarded)",
         "CREDIT_FAILURE_RATE defaults to 0",
