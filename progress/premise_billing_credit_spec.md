@@ -1,0 +1,34 @@
+# Premise check — brief_spec_billing_credit.md
+
+FALSE       asyncapi anchors "`billing.credit.hold` / `.release` / `.list` at lines 419–471 and 1019–1060" (brief line 8) — `grep -n` of the channel/operation blocks: channels 419 (hold), 440 (release), 461 (list), reply of list ends 471 (that half holds); operations are `requestCreditRelease` at 1043 and `requestCreditList` at 1071 (next operation `requestInvoiceIssue` at 1089), so `.list` is at 1071–1088, outside 1019–1060. The hold operation starts at 1019. Partially true only.
+VERIFIED    every path named in the brief exists (feature_list.json, specs/shared/*, Billing persistence files, settings.py, app.py, Fulfillment composition/main/presentation/application/outbox/persistence files, the eight architecture tests, Fulfillment settings/lifespan tests, Orders idempotent_consumer/nats_saga_commands/parity, specs/fulfillment_stock/design.md, progress/impl_fulfillment_despatch.md, packages/cqrs) — `[ -e ]` loop printed no MISSING
+VERIFIED    test-matrix §5 `billing_credit` → R37–R44 at line 144; R42–R44 are the simulator rows — `grep -n` "144:## 5. `billing_credit` — R37 – R44"; R42/R43/R44 are `credit-simulator.spec` / `credit-rejection-parity.spec`
+VERIFIED    Billing tables credits, credit_items, invoices, invoice_items, invoice_number_sequences, payments, outbox, processed_events — `grep -n __tablename__ models.py`: lines 63, 76, 91, 110, 123, 129, 141, 161 (eight)
+VERIFIED    `credit_items` has an `updated_at` column — models.py:87 inside `class CreditItem` (76–88); `payments` has none (models.py:11 comment)
+VERIFIED    Billing has no composition.py / main.py; domain/, domain/value_objects/, application/ hold only `__init__.py` — `find services/billing/src -type f`: only py.typed, __init__.py files (domain 46 B, application 51 B), settings.py, app.py, persistence/{models,range_guards,sequences,types}.py
+VERIFIED    outbox parity guard literals `ORDERS`, `FULFILLMENT` at lines 41–42 and `TOKEN_MAP` at line 56 — `sed -n 38,60p`: 41 `ORDERS = "services/orders/src/otc_orders"`, 42 `FULFILLMENT = ...`, 56 `TOKEN_MAP = {"otc_orders": "otc_fulfillment", ...}`
+VERIFIED    idempotent-consumer parity discovers services by glob `services/*/src/otc_*` at line 47 — `sed -n 44,50p`: line 47 `glob("*/src/otc_*")` under `root / "services"`
+VERIFIED    `TERMINAL_RPC_ERROR_CODES` at nats_saga_commands.py:65-75, nine codes — `sed -n 62,78p`: frozenset opens line 65, closes 75; members validation_failed, not_found, conflict, precondition_failed, order_not_cancellable, stock_unavailable, invoice_not_payable, payment_mismatch, domain_error (9)
+VERIFIED    Orders client_id at settings.py:91 declares a default and no length constraint — `sed -n 88,93p`: `client_id: str = Field(default="otc-orders", validation_alias="KAFKA_CLIENT_ID")`
+VERIFIED    Fulfillment client_id at settings.py:93-95 declares a default and no length constraint — `sed -n 90,97p`: `Field(default="otc-fulfillment", validation_alias="FULFILLMENT_KAFKA_CLIENT_ID")` over lines 93-95
+VERIFIED    saga.md rows 6–7 at lines 72–73 — `sed -n 70,74p`: 72 `payment.received.v1 ... paid`, 73 `credit.released.v1 ... completed`
+VERIFIED    saga.md line 221 is the operator-cancel release-order row — `grep -n`: 221 "Operator cancels while `credit_approved` or `confirmed` | ... stock reservation first ..., then credit hold"
+VERIFIED    saga.md lines 230–260 say when no `credit.release` is issued — `sed -n 228,262p` + `grep -n`: "The despatch wins ... No `credit.release` is issued" inside the range; 247 "Releasing the credit hold first...", 251 late-approval paragraph, 261 starts §4.4
+VERIFIED    asyncapi names `credit.approved.v1`, `credit.rejected.v1`, `credit.released.v1`, `RpcHeaders`, `RpcError` — `grep -n`: 1318/1337/1380 (messages), 2816 `RpcHeaders:`, 2840 `RpcError:`
+VERIFIED    #8 spec line counts 165 / 1053 / 144 and #7 130 / 636 / 89 — `wc -l` on requirements/design/tasks of both checkouts
+VERIFIED    #7 and #8 spec_billing_credit.md and review_billing_credit.md exist; #7 apps/billing/src/ and #8 src/Billing/ exist; `billing-consumes-no-facts.spec.ts` exists — `ls` printed all
+VERIFIED    #8 history anchors 1215 (19), 1261 (20), 1305 (21), 1376 (22), 1410 (Phase 10 closing) — `sed -n Np`: each line is the matching `## billing_credit...` / `## Phase 10 closing assessment` heading
+VERIFIED    #8 history 1255 is in "Notes for #9" (heading at 1251) and states ported-idiom losses sit at boundaries where a value crosses in/out of the process — `sed -n 1245,1256p`: "Every one sits at a boundary where a value crosses into or out of the process"
+VERIFIED    #7 history line 882 is feature 19 — `sed -n 882p`: "## billing_credit (id 19, phase 10) — 2026-08-22"
+VERIFIED    #8 19 was rejected once, four blocking defects, all guards — history 1215 body: "REJECTED on round 1, approved on round 2"; "Round 1's four defects"; "All four defects were guards, not behaviour"
+VERIFIED    #8 19's D1 was a `tasks.md`-prescribed mutation that was never run — history: "D1 ... the task list prescribed the exact mutation (`tasks.md` H8: drop `TimeSpan.Zero`) and the arming table recorded the guard as 'confirmed green today'"
+VERIFIED    ledger's first save `L26` was the per-service Kafka client id — history: "`L26` is the first observable save in this build. The gate-ordered `KafkaOptions` unification destroyed the per-service Kafka client id"
+VERIFIED    gate produced BC29/BC30 and turned two deferrals into BC31/BC32 — #8 spec_billing_credit.md:106 BC29 (per-service client id), :108 BC30 (checked summation), :136 id 48 "overturned — closed here (BC31)", :138 id 53 "overturned — closed here (BC32)", :147 "BC1 – BC28 -> BC1 – BC32 (BC29 – BC32 new)"
+VERIFIED    #8 id 79 is `sa4_operator_cancel_release_order_in_the_nestjs_assessment` — python json over ../order-to-cash-dotnet/feature_list.json: id 79, status done
+VERIFIED    feature 19 has five acceptance items, the last carried from cqrs_dispatcher id 43 and naming composition.py registration — json: id 19 sdd true, len(acceptance)=5, last item "carried from cqrs_dispatcher (id 43; ...)"; ids 20 (sdd false, 3 items), 21 (sdd true), 22 (sdd false) exist
+UNVERIFIABLE live dev DB holds ORD-000008 `stock_reserved` with a parked `credit.hold` saga command — stack stopped, containers not started (progress/current.md is the only source)
+UNVERIFIABLE "what happens when the client id variable is empty, and what aiokafka does" (brief line 19) — question to the spec author; settles by running a probe, not a claim
+UNVERIFIABLE #8 backlog keyword-search id list (31, 41, 48–57, ...) — the brief itself calls it a non-population sample; the author enumerates
+
+Counts: VERIFIED 27, FALSE 1, UNVERIFIABLE 3
+Verdict: DO NOT ACT as written (1 FALSE; minor: the asyncapi `.list` operation sits at 1071–1088, outside the quoted 1019–1060).
