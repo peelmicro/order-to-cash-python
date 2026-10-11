@@ -1,0 +1,83 @@
+# SA-6 application — command record (spec_author, 2026-10-11)
+
+Brief: `progress/brief_spec_sa6.md`. Ruling: `progress/spec_projector_read_model.md` §5 "`SA-6` under (b), byte for byte" and "Gate ruling". Nothing committed in any repository; no git command that writes the index or working tree was run.
+
+## 1. Pre-edit parity (gate record E1)
+
+`sha256sum order-to-cash-{python,dotnet,nestjs}/specs/shared/openapi.yaml` → all three `8dd55cf5f16f2b504ca9628047dff0fa305e91ad8071ee010d93c19970f59d23`. Equal; proceeded. #8 and #7 working trees were clean (`git status --short` empty) before the edit.
+
+## 2. The edit
+
+- #9 `specs/shared/openapi.yaml` lines 1501 – 1503 replaced by the five lines of §5 (the `description: >-` line and the 12-space indent unchanged). `git diff --stat`: 5 insertions, 3 deletions.
+- Byte check against the ruling: `sed -n 121,125p progress/spec_projector_read_model.md | diff - <(sed -n 1501,1505p specs/shared/openapi.yaml)` → no output, `IDENTICAL_TO_RULING`.
+- `cp` to #8 and #7; `cmp` #9↔#8 and #9↔#7 → both silent (`CMP_OK`).
+- **sha256 after, all three:** `e73efb8abe4fc5d1ac2d114b9d0453884d135fe9e19c6caee1e3cce1597cdfd4` (#9, #8, #7).
+- E14 re-run: `grep -rIEn "openapi\.yaml\`?[: ]+(1[5-9][0-9]{2}|[2-9][0-9]{3})"` over each repository (excluding `node_modules`, `.git`, `progress`, `bin`, `obj`, `.venv`) → 0, 0, 0 hits. Sentinel: the same pattern matched `openapi.yaml:1501` and `` `openapi.yaml` 1601 `` and did not match `openapi.yaml 673`.
+
+## 3. Generated files and drift checks
+
+**Search for the old sentence (E12).** `grep -rIn "fact that caused this one\|ties on \`occurredAt\` are ordered"` (excluding `node_modules`, `.git`, `progress`, `.venv`, `bin`, `obj`, `dist`, `.angular`, `.nx`):
+
+| Repo | Hit | Classification |
+|---|---|---|
+| #9 | none | E12 confirmed for the sentence |
+| #8 | `apps/web/src/generated/openapi.ts:747` | generated — regenerated below |
+| #8 | `src/SharedKernel/IDomainEventEnvelope.cs:25` ("The id of the command or fact that caused this one") | not the old sentence; already states the either-or; untouched |
+| #7 | `packages/contracts/src/generated/openapi.types.ts:952` | generated — regenerated below |
+| #7 | `specs/projector_read_model/requirements.md:259` | #7's historical feature spec quoting the then-proposed description; outside bounds, untouched |
+
+Broader fragment search (`follows its cause\|projected before this field`) added only `progress/` records (#9 `spec_projector_read_model.md`, `brief_spec_sa6.md`; #8 `progress/impl_web_app.md:206`, historical) and the three `openapi.yaml` copies (the new text keeps "projected before this field").
+
+**#7** (`order-to-cash-nestjs`, generator `packages/contracts` `generate` = `tsx scripts/generate.mts`, drift check `check` = `tsx scripts/check.mts`):
+- `pnpm --filter @otc/contracts run check` BEFORE → exit 1, `contracts:check FAILED — committed generated files are stale`, hunk at `openapi.types.ts` @@ -949 showing the `TimelineEntry.causationId` description.
+- `pnpm --filter @otc/contracts run generate` → exit 0, `wrote packages/contracts/src/generated/{asyncapi,openapi}.types.ts`.
+- `run check` AFTER → exit 0, `contracts:check OK`.
+- Artifact: `openapi.types.ts` 1 line changed (`git diff --stat`: 1 insertion, 1 deletion); new phrase count 1, old phrase count 0; `asyncapi.types.ts` unchanged (not in `git status`).
+- `pnpm --filter @otc/contracts test` → 5 files, 22/22 passed.
+
+**#8** (`order-to-cash-dotnet`, `apps/web` `types:generate` / `types:check` = `node scripts/openapi-types.mjs generate|check`):
+- `pnpm run types:check` BEFORE → exit 1, `types:check FAILED — src/generated/openapi.ts is stale … first difference at line 747`, committed vs fresh lines printed.
+- `pnpm run types:generate` → exit 0. `types:check` AFTER → exit 0, `types:check OK`.
+- Artifact: `apps/web/src/generated/openapi.ts` 1 line changed; new phrase count 1, old 0.
+- The Gateway embeds the spec (`src/Gateway/Gateway.csproj:64`, `EmbeddedResource … openapi.yaml`), so, as SA-5 did: `dotnet test tests/Gateway.UnitTests` → `Passed! Failed: 0, Passed: 248, Total: 248`.
+
+**#9:**
+- `uv run pytest packages/contracts -q` BEFORE regeneration → **3 failed, 215 passed**: `test_the_committed_generated_files_equal_a_fresh_generation` (`openapi.py drifted from the generator`, `-prefix16=e73efb8abe4fc5d1` vs `8dd55cf5f16f2b50`), `test_the_drift_check_flags_an_edited_file_and_a_missing_file_by_name` (`['openapi.py', 'nullable.py'] == []`), `test_the_check_command_names_the_drifted_file_and_exits_non_zero` (`nullable.py` in stderr).
+- **Finding against E12's premise:** no #9 generated file carries the description, but `packages/contracts/src/otc_contracts/generated/openapi.py` and `nullable.py` carry `# Source: specs/shared/openapi.yaml sha256-prefix16=…` in their header, so any byte change to `openapi.yaml` drifts them. Regenerated with #9's own generator (within the brief's bound "the generated files regenerated by their generators").
+- `uv run python scripts/generate_contracts.py` → exit 0, wrote `asyncapi.py`, `openapi.py`, `nullable.py`. `git diff`: exactly 2 lines, both header lines `8dd55cf5f16f2b50` → `e73efb8abe4fc5d1`; `asyncapi.py` unchanged.
+- `uv run python scripts/generate_contracts.py --check` → exit 0, `contracts drift check: 3 generated files match a fresh generation`.
+- `uv run pytest packages/contracts -q` AFTER → **218 passed**.
+- Other #9 `*.py` references to `openapi.yaml` (classified): `test_generation_drift.py:59` (asserts the header shape), `currency_exponent.py:1` (docstring, SA-5), `billing/application/errors.py:64`, `payment_register.py:28`, `credit_rpc_errors.py:82,88` (citations of lines 673/674, before 1501, unshifted), `seed/domain/timeline.py:3` (docstring), `scripts/generate_contracts.py:1` (docstring). None reads the description.
+
+## 4. Records
+
+**README enumeration** — `grep -niE "\bfive\b|SA-5|SA-6|amendment" README.md` in each repository, every hit classified:
+
+- #9: `:27` heading — unchanged; `:29` "#9 inherits the five raised during #8 … started from:" introduces the table — **updated** (now "inherited the five … (`SA-1` – `SA-5`) …; `SA-6` was raised here:"); `:37` SA-5 row — unchanged, **SA-6 row added after it**; `:39` "Any amendment raised here will be `SA-6` onwards" — **updated** (SA-6 applied 2026-10-11; further amendments `SA-7` onwards); `:187` "five stock responders", `:188` Billing row — unrelated. No back-port status paragraph exists in #9 (`grep -ic back-port` → 0).
+- #8: `:33` generic amendment sentence ("a back-port to #7") — no count, unchanged; `:35`/`:37` heading and generic intro — unchanged; `:45` SA-5 row — unchanged, **SA-6 row added after it**; `:47` "**Back-port status: all five landed in #7**" — **updated** ("`SA-1` – `SA-5` all landed in #7" plus a sentence on SA-6 with the after-hash); `:157`, `:218`, `:230`, `:240`, `:248`, `:250`, `:278`, `:281`, `:282`, `:288`, `:290`, `:291`, `:340` — SA-4 narrative, benchmark tables and feature rows, none counts amendments or names SA-5 as the last; unchanged.
+- #7: hits `:296`, `:337`, `:480`, `:567` — SonarQube gate, seed data, trade-off table, process prose; unrelated. **#7's `README.md` has no amendment registry at all** (`grep -nic amend` → 0; none of SA-1 – SA-5 appears). **Stopped on this item:** no registry was created, because creating a new README section in #7 is beyond the brief's "a `SA-6` row in the registry table" and would be a new decision about a completed repository. Recorded in all three history entries. If the maintainer wants #7 to carry a registry, it needs SA-1 – SA-6 together.
+
+**`progress/history.md`** — one section appended at the end of each (format of #7's and #8's SA-5 sections: What changed / Why / Decided at the human gate / Applied identically / consumers / records): #9 "Shared amendment SA-6 (raised here in Phase 12, applied to #7 and #8 in the same session)", #8 and #7 "Shared amendment SA-6 (raised in #9, applied here in the same session)". 18 lines added in each. Each names the ruling, the file, both hashes, every regeneration and drift result above.
+
+**`CLAUDE.md` next-SA pointer:** #9 `:9` "next is `SA-6`" → "next is `SA-7`" (1 occurrence before, replaced). #8 `CLAUDE.md:9` reads "spec amendment (`SA-n`)" with no number; #7's has no amendment pointer (`grep -n "SA-n\|SA-[0-9]\|amendment"` → none) — nothing to update.
+
+**Out-of-bounds staleness noted, not edited:** #9 `AGENTS.md:23` describes `specs/shared/` as "copied verbatim from #8 (identical to #7's through `SA-1`…`SA-5`)" — it is now identical through `SA-6`. The leader owns that file.
+
+**Forward-looking wording to make true at commit:** #8's README back-port paragraph and all three history entries say SA-6 is "committed on its own in each repository" (and, in history, "before #9's feature 24 implementation commit"). That holds only once the leader commits it so.
+
+## 5. `./init.sh` (#9)
+
+Exit 1. Section 5d:
+
+```
+[OK]    shared spec byte-identical to ../order-to-cash-dotnet across 6 file(s); test-matrix.md exempt (per-assessment Status column)
+[OK]    shared spec byte-identical to ../order-to-cash-nestjs across 6 file(s); test-matrix.md exempt (per-assessment Status column)
+```
+
+The only `[FAIL]` is section 6: `progress/current.md claims a feature while none is active: "**Feature:** \`projector_read_model\` (id 24, phase 12)"` — `progress/current.md` was already modified before this session and is outside this brief's bounds; it is the leader's lockstep between `current.md` and `feature_list.json`, not caused by SA-6. Warnings: 13 uncommitted changes, `quality.sh` reminders.
+
+## 6. Files written
+
+- #9: `specs/shared/openapi.yaml`, `packages/contracts/src/otc_contracts/generated/openapi.py`, `.../generated/nullable.py`, `README.md`, `progress/history.md`, `CLAUDE.md` (one pointer), `progress/sa6_application.md`.
+- #8: `specs/shared/openapi.yaml`, `apps/web/src/generated/openapi.ts`, `README.md`, `progress/history.md` (plus ignored `bin/`/`obj/` build output from `dotnet test`).
+- #7: `specs/shared/openapi.yaml`, `packages/contracts/src/generated/openapi.types.ts`, `progress/history.md`.

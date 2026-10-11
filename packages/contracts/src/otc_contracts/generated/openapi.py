@@ -1,6 +1,6 @@
 # GENERATED FILE - DO NOT EDIT.
 # Regenerate with `uv run python scripts/generate_contracts.py`.
-# Source: specs/shared/openapi.yaml sha256-prefix16=8dd55cf5f16f2b50
+# Source: specs/shared/openapi.yaml sha256-prefix16=e73efb8abe4fc5d1
 # Generator: datamodel-code-generator 0.83.0, generate_contracts.py
 # `quality.sh` section 5 fails when this file differs from a fresh generation.
 

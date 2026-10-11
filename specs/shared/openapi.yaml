@@ -1498,9 +1498,11 @@ components:
           allOf:
             - $ref: '#/components/schemas/UniqueId'
           description: >-
-            The `eventId` of the fact that caused this one; ties on `occurredAt` are ordered
-            so that a fact follows its cause. Absent on an entry projected before this field
-            existed.
+            The `eventId` of the fact — or the identifier of the command — that caused this
+            one (R12). Only a fact's `eventId` can name another entry of the timeline: a fact
+            produced by an RPC responder names the command that requested it, which is never
+            an entry. Ties on `occurredAt` are ordered so that a fact follows a cause it names.
+            Absent on an entry projected before this field existed.
         eventType:
           type: string
           examples:

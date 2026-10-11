@@ -26,7 +26,7 @@ Per-feature effort (sessions, wall-clock) is recorded in `progress/history.md` a
 
 ## Spec amendments
 
-Where an implementation proves the shared specification wrong or incomplete, the change is an **amendment**: explicit, committed on its own, and applied to every repository of the trilogy in the same session — never a silent fork. Each carries a stable `SA-n` id and an entry in the `progress/history.md` of every repository it touches. #9 inherits the five raised during #8, already applied to #7 and #8 and therefore present in the copy this repository started from:
+Where an implementation proves the shared specification wrong or incomplete, the change is an **amendment**: explicit, committed on its own, and applied to every repository of the trilogy in the same session — never a silent fork. Each carries a stable `SA-n` id and an entry in the `progress/history.md` of every repository it touches. #9 inherited the five raised during #8 (`SA-1` – `SA-5`), already applied to #7 and #8 and therefore present in the copy this repository started from; `SA-6` was raised here:
 
 | Id | Raised | Touches | In one line |
 |---|---|---|---|
@@ -35,8 +35,9 @@ Where an implementation proves the shared specification wrong or incomplete, the
 | `SA-3` | #8, Phase 14 | `asyncapi.yaml` — dead-letter headers | `x-first-failed-at` and `x-failed-at` were undefined, and #7 and #8 filled the silence differently; both defined |
 | `SA-4` | #8, Phase 14 | `saga.md`, `openapi.yaml`, `asyncapi.yaml` — operator cancel | An operator cancel released the credit hold before the stock a despatch could still consume; the order of compensation was corrected |
 | `SA-5` | #8, Phase 16 | `openapi.yaml` — money formatting | Clients were told to format money from a field no REST response carries; the ISO 4217 exponent named instead |
+| `SA-6` | #9, Phase 12 | `openapi.yaml` — `TimelineEntry.causationId` description, prose only | The description claimed every `causationId` names a fact, but R12 lets a responder's fact name the command, which is never a timeline entry; ruled option (b) of backlog 201 |
 
-Any amendment raised here will be `SA-6` onwards, applied to #7, #8 and #9 together.
+`SA-6` was applied byte-identically to #7, #8 and #9 in one session (2026-10-11). Any further amendment raised here will be `SA-7` onwards, applied to #7, #8 and #9 together.
 
 ## Tech stack
 
