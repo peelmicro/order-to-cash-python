@@ -285,6 +285,12 @@ class OrdersRuntime:
         await self._stack.aclose()
 
 
+# `nats.connect` with its defaults keeps retrying 60 x 2 s before raising (measured: still
+# connecting after 60 s), so the boot's connection is bounded here; reconnects at runtime keep the
+# client's defaults (backlog 214, as the projector's `PR45`).
+NATS_CONNECT_SECONDS = 10.0
+
+
 async def _close_nats(connection: Client) -> None:
     with suppress(nats.errors.Error):
         await connection.drain()
@@ -311,7 +317,9 @@ async def _stop_stages(stages: list[StopStage], tasks: dict[str, asyncio.Task[No
                 log.error("transport task %s ended with an error", name, exc_info=result)
 
 
-async def start_runtime(settings: OrdersSettings) -> OrdersRuntime:
+async def start_runtime(
+    settings: OrdersSettings, *, nats_connect_seconds: float = NATS_CONNECT_SECONDS
+) -> OrdersRuntime:
     async with AsyncExitStack() as stack:
         relay_enabled = settings.outbox.enabled
         assert_single_outbox_relay(
@@ -330,7 +338,14 @@ async def start_runtime(settings: OrdersSettings) -> OrdersRuntime:
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         clock = SystemClock()
 
-        connection = await nats.connect(settings.nats.url)
+        try:
+            async with asyncio.timeout(nats_connect_seconds):
+                connection = await nats.connect(settings.nats.url)
+        except TimeoutError as error:
+            raise RuntimeError(
+                f"NATS_URL {settings.nats.url} did not accept a connection within "
+                f"{nats_connect_seconds} s"
+            ) from error
         stack.push_async_callback(_close_nats, connection)
 
         unit_of_work = SqlAlchemyUnitOfWork(

@@ -247,6 +247,12 @@ class BillingRuntime:
         await self._stack.aclose()
 
 
+# `nats.connect` with its defaults keeps retrying 60 x 2 s before raising (measured: still
+# connecting after 60 s), so the boot's connection is bounded here; reconnects at runtime keep the
+# client's defaults (backlog 214, as the projector's `PR45`).
+NATS_CONNECT_SECONDS = 10.0
+
+
 async def _close_nats(connection: Client) -> None:
     with suppress(nats.errors.Error):
         await connection.drain()
@@ -262,7 +268,10 @@ async def _stop_tasks(stop_event: asyncio.Event, tasks: dict[str, asyncio.Task[N
 
 
 async def start_runtime(
-    settings: BillingSettings, *, credit_decision: CreditDecisionPort | None = None
+    settings: BillingSettings,
+    *,
+    credit_decision: CreditDecisionPort | None = None,
+    nats_connect_seconds: float = NATS_CONNECT_SECONDS,
 ) -> BillingRuntime:
     async with AsyncExitStack() as stack:
         relay_enabled = settings.outbox.enabled
@@ -287,7 +296,14 @@ async def start_runtime(
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         clock = SystemClock()
 
-        connection = await nats.connect(settings.nats.url)
+        try:
+            async with asyncio.timeout(nats_connect_seconds):
+                connection = await nats.connect(settings.nats.url)
+        except TimeoutError as error:
+            raise RuntimeError(
+                f"NATS_URL {settings.nats.url} did not accept a connection within "
+                f"{nats_connect_seconds} s"
+            ) from error
         stack.push_async_callback(_close_nats, connection)
 
         transactions = SqlAlchemyCreditTransactions(
