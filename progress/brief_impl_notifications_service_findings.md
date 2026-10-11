@@ -1,0 +1,18 @@
+# Brief — implementer, feature 23 review findings N1, N2, N3, X1 (light)
+
+**Task:** fix the non-blocking findings of `progress/review_notifications_service.md` (§ Findings: N1, N2, N3 and the nit X1; read each in full, including its Fix and Unit lines). Feature 23 is already `done` (reviewer approval); **do not touch `feature_list.json`**. Classification: **light** (test text, documentation, and one parameter threaded through `composition.py`); the leader reads the diff and runs the affected tests, no second review. N4 (`.env.example`) is already done by the leader.
+
+## What to do
+
+- **N1:** in `services/notifications/src/otc_notifications/composition.py` (`_stop_tasks`, around lines 194 – 214), thread `stop_grace_seconds` into `NotificationsRuntime` so `stop()` uses the value `start_runtime` was given (default unchanged). Bound the existing test `test_a_consumer_that_never_joins_its_group_times_out_the_boot_and_leaves_no_task`'s own wait with `asyncio.timeout(...)` so a missing cancel fails in seconds with a message naming "cancelled after the grace period". Add one stop-path test: a sender that never returns, then `runtime.stop()` returns after the grace, with the task cancelled and the ledger row forgotten. Arm **both** tests with the reviewer's R20 mutation (`task.cancel()` → `pass`): each must fail fast with a message naming the claim; record the verbatim failures and durations.
+- **N2:** rename / re-document `test_r18_a_redelivery_after_a_process_restart_sends_nothing_more` as a runtime restart within one process; its docstring names `test_delivery_ledger.py::test_forget_removes_exactly_the_pair_and_the_event_can_be_recorded_again` as the guard against a process-wide cache (the reviewer's R19b) and record §11's two host PIDs as the real-process evidence. Update every reference to the old name (`grep -rn` the old name across the repo, including `specs/shared/test-matrix.md` column 5 and `progress/impl_notifications_service.md`; give the command and its output).
+- **N3:** in `progress/impl_notifications_service.md` §3, add the missing #7 / #8 file:line to the seven rows the review lists (read each from the checkouts `../order-to-cash-nestjs` and `../order-to-cash-dotnet`; "none owed" needs a citation too); add the two missing departure rows (instants: #9 matches #7's wire-form string and departs from #8's `:O`; env names: #7's names, `NOTIFICATIONS_SENDER` and `SMTP_START_TLS` #9's own, #8 used `NOTIFICATIONS_SMTP_*`) — verify each citation the review gives before copying it; correct the two §2 sentences.
+- **X1:** in the real-SMTP integration test, assert the inbox count with a message naming the claim ("the refused fact is not retried") before destructuring, so the reviewer's R13i arm fails on that message. Arm it and record the verbatim failure.
+
+## Process and bounds
+
+Arming protocol per CLAUDE.md (backups in `.arm/n23-fix/` with `sha256`, restore by `cp` + `cmp`, clear `__pycache__`, a timeout kills the process group). Run the Notifications unit and integration suites and `tests/architecture` at the end, and report the counts. May touch: `services/notifications/src/otc_notifications/composition.py` (N1's parameter only), `services/notifications/tests/**`, `specs/shared/test-matrix.md` column 5 (the renamed test only), `progress/impl_notifications_service.md` (add a §15 "Review findings fixed" with the arming rows). Nothing else. No git command that writes the index or working tree.
+
+## Output
+
+Update `progress/impl_notifications_service.md` §15. Return only "result in `progress/impl_notifications_service.md` §15" plus at most 4 lines.

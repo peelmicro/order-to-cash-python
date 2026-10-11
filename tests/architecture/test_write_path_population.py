@@ -409,7 +409,22 @@ EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
             }
         ),
     },
-    # notifications: no write path exists yet.
+    # Feature 23, Notifications: its ONLY table is `processed_events` (no integer column, no
+    # payload column, so there is no guarded column anywhere in this service). Counts read from
+    # `scan_service("notifications")`, never predicted.
+    "notifications": {
+        # The byte-identical copy of the canonical idempotent consumer: the same dedup INSERT ...
+        # ON CONFLICT DO NOTHING as Orders' entry above, with the same three hits.
+        "infrastructure/messaging/idempotent_consumer.py": Counter(
+            {("import", "insert as pg_insert"): 1, ("call", "execute"): 1, ("call", "insert"): 1}
+        ),
+        # `SqlAlchemyDeliveryLedger.forget`: one `DELETE FROM processed_events WHERE event_id = ...
+        # AND consumer = ...` (the compensation of a failed send), executed once. A DELETE writes
+        # no integer: NO GUARDED COLUMN.
+        "infrastructure/persistence/delivery_ledger.py": Counter(
+            {("call", "execute"): 1, ("call", "delete"): 1}
+        ),
+    },
 }
 
 

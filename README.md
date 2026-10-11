@@ -86,7 +86,7 @@ pyproject.toml, uv.lock   the uv workspace: dev tools, ruff, mypy --strict, pyte
 packages/            shared_kernel (Money, GLN, …, zero dependencies), contracts (generated wire models, Envelope[P]), cqrs (the hand-rolled dispatcher)
 services/            gateway, orders, fulfillment, billing, notifications, projector, seed — each domain/application/infrastructure/presentation;
                      orders, fulfillment, billing and notifications also carry alembic/ (one migration history per database);
-                     orders, fulfillment and billing are running services: composition.py (the only place adapters are chosen) and main.py (the lifespan)
+                     orders, fulfillment, billing and notifications are running services: composition.py (the only place adapters are chosen) and main.py (the lifespan)
 conftest.py          the shared integration fixture: one Docker-held postgres:18.6 per test session, a template database per service, a fresh database per test
 tests/               architecture guards; database_parity/ (outbox/processed_events identical across the four databases, read from the live catalogs);
                      fixtures/golden_envelopes/ (the wire-parity oracle, copied from #8)
@@ -106,7 +106,7 @@ uv sync
 
 Integration tests start their own PostgreSQL container through testcontainers, so the gate needs Docker but **not** the development stack — it passes with the stack stopped.
 
-The infrastructure runs too, and so do the first three services, Orders, Fulfillment and Billing (see *Running the Orders, Fulfillment and Billing services* below).
+The infrastructure runs too, and so do the first four services, Orders, Fulfillment, Billing and Notifications (see *Running the Orders, Fulfillment, Billing and Notifications services* below).
 
 ```bash
 cp .env.example .env
@@ -133,7 +133,7 @@ for s in orders fulfillment billing notifications; do uv run alembic -c services
 docker exec otcpy-postgres psql -U postgres -d otc_notifications -c '\d'    # processed_events and alembic_version only
 ```
 
-## Running the Orders, Fulfillment and Billing services
+## Running the Orders, Fulfillment, Billing and Notifications services
 
 Orders accepts an order over NATS (`orders.create`), checks stock synchronously over `fulfillment.stock.check`, allocates `ORD-######`, writes the order and its `order.placed.v1` fact in one transaction, publishes the fact to Kafka from the outbox, and drives the saga from the facts it consumes. With the stack up and migrated (above):
 
@@ -158,6 +158,16 @@ curl -s localhost:8103/health/ready                  # {"status":"ready"} once N
 
 With the three running, an order placed through `orders.create` runs the whole saga on its own — `stock_reserved`, `credit_approved`, `confirmed`, `despatched`, `invoiced` — and then waits for the outside world, as the specification requires: there is no internal payment timer. A remittance registered over `billing.payment.register` (the Gateway's `POST /invoices/{id}/payments` arrives in phase 13) pays the invoice, releases the credit exposure, and the order reaches `completed`. The live walkthroughs, with the rows they leave behind, are in `progress/impl_billing_credit.md` §8, `progress/impl_billing_invoicing.md` and `progress/impl_billing_remittance_intake.md` §9.
 
+Notifications consumes the seven facts a counterparty is told about (`order.placed.v1`, `order.confirmed.v1`, `order.despatched.v1`, `invoice.issued.v1`, `payment.received.v1`, `order.completed.v1`, `order.cancelled.v1`; never `stock.*` or `credit.*`) and sends one email per fact. It answers no RPC and emits no fact. Each `eventId` is recorded in its durable `processed_events` ledger before the send, so a redelivery, a restart or a topic replay never sends twice. A permanent SMTP refusal falls back to the console and is acknowledged; a transient one is retried. The default sender is `console`; set `NOTIFICATIONS_SENDER=smtp` to deliver into the stack's Mailpit:
+
+```bash
+NOTIFICATIONS_SENDER=smtp uv run uvicorn otc_notifications.main:app --port 8104   # reads .env
+curl -s localhost:8104/health/ready                       # {"status":"ready"} once the consumer has joined its group
+curl -s localhost:8025/api/v1/messages | jq '.messages[].Subject'   # the emails, through Mailpit's HTTP API
+```
+
+The live walkthrough (two fresh orders, one completed and one cancelled: eight emails covering all seven facts, then a byte-identical redelivery and a host restart leaving inbox and ledger unchanged) is in `progress/impl_notifications_service.md` §11.
+
 ## How this is being built
 
 The development **process is a deliverable**, not a footnote: Spec-Driven Development plus an agent harness with a backlog state machine (`feature_list.json`, max one feature in progress), external memory (`progress/`), a specification that precedes the code, and separate leader / spec-author / implementer / reviewer subagents each with an explicitly declared model. Every large feature passes a human approval gate at its specification, and every phase is tested by a human before its commit. `docs/PROCESS.md` explains all of it; the git history is the evidence, and for this repository it reads **harness first, specification copy second, code after**.
@@ -176,7 +186,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 8 | Orders service + saga orchestrator | ✅ the Order aggregate with every invariant re-validated on load; the hand-rolled dispatcher with registration proven explicit; a transactional outbox (`SKIP LOCKED`, skip-versus-block measured, deadlock victim and poison row handled inside the relay) and an idempotent consumer; `orders.create` with a synchronous stock check that tells *no responder* from *timeout*; a saga orchestrator whose committed offset never passes a failed record, with no head-of-line blocking and a sweeper that never re-claims a row; terminal rejections resolved, never retried forever. **Six features, eleven review rounds (13, 43, 14, 15 and 16 two each, 42 one), every rejection a missing guard or a stale document rather than a wrong line — except one boot-path leak with Kafka down and one latent one, both fixed in the phase** |
 | 9 | Fulfillment service | ✅ the stock aggregate with `reserved_units ≤ units` and an all-or-nothing reservation lifecycle; the five stock responders and `despatch.create` over NATS; every deciding read under `SELECT … FOR UPDATE` in an application-fixed order, a deadlock victim re-run, and both races — check-then-reserve, and SA-4's release against despatch under one lock — constructed with a held lock rather than by repetition; every id the domain mints taken from a supplied source (#8 id 49); the `DES-######` despatch advice allocated under lock, idempotent per order and atomic with its fact (proved by fault injection with a control); Fulfillment's outbox copied byte-identical from Orders under a parity guard. **Two features, three review rounds: `fulfillment_stock` rejected once because mutations survived the suite (missing guards, not wrong code), `fulfillment_despatch` approved first pass** |
 | 10 | Billing service | ✅ the `BuyerCredit` aggregate over an append-only hold / release / consume ledger, every credit decision taken under a lock on the credit line at a pinned `READ COMMITTED` (measured: `REPEATABLE READ` would silently approve over the limit); the `.99` simulator evaluated before a seeded failure-rate draw, and a rate the boot refuses by value (Python's `float()` accepts `1_0`, `nan` and `inf`); invoices issued on despatch with `INV-######` numbers, a non-zero discount in every fixture and the gross derived from the lines (#8's discount set to `0` had left 273 tests green); remittance intake idempotent by `paymentReference`, emitting `payment.received.v1` then `credit.released.v1` caused by it in one transaction (#8 id 57); Billing's outbox joins the copy-parity guard, now a census of every service owning an `outbox` table. **The order-to-cash cycle closes end to end for the first time in #9; the feature that closes it changed nothing under `services/orders` (the phase's only Orders edit is feature 19's Kafka client-id pattern, `BC34`). Four features, five review rounds: `billing_credit` rejected once (three test-only defects), the other three approved first pass** |
-| 11 | Notifications service | ⬜ |
+| 11 | Notifications service | ✅ the seven notified facts consumed from Kafka and filtered by event type, the filter guarded in both directions (deleting any of the seven, or adding any `stock.*` / `credit.*` sibling, fails a test: #8's guards ran past the filter and never crossed it); seven templates whose 109 payload sites are enumerated and mutated by a committed sweep (`scripts/notification-template-sweep.py`, 198 of 198 mutations caught; #8 counted the same population by hand as 14, 89 and 95); aiosmtplib into Mailpit behind one port with the console adapter, degrading to the console on a permanent refusal (#8 id 73); the durable `processed_events` ledger through a byte-identical copy of Orders' idempotent consumer, recorded before the send and forgotten on a transient failure, and the parity guard's every-consumer-carries-a-copy case live for the first time. **Approved first pass, the first of the three builds to pass this feature in round one** (#7 and #8 were each rejected once) |
 | 12 | Projector service + MongoDB read model | ⬜ |
 | 13 | Gateway / BFF | ⬜ |
 | 14 | Health checks, OTel propagation, retry + DLQ | ⬜ |

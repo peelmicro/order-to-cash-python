@@ -409,7 +409,7 @@
       "phase": 11,
       "title": "Notifications service: aiosmtplib -> Mailpit, console adapter, durable processed_events ledger",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "real email verified in the Mailpit inbox through its HTTP API for each of the seven notified facts",
         "console adapter used in tests via the same port; degrade on permanent failure (#8 id 73)",

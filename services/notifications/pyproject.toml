@@ -13,6 +13,8 @@ dependencies = [
     "asyncpg",
     "alembic",
     "pydantic-settings",
+    "aiokafka>=0.14.0",
+    "aiosmtplib>=5.1.3",
 ]
 
 [build-system]

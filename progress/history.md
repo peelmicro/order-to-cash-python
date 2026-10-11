@@ -1205,3 +1205,74 @@ No migration, no package, no change under `services/orders/`.
 **Would #7's or #8's standard have caught the open items?** N1: no; neither reviewed typing escapes. N2: no; neither probed a claimed ordering link apart from the ordering itself (#7's and #8's reviews armed the swap only). R1: #8's yes in effect, because its Gateway was built later against its own Billing codes. #9's dotted `details.code` make a verbatim port fail silently, which only a cross-feature read shows.
 
 **Review findings N1 – N2 and routing item R1, closed 2026-10-10 as a LIGHT change** (CLAUDE.md, Cost discipline; the leader classified N1 light although it touches a persistence statement, because it changes only the statement's static type — the SQL is unchanged — and is guarded by an existing test plus one arm): one implementer (≈2 min, 104 s), no separate reviewer. N1: `invoice_repository.py`'s `rowcount` read goes through `cast("CursorResult[Any]", …)` instead of `# type: ignore[attr-defined]`, so Billing's `src` holds no `type: ignore`; arm: dropping the `status == "issued"` guard failed `test_mark_paid_on_an_invoice_that_is_not_issued_is_a_transient_failure_and_writes_nothing` with `DID NOT RAISE StoreUnavailableError`, restored with `cmp`. N2: `payment_register.py`'s docstring and the impl record's "Emission order" row now attribute R47's ordering to call order plus the `Identity` `seq` (review RV16). R1: the leader filed the Gateway's payment-error mapping on feature 25's acceptance. The leader diffed `invoice_repository.py` against the reviewer's backup (the statement unchanged, only the cast and import added), confirmed `grep -rn "type: ignore" services/billing/src` is empty, and re-ran the two payment integration files and `test_write_path_population.py` (**90 passed**).
+
+## notifications_service (id 23, phase 11) — 2026-10-11 — approved first pass; the first round-1 approval of feature 23 in the trilogy
+
+**Classification:** full group (a Kafka fact consumer and the durable idempotency ledger; R17, R18). `sdd: false`: no spec phase and no human gate. The specification of record is the five acceptance items (the fifth carried from feature 43), `domain-model.md` §6 and §7.3, and R17 / R18. The sequence was a premise-checked implementer brief, then the implementer (live walkthrough included), then an Opus reviewer with arming. **Round 1 APPROVED: 0 blocking findings**, 4 non-blocking FIX NOW (light), 1 nit. Full record: `progress/review_notifications_service.md`.
+
+- **N1:** the 30 s grace-then-cancel in `_stop_tasks` is "guarded" by a test that hangs when the cancel is deleted (reviewer arm R20, killed only by a 180 s timeout; control 8.11 s). Its stop-path half is untested, because `stop_grace_seconds` is not threaded into the runtime.
+- **N2:** the "process restart" redelivery test restarts the runtime in one process. A process-wide cache survives it (R19a) but is killed by the ledger's forget test (R19b).
+- **N3:** seven ported-idiom ledger rows lack the #7 / #8 file:line, and the two departures (instant text and environment names) have no rows. §2 also misstates both: #9's instant text matches #7's and departs only from #8's `:O`; the environment names are #7's, plus `NOTIFICATIONS_SENDER` and `SMTP_START_TLS`.
+- **N4, for the leader:** `.env.example` documents none of the service's nine variables.
+
+**Effort:** 1 implementation pass (which stalled once and was resumed on a leader message) + 1 review pass, plus one premise check.
+
+| Step | Time |
+|---|---|
+| implementer brief + premise check | 18:27:33 → 18:29:41 CEST, 2026-10-10 (≈2 min) |
+| implementer, up to the final `quality.sh` (baseline run, build, 80 arms, live walkthrough, final run) | 18:29 → 19:41 (≈1 h 12 min; `final.log` 19:40:27, `init_final.log` 19:40:48) |
+| stall | ≈19:41 → resume before 05:09, 2026-10-11 (≈9 h 28 min of no artefacts; not agent work) |
+| implementer, after the resume (record finalised) | ends 05:09:06 (the active minutes after the resume were not measured; the leader holds the resume time) |
+| review | 05:09:55 → 05:29 (≈19 min; no `quality.sh` re-run, 28 arms, 5 of them against real containers, plus the 76 s template sweep) |
+| **Total measured agent time, stall excluded** | **≈1 h 33 min** plus the unmeasured post-resume minutes |
+| **Wall-clock, first artefact → verdict, stall included** | **≈11 h 02 min** |
+
+**Baselines (quoted from the files):**
+
+| Build | Total, previous commit / first artefact → final verdict | Outcome |
+|---|---|---|
+| #7 (`../order-to-cash-nestjs/progress/history.md:964`) | **≈3 h 01 min** | REJECTED once (5 blocking, 4 behavioural: an in-memory `Set` sent three emails for one `eventId`), then approved |
+| #8 (`../order-to-cash-dotnet/progress/history.md:1486`) | **≈4 h 39 min** | REJECTED once (2 blocking, both in the guards), then approved |
+| **#9** | **≈1 h 33 min of agent time** (≈11 h wall-clock with the stall) | **approved first pass, 0 blocking** |
+
+Against agent time, #9 is **≈0.51× #7** and **≈0.33× #8**: faster than both, and the only build of the three to pass feature 23 in round 1. Against wall-clock it is slower than both, for a reason that is not the work: the 9 h 28 min stall. The comparison only holds if the stall is excluded, and it is stated here so the benchmark does not hide it.
+
+**What the inherited findings saved:**
+- #7's in-memory ledger: the implementer adopted the durable, byte-identical canonical with record-first ordering, and armed I05.
+- #7's banner-only variant guard: the variant route was not taken.
+- #8's population-of-one parity guard: case 1 now asserts a two-member literal.
+- #8 ids 58, 59, 60: the envelope is parsed whole; the committed sweep counts 109 sites (my independent AST census also counts 109); there is a fixture collision test.
+- #8's filter-never-crossed defect: all fourteen facts are driven through the real consumer.
+- #8 id 73: degrade, against a real 550 and a real 451.
+
+**Tests:** 3 492 → **3 781** (+289). The implementer's final `quality.sh` (developer stack down) exited 0 in 433 s: `3781 passed in 411.77s`, coverage 97.56 %. The reviewer did **not** re-run `quality.sh`. It ran the Notifications unit, parity and architecture tests (832 passed), plus `lint-imports` (11 kept / 0 broken), `mypy` (650 files clean), `ruff` and `init.sh`. `specs/shared/test-matrix.md`: the R17 and R18 rows gained the Notifications test names in column 5 only; the counts are unchanged.
+
+**Inherited findings:**
+- **Avoided:**
+  - #8 ids 58, 59, 60, 73, 56, 68, 76, 85;
+  - #8's parity-at-n=1 finding (D4);
+  - #8's filter guards that never crossed the filter;
+  - #7's in-memory ledger;
+  - #7's banner-only variant check.
+- **Recurred:**
+  - #8 id 82, partly: B03's message is a probe traceback; the reviewer's R13i fails on a destructuring `ValueError` (X1).
+  - Phase 10 N1's class: a claimed mechanism whose guard fails only slowly. Here it hangs (N1).
+  - The Phase 8 ledger class, in its citation form: claims held, file:line missing (N3).
+- **Owned by feature 27:** #8 ids 74, 75, 104 and 94.
+- **Not applicable:** 1, 2, 4, 9, 11, 52, 67, 69, 81, and 77 (an `inotify` false match).
+
+**Would #7's or #8's standard have caught the open items?**
+- N1: no. Neither review armed a shutdown grace.
+- N2: no. #7's restart probe used separate apps; #8 did not probe a process-wide cache.
+- N3: #8's, yes, because its Phase 8 gate made the ledger binding.
+- N4: #7's and #8's `.env.example` files document their variables, so a reader comparing the files would have caught it.
+
+**Live data altered** (add to the registers): ORD-000011 `completed`, ORD-000012 `cancelled`, INV-000008 `paid` (LIVE-REF-000011), DES-000009, 8 rows in `otc_notifications.processed_events`, 8 messages in the developer Mailpit inbox, 16 duplicate fact records on the three topics; the `notifications` group has committed offsets (impl record §11).
+
+**Leader note — resume and fix round (2026-10-11).** The resume message was sent at ≈05:08 CEST; the implementer finalised its record by 05:09:06, so the post-resume minutes are ≈1. All four findings and the nit were fixed in this phase as a **light** change (classified by the leader; one parameter threaded through `composition.py` plus test and record text):
+- N4 by the leader: `.env.example` gained the nine `NOTIFICATIONS_*` / `SMTP_*` variables at the code's defaults (05:30); the two behavioural claims in its comments (`auto_offset_reset="latest"`, empty `SMTP_USER=`/`SMTP_PASSWORD=` passing the pair check) were checked by command first.
+- N1, N2, N3, X1 by one implementer, 05:31 → 05:36 (≈5 min; `progress/impl_notifications_service.md` §15, arms F01 – F03, each failing on a message naming the claim: F01 25.2 s, F02 26.0 s, F03 14.1 s).
+- Leader verification 05:36 → 05:39 (≈3 min): `degrading_sender.py`'s sha256 equals the reviewer's recorded `57e1f497…` (unchanged by the round); `stop_grace_seconds` reaches `_stop_tasks` on both paths (`composition.py:164,195,300,304`); `pytest services/notifications/tests tests/architecture services/orders/tests/unit/test_idempotent_consumer_parity.py`: **880 passed in 74.60 s** with the developer stack down; the leader's own R20 arm (`composition.py:212` `task.cancel()` → `pass`) failed `test_stop_cancels_a_send_that_never_returns_after_the_grace_and_forgets_its_row` in 24.24 s with `runtime.stop() did not return: the task was not cancelled after the grace period`, restored by `cp` + `cmp`, green again in 9.71 s. No second review (light). `./quality.sh` not re-run after the round; it runs at the wrap-up.
+- Correction to the resume brief: feature 23 had **five** acceptance items, not six (`git log` of `feature_list.json`: 4 → 5).
+- **Maintainer ruling (2026-10-11): email instants keep the wire format** `YYYY-MM-DDTHH:MM:SS.mmmZ` (`format_instant`), as #7 renders them (`order-placed.template.ts:15` interpolates the wire string). #8's `{payload.OrderDate:O}` (`OrderPlacedTemplate.cs:24`: seven fraction digits and `+00:00`, the format #8's own contracts package rejected for the wire, `../order-to-cash-dotnet/progress/history.md:314`) is not followed. `specs/shared/` is silent on email text, so no SA-n. The departure row is in `progress/impl_notifications_service.md` §3.
+- **Wrap-up gate (leader, 2026-10-11, developer stack down):** `./quality.sh` exit 0, **443 s** wall, `3782 passed in 419.44s` (+1 over the implementer's 3 781: the fix round's stop-path test), coverage **97.56 %** overall / **98 %** domain, import-linter 11 kept / 0 broken. **Effort including the fix round:** ≈1 h 43 min of agent time (the reviewer's ≈1 h 33 min + ≈1 min after the resume + ≈9 min for the fix round and its verification), **≈0.57× #7 (≈3 h 01 min) and ≈0.37× #8 (≈4 h 39 min)**, both of which also include their fix rounds; ≈11 h 12 min wall-clock with the stall. Classification for the benchmark: full group, approved first pass, plus one light in-phase fix round.

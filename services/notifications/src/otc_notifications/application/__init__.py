@@ -1,1 +1,1 @@
-"""otc_notifications application layer (placeholder)."""
+"""otc_notifications application layer: notify commands, handlers, dispatch and templates."""

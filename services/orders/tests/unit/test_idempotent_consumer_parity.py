@@ -179,8 +179,11 @@ def test_case_1_every_write_models_copy_is_byte_identical_to_the_canonical_after
         "the canonical itself is a copy-candidate: it has a ledger and a file"
     )
     assert divergent_copies(REPO_ROOT, canonical) == []
-    # at n = 1 the comparison is the canonical with itself: said here, proved non-vacuous below
-    print(f"case 1 compared {len(found)} copy/copies (n=1 means the canonical against itself)")
+    # Feature 23 made the population two: Notifications is the first genuine second copy. The set is
+    # a literal so that a vanished copy (a renamed file, a lost ledger) fails here by name instead
+    # of leaving the comparison to run against the canonical alone (#8's guard passed at n = 1).
+    assert {p.parents[2].name for p in found} == {"otc_orders", "otc_notifications"}, found
+    print(f"case 1 compared {len(found)} copies")
 
 
 def test_case_1_sentinel_a_copy_that_differs_by_one_character_is_reported(tmp_path: Path) -> None:
@@ -291,9 +294,11 @@ def test_case_3_every_write_model_that_consumes_facts_carries_a_copy() -> None:
     examined, missing = consumers_without_a_copy(REPO_ROOT)
     assert len(examined) >= 3, f"the computation must range over the real population: {examined}"
     assert "otc_orders" in examined
-    # Feature 16 built the first fact consumer: the saga's `KafkaFactSubscriber` in Orders. The
-    # computed set is a literal, so a second consumer (feature 23 / 24) is a deliberate edit here.
-    assert consuming_write_models(REPO_ROOT) == {"otc_orders"}
+    # Feature 16 built the first fact consumer: the saga's `KafkaFactSubscriber` in Orders; feature
+    # 23 the second: Notifications' fact subscriber. The computed set is a literal, so a further
+    # consumer is a deliberate edit here. (The Projector has no relational ledger: not a member.)
+    assert consuming_write_models(REPO_ROOT) == {"otc_orders", "otc_notifications"}
+    assert {"otc_orders", "otc_notifications"} <= set(examined)
     assert missing == [], f"a consuming write model has no idempotent-consumer copy: {missing}"
 
 

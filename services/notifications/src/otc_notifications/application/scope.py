@@ -1,0 +1,30 @@
+"""`NotificationsScope`: the per-message scope of the dispatcher (`S` in `otc_cqrs.Dispatcher[S]`).
+
+The composition root builds one for every inbound message and hands it to `Dispatcher.send`; the
+dispatcher stores none. A binding the root forgot is refused HERE, at construction, which the root
+also does once at boot: never as an `AttributeError` on the first message.
+"""
+
+from dataclasses import dataclass, fields
+
+from otc_notifications.application.ports.delivery_ledger import DeliveryLedger
+from otc_notifications.application.ports.notification_sender import NotificationSender
+
+
+class MissingBindingError(Exception):
+    """A port of the scope was given no implementation."""
+
+    def __init__(self, binding: str) -> None:
+        super().__init__(f"the composition root bound nothing to the {binding!r} port")
+        self.binding = binding
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NotificationsScope:
+    ledger: DeliveryLedger
+    sender: NotificationSender
+
+    def __post_init__(self) -> None:
+        for field in fields(self):
+            if getattr(self, field.name) is None:
+                raise MissingBindingError(field.name)
