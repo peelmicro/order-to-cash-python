@@ -9,6 +9,10 @@ dependencies = [
     "otc-shared-kernel",
     "otc-contracts",
     "otc-cqrs",
+    "pymongo>=4.18.2",
+    "aiokafka>=0.14.0",
+    "nats-py>=2.16.0",
+    "pydantic-settings",
 ]
 
 [build-system]

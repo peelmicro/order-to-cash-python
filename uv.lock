@@ -1016,19 +1016,27 @@ name = "otc-projector"
 version = "0.1.0"
 source = { editable = "services/projector" }
 dependencies = [
+    { name = "aiokafka" },
     { name = "fastapi" },
+    { name = "nats-py" },
     { name = "otc-contracts" },
     { name = "otc-cqrs" },
     { name = "otc-shared-kernel" },
+    { name = "pydantic-settings" },
+    { name = "pymongo" },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "aiokafka", specifier = ">=0.14.0" },
     { name = "fastapi" },
+    { name = "nats-py", specifier = ">=2.16.0" },
     { name = "otc-contracts", editable = "packages/contracts" },
     { name = "otc-cqrs", editable = "packages/cqrs" },
     { name = "otc-shared-kernel", editable = "packages/shared_kernel" },
+    { name = "pydantic-settings" },
+    { name = "pymongo", specifier = ">=4.18.2" },
     { name = "uvicorn" },
 ]
 

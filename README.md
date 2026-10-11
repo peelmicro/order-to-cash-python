@@ -107,7 +107,7 @@ uv sync
 
 Integration tests start their own PostgreSQL container through testcontainers, so the gate needs Docker but **not** the development stack — it passes with the stack stopped.
 
-The infrastructure runs too, and so do the first four services, Orders, Fulfillment, Billing and Notifications (see *Running the Orders, Fulfillment, Billing and Notifications services* below).
+The infrastructure runs too, and so do the first five services, Orders, Fulfillment, Billing, Notifications and the Projector (see *Running the services* below).
 
 ```bash
 cp .env.example .env
@@ -134,7 +134,7 @@ for s in orders fulfillment billing notifications; do uv run alembic -c services
 docker exec otcpy-postgres psql -U postgres -d otc_notifications -c '\d'    # processed_events and alembic_version only
 ```
 
-## Running the Orders, Fulfillment, Billing and Notifications services
+## Running the services
 
 Orders accepts an order over NATS (`orders.create`), checks stock synchronously over `fulfillment.stock.check`, allocates `ORD-######`, writes the order and its `order.placed.v1` fact in one transaction, publishes the fact to Kafka from the outbox, and drives the saga from the facts it consumes. With the stack up and migrated (above):
 
@@ -169,6 +169,17 @@ curl -s localhost:8025/api/v1/messages | jq '.messages[].Subject'   # the emails
 
 The live walkthrough (two fresh orders, one completed and one cancelled: eight emails covering all seven facts, then a byte-identical redelivery and a host restart leaving inbox and ledger unchanged) is in `progress/impl_notifications_service.md` §11.
 
+The Projector consumes all fourteen facts from the three fact topics and is the only writer of the MongoDB read model `otc_read_model.order_timeline`: one document per order, keyed by `correlationId`, each fact one timeline entry. Entries are ordered by `occurredAt`, and inside a tie group so that a fact follows the fact its `causationId` names (amendment A1); the status never regresses on an out-of-order fact; a fact for an order not yet projected creates a placeholder that `order.placed.v1` later fills; a redelivered `eventId` changes nothing, because the dedup key is written in the same atomic update as the entry. After each applied fact it publishes an update signal on NATS (`readmodel.order.updated.<orderId>`, `readmodel.timeline.appended.<orderId>`) for the Gateway's SSE stream (phase 13). Indexes are created at boot and checked against the server's stored specification. A new consumer group starts from the earliest offset, so the first boot replays every retained fact; that is idempotent:
+
+```bash
+uv run uvicorn otc_projector.main:app --port 8105   # reads .env (MONGO_*, KAFKA_BROKERS, NATS_URL, PROJECTOR_*)
+curl -s localhost:8105/health/ready                  # {"status":"ready"} once the consumer has joined its group
+docker exec otcpy-mongodb mongosh -u otc_mongo_root -p otc_mongo_dev_password --quiet \
+  --eval 'db.getSiblingDB("otc_read_model").order_timeline.find({}, {orderReference: 1, status: 1}).toArray()'
+```
+
+"Caused by" on a live timeline links facts whose `causationId` names another fact (Orders' and Billing's own chains); a fact produced by an RPC responder names the command that requested it, which is never a timeline entry (R12, made explicit in the contract by `SA-6`). The live walkthrough (the seeded documents byte-identical after a replay and a process restart, one order placed end to end) is in `progress/impl_projector_read_model.md` §9.
+
 ## How this is being built
 
 The development **process is a deliverable**, not a footnote: Spec-Driven Development plus an agent harness with a backlog state machine (`feature_list.json`, max one feature in progress), external memory (`progress/`), a specification that precedes the code, and separate leader / spec-author / implementer / reviewer subagents each with an explicitly declared model. Every large feature passes a human approval gate at its specification, and every phase is tested by a human before its commit. `docs/PROCESS.md` explains all of it; the git history is the evidence, and for this repository it reads **harness first, specification copy second, code after**.
@@ -188,7 +199,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 9 | Fulfillment service | ✅ the stock aggregate with `reserved_units ≤ units` and an all-or-nothing reservation lifecycle; the five stock responders and `despatch.create` over NATS; every deciding read under `SELECT … FOR UPDATE` in an application-fixed order, a deadlock victim re-run, and both races — check-then-reserve, and SA-4's release against despatch under one lock — constructed with a held lock rather than by repetition; every id the domain mints taken from a supplied source (#8 id 49); the `DES-######` despatch advice allocated under lock, idempotent per order and atomic with its fact (proved by fault injection with a control); Fulfillment's outbox copied byte-identical from Orders under a parity guard. **Two features, three review rounds: `fulfillment_stock` rejected once because mutations survived the suite (missing guards, not wrong code), `fulfillment_despatch` approved first pass** |
 | 10 | Billing service | ✅ the `BuyerCredit` aggregate over an append-only hold / release / consume ledger, every credit decision taken under a lock on the credit line at a pinned `READ COMMITTED` (measured: `REPEATABLE READ` would silently approve over the limit); the `.99` simulator evaluated before a seeded failure-rate draw, and a rate the boot refuses by value (Python's `float()` accepts `1_0`, `nan` and `inf`); invoices issued on despatch with `INV-######` numbers, a non-zero discount in every fixture and the gross derived from the lines (#8's discount set to `0` had left 273 tests green); remittance intake idempotent by `paymentReference`, emitting `payment.received.v1` then `credit.released.v1` caused by it in one transaction (#8 id 57); Billing's outbox joins the copy-parity guard, now a census of every service owning an `outbox` table. **The order-to-cash cycle closes end to end for the first time in #9; the feature that closes it changed nothing under `services/orders` (the phase's only Orders edit is feature 19's Kafka client-id pattern, `BC34`). Four features, five review rounds: `billing_credit` rejected once (three test-only defects), the other three approved first pass** |
 | 11 | Notifications service | ✅ the seven notified facts consumed from Kafka and filtered by event type, the filter guarded in both directions (deleting any of the seven, or adding any `stock.*` / `credit.*` sibling, fails a test: #8's guards ran past the filter and never crossed it); seven templates whose 109 payload sites are enumerated and mutated by a committed sweep (`scripts/notification-template-sweep.py`, 198 of 198 mutations caught; #8 counted the same population by hand as 14, 89 and 95); aiosmtplib into Mailpit behind one port with the console adapter, degrading to the console on a permanent refusal (#8 id 73); the durable `processed_events` ledger through a byte-identical copy of Orders' idempotent consumer, recorded before the send and forgotten on a transient failure, and the parity guard's every-consumer-carries-a-copy case live for the first time. **Approved first pass, the first of the three builds to pass this feature in round one** (#7 and #8 were each rejected once) |
-| 12 | Projector service + MongoDB read model | ⬜ |
+| 12 | Projector service + MongoDB read model | ✅ all fourteen facts projected into `order_timeline` by the only writer of the read model, in causal timeline order, with placeholders, a status that never regresses and idempotent replay (the dedup key written in the same atomic update); indexes checked against the server's stored specification at boot; the update signal on NATS for the Gateway's SSE; the read-model constants pinned to the same fixture the seed is pinned to. Backlog 201 ruled at the gate: R12 kept, and **`SA-6`**, the first amendment raised in #9, corrects the `causationId` description in all three repositories. Every fact value placed in a MongoDB update is `$literal`-wrapped: an operator note beginning with `$` is evaluated by the server in #7's and #8's projectors (measured, recorded as a predecessor finding). Rejected twice, every time on what the tests could see and never on production behaviour; approved in a scoped third round (#8: three rejections; #7: one). Also: Orders, Fulfillment and Billing now fail their boot within a bound on an unreachable NATS (backlog 214) |
 | 13 | Gateway / BFF | ⬜ |
 | 14 | Health checks, OTel propagation, retry + DLQ | ⬜ |
 | 15 | End-to-end saga verification | ⬜ |

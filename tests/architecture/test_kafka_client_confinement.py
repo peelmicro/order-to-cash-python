@@ -6,8 +6,8 @@ the saga adds the second client. This test reads the AST of every `services/*/sr
 asserts:
 
 1. the modules that import `aiokafka` are exactly the literal set below (Orders' relay publisher,
-   the copies of it in Fulfillment and Billing, the saga's subscriber, and Notifications' fact
-   subscriber);
+   the copies of it in Fulfillment and Billing, the saga's subscriber, Notifications' fact
+   subscriber, and the Projector's);
 2. the publisher names no consumer-side name and the subscriber no producer-side name.
 
 An AST is read so that a mention in a comment, a docstring or a string is not an import, and
@@ -28,6 +28,8 @@ PUBLISHER = "otc_orders.infrastructure.outbox.kafka_publisher"
 SUBSCRIBER = "otc_orders.infrastructure.messaging.kafka_fact_subscriber"
 # Feature 23: Notifications' fact consumer is the second consumer (it consumes, it emits no fact).
 NOTIFICATIONS_SUBSCRIBER = "otc_notifications.infrastructure.messaging.kafka_fact_subscriber"
+# Feature 24: the Projector's fact consumer is the third consumer (it consumes, it emits no fact).
+PROJECTOR_SUBSCRIBER = "otc_projector.infrastructure.messaging.kafka_fact_subscriber"
 # Feature 17: Fulfillment's relay copy is the second producer (parity-guarded against Orders').
 FULFILLMENT_PUBLISHER = "otc_fulfillment.infrastructure.outbox.kafka_publisher"
 # Feature 19: Billing's relay copy is the third producer (parity-guarded against Orders').
@@ -36,6 +38,7 @@ EXPECTED_IMPORTERS = {
     PUBLISHER,
     SUBSCRIBER,
     NOTIFICATIONS_SUBSCRIBER,
+    PROJECTOR_SUBSCRIBER,
     FULFILLMENT_PUBLISHER,
     BILLING_PUBLISHER,
 }
@@ -99,7 +102,7 @@ def violations(found: dict[str, set[str]]) -> list[str]:
     for publisher in (PUBLISHER, FULFILLMENT_PUBLISHER, BILLING_PUBLISHER):
         if consumer_names := found.get(publisher, set()) & CONSUMER_SIDE:
             problems.append(f"the publisher names consumer-side {sorted(consumer_names)}")
-    for subscriber in (SUBSCRIBER, NOTIFICATIONS_SUBSCRIBER):
+    for subscriber in (SUBSCRIBER, NOTIFICATIONS_SUBSCRIBER, PROJECTOR_SUBSCRIBER):
         if producer_names := found.get(subscriber, set()) & PRODUCER_SIDE:
             problems.append(f"the subscriber names producer-side {sorted(producer_names)}")
     return problems
@@ -114,6 +117,7 @@ def test_the_modules_importing_aiokafka_are_exactly_the_publishers_and_the_subsc
     assert "AIOKafkaProducer" in found[BILLING_PUBLISHER], "and Billing's"
     assert "AIOKafkaConsumer" in found[SUBSCRIBER], "and the subscriber's"
     assert "AIOKafkaConsumer" in found[NOTIFICATIONS_SUBSCRIBER], "and Notifications'"
+    assert "AIOKafkaConsumer" in found[PROJECTOR_SUBSCRIBER], "and the Projector's"
 
 
 # ---- sentinels: each form of import must be seen, and a mere mention must not be
@@ -136,10 +140,14 @@ BILLING_PUBLISHER_FILE = "billing/src/otc_billing/infrastructure/outbox/kafka_pu
 NOTIFICATIONS_SUBSCRIBER_FILE = (
     "notifications/src/otc_notifications/infrastructure/messaging/kafka_fact_subscriber.py"
 )
+PROJECTOR_SUBSCRIBER_FILE = (
+    "projector/src/otc_projector/infrastructure/messaging/kafka_fact_subscriber.py"
+)
 CLEAN = {
     PUBLISHER_FILE: "from aiokafka import AIOKafkaProducer\n",
     SUBSCRIBER_FILE: "from aiokafka import AIOKafkaConsumer\n",
     NOTIFICATIONS_SUBSCRIBER_FILE: "from aiokafka import AIOKafkaConsumer\n",
+    PROJECTOR_SUBSCRIBER_FILE: "from aiokafka import AIOKafkaConsumer\n",
     FULFILLMENT_PUBLISHER_FILE: "from aiokafka import AIOKafkaProducer\n",
     BILLING_PUBLISHER_FILE: "from aiokafka import AIOKafkaProducer\n",
 }
@@ -183,6 +191,30 @@ def test_sentinel_a_producer_import_added_to_notifications_subscriber_is_reporte
     }
     [problem] = violations(tree_with(tmp_path, files))
     assert "subscriber names producer-side ['AIOKafkaProducer']" in problem
+
+
+def test_sentinel_a_producer_import_added_to_the_projectors_subscriber_is_reported(
+    tmp_path: Path,
+) -> None:
+    files = CLEAN | {
+        PROJECTOR_SUBSCRIBER_FILE: "from aiokafka import AIOKafkaConsumer, AIOKafkaProducer\n"
+    }
+    [problem] = violations(tree_with(tmp_path, files))
+    assert "subscriber names producer-side ['AIOKafkaProducer']" in problem
+
+
+def test_sentinel_a_second_projector_module_importing_aiokafka_is_reported(tmp_path: Path) -> None:
+    other = "projector/src/otc_projector/presentation/projector_facts_consumer.py"
+    [problem] = violations(
+        tree_with(tmp_path, CLEAN | {other: "from aiokafka import AIOKafkaConsumer\n"})
+    )
+    assert "otc_projector.presentation.projector_facts_consumer" in problem
+
+
+def test_sentinel_projector_subscriber_missing_is_reported(tmp_path: Path) -> None:
+    files = {k: v for k, v in CLEAN.items() if k != PROJECTOR_SUBSCRIBER_FILE}
+    [problem] = violations(tree_with(tmp_path, files))
+    assert "the modules importing aiokafka are" in problem
 
 
 def test_sentinel_notifications_subscriber_missing_is_reported(tmp_path: Path) -> None:

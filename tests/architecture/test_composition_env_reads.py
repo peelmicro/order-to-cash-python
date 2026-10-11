@@ -18,7 +18,9 @@ guard:
    through the real lifespan); Fulfillment's are `test_fulfillment_settings_env.py` and
    `test_fulfillment_host_lifespan.py`; Billing's are `test_billing_settings_env.py` and
    `test_billing_host_lifespan.py`; Notifications' are `test_notifications_settings_env.py` and
-   `test_notifications_host_lifespan.py`.
+   `test_notifications_host_lifespan.py`; the Projector's (feature 24) are
+   `test_projector_settings_env.py` and `test_composition.py::test_each_setting_reaches_the_adapter_
+   it_configures`.
 
 The composition roots are found by glob, and their names are a literal so a new root (feature 17
 added `fulfillment`) is a deliberate edit here, with its own halves 3. Loses, stated: a read through
@@ -31,11 +33,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROOTS = sorted(REPO_ROOT.glob("services/*/src/otc_*/composition.py"))
-EXPECTED_ROOTS = ["billing", "fulfillment", "notifications", "orders", "seed"]
+EXPECTED_ROOTS = ["billing", "fulfillment", "notifications", "orders", "projector", "seed"]
 # Roots whose settings classes are all built by `composition.load_settings` (half 2). The seed's
 # root (feature 12, a one-shot CLI) receives its `SeedSettings` from the entry point instead, so it
 # is held to half 1 (nothing reads the environment directly) and to the class literal only.
-LOAD_SETTINGS_ROOTS = ["billing", "fulfillment", "notifications", "orders"]
+LOAD_SETTINGS_ROOTS = ["billing", "fulfillment", "notifications", "orders", "projector"]
 EXPECTED_SETTINGS = {
     "billing": {
         "BillingDatabaseSettings",
@@ -67,6 +69,7 @@ EXPECTED_SETTINGS = {
         "SagaSettings",
         "ServerSettings",
     },
+    "projector": {"KafkaSettings", "MongoSettings", "NatsSettings"},
     "seed": {"SeedSettings"},
 }
 ENV_ATTRIBUTES = {"environ", "environb", "getenv", "getenvb", "putenv"}
