@@ -26,7 +26,7 @@ Per-feature effort (sessions, wall-clock) is recorded in `progress/history.md` a
 
 ## Spec amendments
 
-Where an implementation proves the shared specification wrong or incomplete, the change is an **amendment**: explicit, committed on its own, and applied to every repository of the trilogy in the same session — never a silent fork. Each carries a stable `SA-n` id and an entry in the `progress/history.md` of every repository it touches. #9 inherited the five raised during #8 (`SA-1` – `SA-5`), already applied to #7 and #8 and therefore present in the copy this repository started from; `SA-6` was raised here:
+Where an implementation proves the shared specification wrong or incomplete, the change is an **amendment**: explicit, committed on its own, and applied to every repository of the trilogy in the same session — never a silent fork. Each carries a stable `SA-n` id and an entry in the `progress/history.md` of every repository it touches. #9 inherited the five raised during #8 (`SA-1` – `SA-5`), already applied to #7 and #8 and therefore present in the copy this repository started from; `SA-6` – `SA-9` were raised here:
 
 | Id | Raised | Touches | In one line |
 |---|---|---|---|
@@ -38,8 +38,9 @@ Where an implementation proves the shared specification wrong or incomplete, the
 | `SA-6` | #9, Phase 12 | `openapi.yaml` — `TimelineEntry.causationId` description, prose only | The description claimed every `causationId` names a fact, but R12 lets a responder's fact name the command, which is never a timeline entry; ruled option (b) of backlog 201 |
 | `SA-7` | #9, Phase 13 | `saga.md` §2 — the command vocabulary | `credit.release` was issued by §4.3 and §5 and declared in `asyncapi.yaml`, but the command table lacked its row; the row added (backlog 213) |
 | `SA-8` | #9, Phase 13 | `saga.md` §4.3, §5, §6 — a late stock reservation | A stock reservation landing after an operator cancel at `placed` was never released; it is now released on arrival (backlog 216, reproduced in #9, shared by #7 and #8) |
+| `SA-9` | #9, Phase 13 | `openapi.yaml` — `default` responses, `UpstreamUnavailable` | A `default` Problem response on every operation (59 of the 100 statuses #9's Gateway can answer were undeclared; the gap is the contract's, shared by all three builds), and `UpstreamUnavailable` no longer promises "not applied" after a timeout (backlog 215) |
 
-`SA-6` was applied byte-identically to #7, #8 and #9 in one session (2026-10-11). Any further amendment raised here will be `SA-7` onwards, applied to #7, #8 and #9 together.
+`SA-6` was applied byte-identically to #7, #8 and #9 in one session (2026-10-11), and `SA-7`, `SA-8` and `SA-9` in another (2026-10-12). Any further amendment raised here will be `SA-10` onwards, applied to #7, #8 and #9 together.
 
 ## Tech stack
 

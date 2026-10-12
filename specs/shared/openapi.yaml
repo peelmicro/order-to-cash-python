@@ -140,6 +140,8 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /auth/me:
     get:
@@ -155,6 +157,8 @@ paths:
                 $ref: '#/components/schemas/CurrentUser'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /orders:
     post:
@@ -241,6 +245,8 @@ paths:
           $ref: '#/components/responses/DomainError'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
     get:
       tags: [orders]
@@ -285,6 +291,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /orders/{id}:
     parameters:
@@ -328,6 +336,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /orders/{id}/cancel:
     parameters:
@@ -379,6 +389,8 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /orders/stream:
     get:
@@ -498,6 +510,8 @@ paths:
                     data: {"eventId":"7d8e9f0a-1b2c-4d3e-8f4a-5b6c7d8e9f01","orderId":"9f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f","eventType":"credit.rejected.v1","occurredAt":"2026-08-18T10:15:04.120Z","summary":"Credit rejected (simulated_cents_rule)"}
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
       x-sse-events:
         order.updated:
           schema:
@@ -552,6 +566,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /stock/replenish:
     post:
@@ -568,7 +584,8 @@ paths:
         `units` is a **delta**, not a target level, so repeating this call adds
         again. It is deliberately **not** idempotent: "top up by 100" is the
         operation the demo needs, and pretending otherwise would silently drop
-        legitimate repeats.
+        legitimate repeats. A `503` after a timeout does not mean the top-up was
+        not applied: re-read `GET /stock` before retrying.
       requestBody:
         required: true
         content:
@@ -590,6 +607,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /invoices:
     get:
@@ -639,6 +658,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /invoices/{id}/payments:
     parameters:
@@ -738,6 +759,8 @@ paths:
                 $ref: '#/components/schemas/Problem'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /credits:
     get:
@@ -773,6 +796,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /catalog/products:
     get:
@@ -798,6 +823,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /catalog/retailers:
     get:
@@ -823,6 +850,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /catalog/companies:
     get:
@@ -848,6 +877,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '503':
           $ref: '#/components/responses/UpstreamUnavailable'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /health/live:
     get:
@@ -867,6 +898,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /health/ready:
     get:
@@ -892,6 +925,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
   /docs:
     get:
@@ -909,6 +944,8 @@ paths:
             text/html:
               schema:
                 type: string
+        default:
+          $ref: '#/components/responses/UnlistedProblem'
 
 components:
   securitySchemes:
@@ -1032,9 +1069,25 @@ components:
             $ref: '#/components/schemas/Problem'
     UpstreamUnavailable:
       description: |
-        The owning context did not answer within the deadline, or the RPC
-        transport is unreachable. The command was **not** applied; the client
-        may retry.
+        The owning context could not be reached, did not answer within the
+        deadline, or answered with a reply the Gateway could not read. When no
+        responder was reachable the command was not applied; after a timeout
+        or an unreadable reply it may have been. A client may retry an
+        idempotent operation (one with an `Idempotency-Key` or a natural key
+        such as `paymentReference`); before retrying any other it should
+        re-read the resource.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnlistedProblem:
+      description: |
+        Any status this operation does not list. The body is always a
+        `Problem`. A 4xx is a request the Gateway or the owning context refused
+        (an unknown reference, a malformed parameter, a domain rule); a 5xx is
+        a failure in the Gateway or upstream. The listed statuses are the ones
+        a client is expected to handle by name; this one exists so that no
+        status the system can answer is outside the contract.
       content:
         application/problem+json:
           schema:
