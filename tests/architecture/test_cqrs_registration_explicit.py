@@ -33,9 +33,12 @@ CQRS_SRC = REPO_ROOT / "packages" / "cqrs" / "src" / "otc_cqrs"
 SERVICE_SOURCES = "services/*/src/**/*.py"
 REGISTER_NAMES = {"register_command", "register_query", "register_event"}
 
-# Census, this round: exactly these seven decorators are used under services/*/src.
+# Census: exactly these decorators are used under services/*/src (feature 25 added the two
+# `router.*` route decorators of the Gateway, which have nothing to do with handler registration).
 ALLOWED_DECORATORS = {
     "app.get": "FastAPI route registration on the app object (health endpoints)",
+    "router.get": "FastAPI route registration on an APIRouter (the Gateway's routes, feature 25)",
+    "router.post": "FastAPI route registration on an APIRouter (the Gateway's routes, feature 25)",
     "asynccontextmanager": "lifespan context managers",
     "classmethod": "alternative constructors (Order.place / rehydrate style)",
     "dataclass": "value objects and records",

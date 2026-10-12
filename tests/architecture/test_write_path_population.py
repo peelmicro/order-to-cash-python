@@ -57,7 +57,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # Every service with a `src` is scanned unless it is named here WITH a reason, so a NEW service
 # fails `test_the_scanned_population_is_every_service_minus_the_literal_exclusions`.
 EXCLUDED = {
-    "gateway": "no database: it forwards over NATS and holds no connection",
+    "gateway": "no relational database: it only READS the MongoDB read model (sole-writer guard, "
+    "test_gateway_reads_only.py) and forwards over NATS",
     "projector": "writes MongoDB read models: no guarded integer column exists in a document store",
     "seed": "its own population test, services/seed/tests/unit/test_write_path_population.py",
 }
@@ -238,8 +239,10 @@ EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
             {("call", "execute"): 3, ("call", "text"): 3}
         ),
         # Feature 15, the reference catalogue: `session.execute(select(...))` x3 (retailer,
-        # company, products). SELECTs, not writes (currency uses `session.scalar`).
-        "infrastructure/persistence/reference_catalog.py": Counter({("call", "execute"): 3}),
+        # company, products). SELECTs, not writes (currency uses `session.scalar`). Feature 40 adds
+        # three more: `list_products`, `_list_parties` (retailers and companies share it) and
+        # `list_currencies`, each a `select(...).order_by(...)`.
+        "infrastructure/persistence/reference_catalog.py": Counter({("call", "execute"): 6}),
         # Feature 15, the responder: `in_flight.add(task)`, a Python `set.add`, not a write.
         "presentation/orders_create_responder.py": Counter({("call", "add"): 1}),
         # Feature 16, the saga's owed-command queue: `session.execute(pg_insert(SagaCommand)...
@@ -247,8 +250,11 @@ EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
         # import the instrument resolves to `insert`, counted as an import hit and a call). NO
         # GUARDED COLUMN: `attempts` is never written (the server default `0` applies), so this
         # ORM-enabled insert writes no integer column at all. Counts read from `scan_service`.
+        # Feature 41 added a second `execute`: `find_accepted_operator_cancel`, a `select(...)`
+        # (a read, so no `insert`/`update` was added and no guarded column is written; the insert
+        # also stores `operator_note`, a `text` column).
         "infrastructure/saga/command_queue.py": Counter(
-            {("import", "insert as pg_insert"): 1, ("call", "execute"): 1, ("call", "insert"): 1}
+            {("import", "insert as pg_insert"): 1, ("call", "execute"): 2, ("call", "insert"): 1}
         ),
         # Feature 16 and 42, the ledger: five ORM-enabled `update(SagaCommand)` statements
         # (`try_claim`, `claim_due`, `mark_sent`, `reject`, `park`) through ONE `session.execute` in

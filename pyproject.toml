@@ -344,6 +344,45 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
+id = "gateway-order-queries-read-model-only"
+name = "The Gateway's order list and detail handlers (R54) reach no NATS client, no RPC port and no write model"
+type = "forbidden"
+# Feature 25, acceptance item 4. `otc_gateway.application.order_queries` holds `ListOrdersHandler` and
+# `GetOrderHandler`; they take an `OrderReadScope` (the read-model port and the issued-order window)
+# and nothing else. The contract is on the MODULE because the claim is about these two handlers:
+# the same package holds handlers that DO call NATS (`order_commands`, `payment_handlers`, ...).
+# Indirect imports count (import-linter's default), so a helper that reaches NATS fails it too.
+source_modules = ["otc_gateway.application.order_queries"]
+forbidden_modules = [
+    "nats",
+    "otc_gateway.application.ports.rpc_client",
+    "otc_gateway.application.scope",
+    "otc_gateway.application.rpc_subjects",
+    "otc_gateway.infrastructure.nats_rpc_client",
+    "sqlalchemy",
+    "asyncpg",
+    "aiokafka",
+    "otc_orders",
+    "otc_fulfillment",
+    "otc_billing",
+    "otc_notifications",
+]
+
+[[tool.importlinter.contracts]]
+id = "gateway-read-model-adapter-reaches-no-transport"
+name = "The Gateway's MongoDB read-model adapter reaches no NATS client and no RPC port"
+type = "forbidden"
+source_modules = ["otc_gateway.infrastructure.mongo_order_read_model"]
+forbidden_modules = [
+    "nats",
+    "otc_gateway.application.ports.rpc_client",
+    "otc_gateway.infrastructure.nats_rpc_client",
+    "sqlalchemy",
+    "asyncpg",
+    "aiokafka",
+]
+
+[[tool.importlinter.contracts]]
 id = "service-independence"
 name = "The seven services do not import each other"
 type = "independence"

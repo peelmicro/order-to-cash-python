@@ -35,8 +35,12 @@ TIMER = re.compile(
 )
 
 # claim 1: the seed derives deterministic ids for HISTORIC fixture sagas (a string passed to
-# `deterministic_id`, and the docstring that explains it); it sends nothing at runtime
+# `deterministic_id`, and the docstring that explains it); it sends nothing at runtime.
+# The Gateway is the sanctioned external caller of billing.payment.register
+# (asyncapi paymentRegister).
 EXPECTED_SUBJECT_MENTIONS_OUTSIDE_BILLING = {
+    "services/gateway/src/otc_gateway/application/payment_handlers.py": 1,
+    "services/gateway/src/otc_gateway/application/rpc_subjects.py": 1,
     "services/seed/src/otc_seed/domain/data/sagas.py": 2,
 }
 # claim 2: the class statement, and the one decoder that builds it from a NATS request

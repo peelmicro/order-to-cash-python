@@ -9,6 +9,10 @@ dependencies = [
     "otc-shared-kernel",
     "otc-contracts",
     "otc-cqrs",
+    "pyjwt>=2.15.1",
+    "pymongo>=4.18.2",
+    "nats-py>=2.16.0",
+    "pydantic-settings>=2.15.0",
 ]
 
 [build-system]

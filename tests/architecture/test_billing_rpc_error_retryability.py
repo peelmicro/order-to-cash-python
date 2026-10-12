@@ -131,8 +131,10 @@ EXPECTED_DOMAIN_ERROR_COUNT = 27
 # its caller (the Gateway today; a caller that retried would hammer a refusal that can never turn
 # into a yes). One row per refusal: the error, the `RpcError` code it is answered with, and
 # whether the caller retries. All are TERMINAL in Orders' own set (the only classifier that exists;
-# the Gateway's mapping is feature 28's); the first column is the decision, the test below reads
-# the answered code from `map_error` and the terminal set from Orders, never a retyped list.
+# the Gateway's mapping is feature 25's, and `test_gateway_rpc_error_mapping.py` parses the third
+# column below and holds the Gateway's classifier to it); the first column is the decision, the
+# test below reads the answered code from `map_error` and the terminal set from Orders, never a
+# retyped list.
 #
 #   refusal                          | RpcError code       | Gateway maps it to         | retry
 #   ---------------------------------+---------------------+----------------------------+------

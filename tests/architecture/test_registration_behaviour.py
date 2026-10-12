@@ -48,11 +48,14 @@ SERVICES = [
     "billing",
     "notifications",
     "projector",
+    "gateway",
 ]  # services whose composition root has `build_dispatcher`; the census below keeps it complete
 
 # `PlaceOrderCommand` (feature 15), the ten saga fact commands and the five dispatch-owed events
-# (feature 16); Fulfillment (feature 17): three commands, two queries, no events (no post-commit
-# in-process hop is owed: the relay is its only post-commit obligation); Billing (features 19, 21):
+# (feature 16), `CancelOrderCommand` and two more dispatch-owed events (feature 41: `credit.release`
+# and the operator's `stock.release`); Fulfillment (feature 17): three commands, two queries, no
+# events (no post-commit in-process hop is owed: the relay is its only post-commit obligation);
+# Billing (features 19, 21):
 # three commands (hold, release, issue invoice), two queries (credit list, invoice list), no events
 # (it consumes no fact and owes no in-process hop either). Notifications (feature 23): the seven
 # notify commands, one per notified fact, no query and no event. Projector (feature 24): ONE command
@@ -61,6 +64,7 @@ SERVICES = [
 TABLES: dict[str, dict[str, list[str]]] = {
     "orders": {
         "commands": [
+            "otc_orders.application.commands.cancel_order.CancelOrderCommand",
             "otc_orders.application.commands.place_order.PlaceOrderCommand",
             *(
                 f"otc_orders.application.saga.fact_commands.Handle{name}FactCommand"
@@ -78,7 +82,8 @@ TABLES: dict[str, dict[str, list[str]]] = {
                 )
             ),
         ],
-        "queries": [],
+        # Feature 40: the reference listing behind `catalog.reference.list`.
+        "queries": ["otc_orders.application.queries.list_reference_data.ListReferenceDataQuery"],
         "events": [
             f"otc_orders.application.saga.dispatch_events.{name}"
             for name in (
@@ -87,6 +92,8 @@ TABLES: dict[str, dict[str, list[str]]] = {
                 "CreditRejectionRecorded",
                 "OrderConfirmedBySaga",
                 "OrderMarkedDespatched",
+                "CreditReleaseOwed",
+                "OperatorCancelAccepted",
             )
         ],
     },
@@ -138,6 +145,39 @@ TABLES: dict[str, dict[str, list[str]]] = {
         "queries": [],
         "events": [],
     },
+}
+
+# Gateway (feature 25): five commands (login, place order, cancel order, register payment, replenish
+# stock) and nine queries (current user, order list, order detail, stock, invoices, credits, and the
+# three catalog lists), no event. Its root registers NO lambda handler (every handler is a class),
+# so the lambda-handler residual of feature 24's review does not apply to it
+# (`services/gateway/tests/unit/test_gateway_registration.py` guards that claim).
+TABLES["gateway"] = {
+    "commands": [
+        f"otc_gateway.application.messages.{name}"
+        for name in (
+            "LoginCommand",
+            "PlaceOrderCommand",
+            "CancelOrderCommand",
+            "RegisterInvoicePaymentCommand",
+            "ReplenishStockCommand",
+        )
+    ],
+    "queries": [
+        f"otc_gateway.application.messages.{name}"
+        for name in (
+            "GetCurrentUserQuery",
+            "ListOrdersQuery",
+            "GetOrderQuery",
+            "ListStockQuery",
+            "ListInvoicesQuery",
+            "ListCreditsQuery",
+            "ListProductsQuery",
+            "ListRetailersQuery",
+            "ListCompaniesQuery",
+        )
+    ],
+    "events": [],
 }
 
 TABLES["projector"] = {
