@@ -46,6 +46,7 @@ These are **requests**, not domain events. They never appear on the fact stream.
 | `stock.release` | Orchestrator | Fulfillment | `(orderReference, release)` | released / already-released |
 | `despatch.create` | Orchestrator | Fulfillment | `(orderReference, despatch)` | `despatchReference` |
 | `credit.hold` | Orchestrator | Billing | `(orderReference, hold)` | approved / rejected + reason |
+| `credit.release` | Orchestrator | Billing | `(orderReference, release)` | released / not-held (`released: false`) |
 | `invoice.issue` | Orchestrator | Billing | `(orderReference, issue)` | `invoiceReference` |
 | `payment.register` | Gateway (operator, tests, external robot) | Billing | `paymentReference` | accepted / duplicate / rejected |
 

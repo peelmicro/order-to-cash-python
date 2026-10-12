@@ -36,6 +36,7 @@ Where an implementation proves the shared specification wrong or incomplete, the
 | `SA-4` | #8, Phase 14 | `saga.md`, `openapi.yaml`, `asyncapi.yaml` — operator cancel | An operator cancel released the credit hold before the stock a despatch could still consume; the order of compensation was corrected |
 | `SA-5` | #8, Phase 16 | `openapi.yaml` — money formatting | Clients were told to format money from a field no REST response carries; the ISO 4217 exponent named instead |
 | `SA-6` | #9, Phase 12 | `openapi.yaml` — `TimelineEntry.causationId` description, prose only | The description claimed every `causationId` names a fact, but R12 lets a responder's fact name the command, which is never a timeline entry; ruled option (b) of backlog 201 |
+| `SA-7` | #9, Phase 13 | `saga.md` §2 — the command vocabulary | `credit.release` was issued by §4.3 and §5 and declared in `asyncapi.yaml`, but the command table lacked its row; the row added (backlog 213) |
 
 `SA-6` was applied byte-identically to #7, #8 and #9 in one session (2026-10-11). Any further amendment raised here will be `SA-7` onwards, applied to #7, #8 and #9 together.
 

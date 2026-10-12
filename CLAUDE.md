@@ -6,7 +6,7 @@
 
 **Order To Cash**: an order lifecycle backbone for a B2B EDI / e-invoicing platform, built as event-driven microservices with an orchestrated saga. It is assessment **#9 of a trilogy** (#7 = NestJS and #8 = .NET, both completed), all implementing the same specification. #9 is the **second reuse run**: spec, harness, n8n workflows and stack-agnostic infra are copied from #8.
 
-- **`specs/shared/` is read-only.** A change is a **spec amendment (`SA-n`, next is `SA-7`)**: human-gated, committed on its own, applied byte-identically to #7 and #8 in the same session, and recorded in every README registry and every `progress/history.md`.
+- **`specs/shared/` is read-only.** A change is a **spec amendment (`SA-n`, next is `SA-8`)**: human-gated, committed on its own, applied byte-identically to #7 and #8 in the same session, and recorded in every README registry and every `progress/history.md`.
 - **Per-feature effort is recorded** in `progress/history.md` against #7's and #8's baselines, including the features that were not faster and every inherited #8 finding that was avoided or recurred.
 - **#7 and #8 are complete.** Touch them only for a spec amendment, the trilogy README rows, or when the maintainer asks.
 

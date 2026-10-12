@@ -1317,3 +1317,17 @@ Against agent time, #9 is **≈0.51× #7** and **≈0.33× #8**: faster than bot
 
 **Arms:** the implementer's three (`asyncio.timeout(None)` in each service → each new test fails at ≈20 s naming the claim); the leader re-ran Fulfillment's after its message was reworded: `Failed: 214: the fulfillment boot did not fail within 20 s of a 2 s bound`, restored by `cmp`, green. **Gate:** `quality.sh` all gates passed, **4089 passed** in 491.63 s (≈500 s wall), overall coverage 97.27 %, domain 98 % (`.arm/phase12-final-quality.log`).
 
+
+## Shared amendment SA-7 (raised here in Phase 13, applied to #7 and #8 in the same session) — 2026-10-12
+
+**What changed.** `specs/shared/saga.md` §2 ("The command vocabulary"): one table row inserted after `credit.hold`: command `credit.release`, caller Orchestrator, responder Billing, idempotency key `(orderReference, release)`, response "released / not-held (`released: false`)". Prose only: no schema, subject, payload, requirement or test-matrix change. The file grows by one line.
+
+**Why.** §2's table is the saga's command vocabulary and listed seven commands, every orchestrator-issued one including the compensation `stock.release` — but not `credit.release`, although §4.3 and the §5 step table issue it and `asyncapi.yaml`'s `creditRelease` channel declares its caller (`orders.saga`) and responder (`billing`). A table a reader takes as complete was not. Found by #9's feature 19 review (`progress/review_billing_credit.md` §7) and filed as #9 backlog id 213; #8 had narrated the gap ("owner feature 41") without filing it. Caller and responder come from `asyncapi.yaml` `creditRelease`; the idempotency key mirrors `stock.release`'s and what every Billing build implements (a repeat appends nothing and emits nothing); the response wording comes from `CreditReleaseReplyPayload.released`.
+
+**Decided at the human gate** of #9's Phase 13 (maintainer, 2026-10-12: "SA-7, SA-8, SA-9 approved"), on #9 `progress/proposal_sa7.md`. The alternative — ruling the omission intentional — was not taken.
+
+**Applied identically** to #7, #8 and #9 in one session. Before: all three copies of `saga.md` hashed sha256 `c2829f87c2bc3221aa6a8574fac3920e19f3363e21c64887728d428f5fc9a880`. After `SA-7`: all three hash `c8552a315b1bcfd61940b64af71175e21774cf645803532344e43bfac2441336`, `cmp`-checked. Because `SA-8` edits the same file in the same session, the post-`SA-7` state is kept in #9 at `progress/sa_snapshots/saga.after_sa7.md` (same hash) so the wrap-up can commit each amendment on its own.
+
+**Generated files:** none. No repository generates anything from `saga.md` (#9 `scripts/generate_contracts.py`, #7 `packages/contracts/scripts/`, #8 `apps/web/scripts/openapi-types.mjs` read only `asyncapi.yaml` / `openapi.yaml`; searched).
+
+**Records.** A `SA-7` row in the amendment registry of #8's and #9's `README.md` (#7's `README.md` has no registry; none created, as for `SA-6`); #9's sentence after the table and #8's back-port status paragraph updated once for `SA-7` – `SA-9`; #9 `CLAUDE.md`'s pointer now reads "next is `SA-10`" (#7's and #8's `CLAUDE.md` carry no numbered pointer, verified). To be committed on its own in each repository at the wrap-up. Full command record: #9 `progress/sa7_sa8_sa9_application.md`.

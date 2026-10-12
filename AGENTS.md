@@ -20,7 +20,7 @@
 | `progress/history.md` | Append-only log of finished features, **with effort records** | For historical context |
 | `progress/impl_<feature>.md` | Implementer's report for one feature | When reviewing |
 | `progress/review_<feature>.md` | Reviewer's verdict for one feature | When closing a feature |
-| `specs/shared/` | The stack-agnostic spec, **copied verbatim from #8** (identical to #7's and #8's through `SA-1`…`SA-6`; `SA-6` was raised here, Phase 12) — read it, never rewrite it | Before designing anything |
+| `specs/shared/` | The stack-agnostic spec, **copied verbatim from #8** (identical to #7's and #8's through `SA-1`…`SA-7`; `SA-6` was raised here in Phase 12, `SA-7` in Phase 13) — read it, never rewrite it | Before designing anything |
 | `specs/<feature>/` | Triple-doc (`requirements.md` EARS + `design.md` + `tasks.md`) | Before implementing any `"sdd": true` feature |
 | `CLAUDE.md` | Leader role + project conventions (cost discipline, layering, naming, money, testing, commits) — kept short | Before writing code |
 | `docs/lessons.md` | **#8's** incident record and reasoning behind the inherited `CLAUDE.md` rules (archive, copied unchanged) | Only when you need the *why* of a rule |
