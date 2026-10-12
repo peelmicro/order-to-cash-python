@@ -1,0 +1,12 @@
+# Brief — implementer, feature 40 `orders_catalog_responder`, fix round (round 2)
+
+**Task:** fix B1 and N1 of `progress/review_orders_catalog_responder.md` (round 1, REJECTED), exactly as its "What must change before re-review" items 1 and 2 say — nothing else. Feature 40 is `in_progress`. Read the review's B1 section, N1, and "What must change"; then the relevant parts of `progress/impl_orders_catalog_responder.md` (arming table, defeat-list row 3, guard-port table). CLAUDE.md on disk is binding.
+
+- **B1:** re-seed `catalog_data` (`services/orders/tests/integration/conftest.py:669-705`) so that, in each list, ordering by **every** sibling column (product `name`, `ean`, `description`; party `name`, `vat`, `gln`, `country`; currency `iso_number`, `symbol` — read the models for any column the review missed) differs from code order, and code order still differs from insertion order and its reverse, with and without the disabled row; keep pairwise distinctness across fields. Compute the per-column orders first as a sentinel (show the computed orders in the record), and preferably make the fixture self-guarding (a test asserting that property of the fixture data). Re-arm R1, R2, R3, R3b and the deletions A4 / A4b / A4c; record the verbatim failures. Check every other test that reads `catalog_data` still asserts what its name says with the new values.
+- **N1:** delete or rename `services/orders/tests/unit/test_catalog_reference_list.py:197`; name `layers-orders` (and A21) in the guard-port table as #9's counterpart of #8's constructor-shape test. If you touch `test_orders_create_responder.py`, delete N4's dead `flushed_after` state.
+- **Not yours:** N3 (`services/orders/tests/unit/test_system_clock.py` — another agent is de-flaking it now; do not touch it, and if it fails in your run, say so and move on) and N2 (the leader attached it to feature 41).
+- One `./quality.sh` at the end (developer stack down): exit code, pytest time and pass count, time per test; wait on the real PID, read the verdict from the log.
+
+**Bounds:** `services/orders/tests/**` (except `test_system_clock.py`) and `progress/impl_orders_catalog_responder.md` (append a "Round 2" section); feature 40's status line in `feature_list.json` → `in_review` at the end. No source edit. No git command that writes the index or working tree. Arming per CLAUDE.md (`.arm/n40r2/`, `sha256`, `cp` + `cmp`, clear caches, timeouts kill the process group).
+
+Return only "result in `progress/impl_orders_catalog_responder.md` (Round 2)" plus at most 4 lines.

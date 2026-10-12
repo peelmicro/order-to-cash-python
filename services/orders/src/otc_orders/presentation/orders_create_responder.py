@@ -1,7 +1,14 @@
-"""The `orders.create` NATS responder: ONE asyncio task for the transport's one subscription.
+"""The Orders NATS responder: ONE asyncio task for the service's three subscriptions
+(`orders.create`, `catalog.reference.list` (feature 40) and `orders.cancel` (feature 41)).
 
-`start()` subscribes (so a subscription failure is a boot failure and a request sent right after
-boot finds a responder); `run(stop)` is the task body the lifespan creates, owns and awaits.
+`ROUTES` is the table, one entry per subject (the pattern of Billing's `CreditResponder` and
+Fulfillment's `StockResponder`: a subject is added as an entry, the class is not renamed and no
+second task is started). Both subjects join the queue group `otc-orders`, so a replica set answers
+each request once.
+
+`start()` subscribes (so a subscription failure is a boot failure) and AWAITS `flush()`, so the
+server has processed every SUB before startup returns and a request sent right after boot finds a
+responder; `run(stop)` is the task body the lifespan creates, owns and awaits.
 
 * nats-py hands each message to a callback that only enqueues it; the loop in `run` takes messages
   in order and serves each in its own task (concurrent requests do not queue behind a slow one),
@@ -17,8 +24,10 @@ boot finds a responder); `run(stop)` is the task body the lifespan creates, owns
 
 import asyncio
 import contextlib
+import functools
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from typing import Final
 
 import nats.errors
 from nats.aio.client import Client
@@ -29,7 +38,13 @@ from otc_contracts.generated.asyncapi import Code
 from otc_cqrs import Dispatcher
 from otc_orders.application.ports.clock import Clock
 from otc_orders.application.scope import OrdersScope
-from otc_orders.infrastructure.messaging.subjects import ORDERS_CREATE_SUBJECT, ORDERS_QUEUE_GROUP
+from otc_orders.infrastructure.messaging.subjects import (
+    CATALOG_REFERENCE_LIST_SUBJECT,
+    ORDERS_CANCEL_SUBJECT,
+    ORDERS_CREATE_SUBJECT,
+    ORDERS_QUEUE_GROUP,
+)
+from otc_orders.presentation import catalog_reference_list, orders_cancel
 from otc_orders.presentation.orders_create import (
     InvalidOrdersCreateRequestError,
     decode_request,
@@ -40,6 +55,41 @@ from otc_orders.presentation.orders_create import (
 )
 
 log = logging.getLogger("otc_orders.presentation.orders_create_responder")
+
+type Route = Callable[[bytes, Dispatcher[OrdersScope], OrdersScope], Awaitable[bytes]]
+
+
+async def _orders_create(
+    body: bytes, dispatcher: Dispatcher[OrdersScope], scope: OrdersScope
+) -> bytes:
+    if not body:
+        raise InvalidOrdersCreateRequestError("orders.create request carried no payload.")
+    result = await dispatcher.send(to_command(decode_request(body)), scope)
+    return encode(to_reply(result))
+
+
+async def _catalog_reference_list(
+    body: bytes, dispatcher: Dispatcher[OrdersScope], scope: OrdersScope
+) -> bytes:
+    request = catalog_reference_list.decode_request(body)
+    listing = await dispatcher.ask(catalog_reference_list.to_query(request), scope)
+    return catalog_reference_list.encode(catalog_reference_list.to_reply(listing))
+
+
+async def _orders_cancel(
+    body: bytes, dispatcher: Dispatcher[OrdersScope], scope: OrdersScope
+) -> bytes:
+    result = await dispatcher.send(
+        orders_cancel.to_command(orders_cancel.decode_request(body)), scope
+    )
+    return orders_cancel.encode(orders_cancel.to_reply(result))
+
+
+ROUTES: Final[dict[str, Route]] = {
+    ORDERS_CREATE_SUBJECT: _orders_create,
+    CATALOG_REFERENCE_LIST_SUBJECT: _catalog_reference_list,
+    ORDERS_CANCEL_SUBJECT: _orders_cancel,
+}
 
 
 class OrdersCreateResponder:
@@ -55,31 +105,39 @@ class OrdersCreateResponder:
         self._dispatcher = dispatcher
         self._scope_factory = scope_factory
         self._clock = clock
-        self._inbox: asyncio.Queue[Msg | None] = asyncio.Queue()
-        self._subscription: Subscription | None = None
+        self._inbox: asyncio.Queue[tuple[str, Msg] | None] = asyncio.Queue()
+        self._subscriptions: list[Subscription] = []
 
     async def start(self) -> None:
-        self._subscription = await self._connection.subscribe(
-            ORDERS_CREATE_SUBJECT, queue=ORDERS_QUEUE_GROUP, cb=self._enqueue
-        )
+        for subject in ROUTES:
+            self._subscriptions.append(
+                await self._connection.subscribe(
+                    subject,
+                    queue=ORDERS_QUEUE_GROUP,
+                    cb=functools.partial(self._enqueue, subject),
+                )
+            )
+        # The server must have PROCESSED every SUB before startup returns.
+        await self._connection.flush()
 
-    async def _enqueue(self, message: Msg) -> None:
-        self._inbox.put_nowait(message)
+    async def _enqueue(self, subject: str, message: Msg) -> None:
+        self._inbox.put_nowait((subject, message))
 
     async def run(self, stop: asyncio.Event) -> None:
-        if self._subscription is None:
+        if not self._subscriptions:
             raise RuntimeError("OrdersCreateResponder.run() before start()")
         in_flight: set[asyncio.Task[None]] = set()
-        waiter = asyncio.create_task(self._end_inbox_on(stop), name="orders.create stop waiter")
+        waiter = asyncio.create_task(self._end_inbox_on(stop), name="orders responder stop waiter")
         try:
-            while (message := await self._inbox.get()) is not None:
-                self._serve_in_task(message, in_flight)
+            while (item := await self._inbox.get()) is not None:
+                self._serve_in_task(*item, in_flight)
             # stop was set: no new request is accepted, the ones already delivered are served
-            with contextlib.suppress(nats.errors.Error):
-                await self._subscription.unsubscribe()
+            for subscription in self._subscriptions:
+                with contextlib.suppress(nats.errors.Error):
+                    await subscription.unsubscribe()
             while not self._inbox.empty():
                 if (queued := self._inbox.get_nowait()) is not None:
-                    self._serve_in_task(queued, in_flight)
+                    self._serve_in_task(*queued, in_flight)
         except asyncio.CancelledError:
             # Cancelled from outside (not a stop): the requests are cancelled with it, then the
             # cancellation continues.
@@ -95,8 +153,10 @@ class OrdersCreateResponder:
         await stop.wait()
         self._inbox.put_nowait(None)
 
-    def _serve_in_task(self, message: Msg, in_flight: set[asyncio.Task[None]]) -> None:
-        task = asyncio.create_task(self._serve(message), name="orders.create request")
+    def _serve_in_task(
+        self, subject: str, message: Msg, in_flight: set[asyncio.Task[None]]
+    ) -> None:
+        task = asyncio.create_task(self._serve(subject, message), name=f"{subject} request")
         in_flight.add(task)
         task.add_done_callback(in_flight.discard)
         task.add_done_callback(_log_fault)
@@ -107,26 +167,22 @@ class OrdersCreateResponder:
         # drain with the others still running (each fault was logged by `_log_fault`).
         await asyncio.gather(*tuple(in_flight), return_exceptions=True)
 
-    async def _serve(self, message: Msg) -> None:
+    async def _serve(self, subject: str, message: Msg) -> None:
         if not message.reply:
-            log.warning("orders.create request carried no reply subject; dropped")
+            log.warning("%s request carried no reply subject; dropped", subject)
             return
         try:
-            if not message.data:
-                raise InvalidOrdersCreateRequestError("orders.create request carried no payload.")
-            command = to_command(decode_request(message.data))
-            result = await self._dispatcher.send(command, self._scope_factory())
-            reply = encode(to_reply(result))
+            reply = await ROUTES[subject](message.data, self._dispatcher, self._scope_factory())
         except Exception as error:
             rpc_error = map_error(error, self._clock.now())
             if rpc_error.code is Code.internal_error:
-                log.exception("orders.create failed")
+                log.exception("%s failed", subject)
             else:
-                log.warning("orders.create refused: %s %s", rpc_error.code.value, rpc_error.message)
+                log.warning("%s refused: %s %s", subject, rpc_error.code.value, rpc_error.message)
             reply = encode(rpc_error)
         await message.respond(reply)
 
 
 def _log_fault(task: asyncio.Task[None]) -> None:
     if not task.cancelled() and (error := task.exception()) is not None:
-        log.error("an orders.create request could not be answered", exc_info=error)
+        log.error("an Orders RPC request could not be answered", exc_info=error)

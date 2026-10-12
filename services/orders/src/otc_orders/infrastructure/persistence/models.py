@@ -203,6 +203,9 @@ class SagaCommand(Base):
     created_at: Mapped[datetime] = mapped_column(_ts())
     updated_at: Mapped[datetime] = mapped_column(_ts())
     sent_at: Mapped[datetime | None] = mapped_column(_ts())
+    # The operator's note of an accepted operator cancellation (feature 41), kept until the fact
+    # that completes the cancellation; null for every other command.
+    operator_note: Mapped[str | None] = mapped_column(Text)
 
 
 class SagaIgnoredFact(Base):

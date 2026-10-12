@@ -29,6 +29,18 @@ class OwedCommand:
     kind: SagaCommandKind
     payload: str  # the request model, serialised once by `to_wire_json`: the bytes that are sent
     triggering_event_id: UniqueId
+    # Only the operator's `stock.release` carries one (feature 41): the note of the accepted
+    # cancellation, kept beside the row because the request itself declares no `note`.
+    operator_note: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptedOperatorCancel:
+    """An operator cancellation accepted for an order whose cancellation has not completed (or has
+    completed through the saga): the `stock.release` row the cancel enqueued. `note` is the
+    operator's note, or `None` when none was given."""
+
+    note: str | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -46,6 +58,16 @@ class SagaCommandQueue(Protocol):
     async def enqueue(self, command: OwedCommand) -> EnqueueOutcome:
         """Idempotent on (order, kind): a command already owed is not an error and leaves the
         existing row untouched, so the surrounding transaction stays usable."""
+        ...
+
+    async def find_accepted_operator_cancel(
+        self, order_id: UniqueId
+    ) -> AcceptedOperatorCancel | None:
+        """The operator cancellation accepted for `order_id`, if any: the order's `stock.release`
+        row whose request carries the reason `order_cancelled` (the saga's own `stock.release`,
+        after a credit rejection, carries `credit_rejected` and is NOT one). Whatever the row's
+        status: a `sent` row still means the cancellation was requested. Read inside the caller's
+        transaction, after the caller holds the order row (SO17)."""
         ...
 
 

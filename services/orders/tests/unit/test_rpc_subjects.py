@@ -11,6 +11,8 @@ from typing import Any
 import yaml
 
 from otc_orders.infrastructure.messaging.subjects import (
+    CATALOG_REFERENCE_LIST_SUBJECT,
+    ORDERS_CANCEL_SUBJECT,
     ORDERS_CREATE_SUBJECT,
     STOCK_CHECK_SUBJECT,
 )
@@ -34,4 +36,16 @@ def test_the_orders_create_subject_is_the_address_of_the_orders_create_channel()
 def test_the_stock_check_subject_is_the_address_of_the_stock_check_channel() -> None:
     assert channel_address("stockCheck") == STOCK_CHECK_SUBJECT, (
         "channel stockCheck: the subject Orders calls is not the spec's address"
+    )
+
+
+def test_the_catalog_subject_is_the_address_of_the_catalog_reference_list_channel() -> None:
+    assert channel_address("catalogReferenceList") == CATALOG_REFERENCE_LIST_SUBJECT, (
+        "channel catalogReferenceList: the subject Orders answers is not the spec's address"
+    )
+
+
+def test_the_orders_cancel_subject_is_the_address_of_the_orders_cancel_channel() -> None:
+    assert channel_address("ordersCancel") == ORDERS_CANCEL_SUBJECT, (
+        "channel ordersCancel: the subject Orders answers is not the spec's address"
     )

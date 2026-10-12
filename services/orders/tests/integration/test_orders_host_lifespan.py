@@ -391,16 +391,24 @@ async def test_a_command_with_no_registered_handler_fails_the_boot(
         async with orders_host_factory():
             pytest.fail("the host must not come up with PlaceOrderCommand unhandled")
 
-    # PlaceOrderCommand (feature 15) and the ten saga fact commands (feature 16), each by name
+    # PlaceOrderCommand (feature 15), the ten saga fact commands (feature 16), CancelOrderCommand
+    # (feature 41), each by name, and the reference listing query (feature 40)
     assert (
         "No command handler is registered for PlaceOrderCommand. Exactly one is required."
         in refused.value.problems
     )
-    assert len(refused.value.problems) == 11
-    assert all(
-        problem.startswith("No command handler is registered for ")
-        for problem in refused.value.problems
+    assert (
+        "No command handler is registered for CancelOrderCommand. Exactly one is required."
+        in refused.value.problems
     )
+    assert (
+        "No query handler is registered for ListReferenceDataQuery. Exactly one is required."
+        in refused.value.problems
+    )
+    assert len(refused.value.problems) == 13
+    assert sorted(p.split(" is registered for ")[0] for p in refused.value.problems) == [
+        "No command handler"
+    ] * 12 + ["No query handler"]
 
 
 async def test_a_command_with_two_registered_handlers_fails_the_boot(
@@ -438,6 +446,9 @@ async def test_the_boot_fails_when_a_fact_command_has_no_handler(
         def register_command(self, command_type: type, factory: Any) -> None:
             if command_type is not HandleStockReservedFactCommand:
                 self._inner.register_command(command_type, factory)
+
+        def register_query(self, query_type: type, factory: Any) -> None:
+            self._inner.register_query(query_type, factory)
 
         def register_event(self, event_type: type, factory: Any) -> None:
             self._inner.register_event(event_type, factory)

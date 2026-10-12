@@ -37,9 +37,19 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import otc_orders.application
 import otc_orders.application.saga.fact_commands as fact_commands_module
 from otc_cqrs import Dispatcher, HandlerRegistry
+from otc_orders.application.commands.cancel_order import (
+    CancelOrderCommand,
+    CancelOrderCommandHandler,
+)
 from otc_orders.application.commands.place_order import PlaceOrderCommand, PlaceOrderCommandHandler
+from otc_orders.application.queries.list_reference_data import (
+    ListReferenceDataQuery,
+    ListReferenceDataQueryHandler,
+)
 from otc_orders.application.saga.dispatch_events import (
     CreditRejectionRecorded,
+    CreditReleaseOwed,
+    OperatorCancelAccepted,
     OrderConfirmedBySaga,
     OrderMarkedDespatched,
     OrderMarkedStockReserved,
@@ -61,6 +71,8 @@ from otc_orders.application.saga.fact_commands import (
 from otc_orders.application.saga.order_sagas import (
     CreditApprovedSaga,
     CreditRejectedSaga,
+    CreditReleaseSaga,
+    OperatorCancelSaga,
     OrderDespatchedSaga,
     OrderPlacedSaga,
     StockReservedSaga,
@@ -125,6 +137,8 @@ def load_settings() -> OrdersSettings:
 def register_handlers(registry: HandlerRegistry[OrdersScope]) -> None:
     """Explicit registration: one statement per message type, no loop, no decorator."""
     registry.register_command(PlaceOrderCommand, PlaceOrderCommandHandler)
+    registry.register_command(CancelOrderCommand, CancelOrderCommandHandler)
+    registry.register_query(ListReferenceDataQuery, ListReferenceDataQueryHandler)
     # The saga's ten fact commands: one handler class, registered once per command.
     registry.register_command(HandleOrderPlacedFactCommand, SagaFactCommandHandler)
     registry.register_command(HandleStockReservedFactCommand, SagaFactCommandHandler)
@@ -136,7 +150,7 @@ def register_handlers(registry: HandlerRegistry[OrdersScope]) -> None:
     registry.register_command(HandleInvoiceIssuedFactCommand, SagaFactCommandHandler)
     registry.register_command(HandlePaymentReceivedFactCommand, SagaFactCommandHandler)
     registry.register_command(HandleCreditReleasedFactCommand, SagaFactCommandHandler)
-    # The five dispatch-owed events, each signalling its own command to the fast path. A missing
+    # The seven dispatch-owed events, each signalling its own command to the fast path. A missing
     # statement here would silently drop the fast path (an event with no handler is not a boot
     # error), so `unit/saga/test_order_sagas.py` publishes each through the built dispatcher.
     registry.register_event(
@@ -153,6 +167,13 @@ def register_handlers(registry: HandlerRegistry[OrdersScope]) -> None:
     )
     registry.register_event(
         OrderMarkedDespatched, lambda scope: OrderDespatchedSaga(scope.required_saga_signal())
+    )
+    # Feature 41: `credit.release` (owed by two facts) and the operator's `stock.release`.
+    registry.register_event(
+        CreditReleaseOwed, lambda scope: CreditReleaseSaga(scope.required_saga_signal())
+    )
+    registry.register_event(
+        OperatorCancelAccepted, lambda scope: OperatorCancelSaga(scope.required_saga_signal())
     )
 
 

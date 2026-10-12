@@ -1,4 +1,4 @@
-"""The five `order_sagas` event handlers (`design.md` 7.7; #7's file name).
+"""The seven `order_sagas` event handlers (`design.md` 7.7; #7's file name).
 
 Each does one thing: signal its own command to the fast path and return. `signal` never blocks and
 never raises, so the dispatcher's `publish` (which awaits each handler in turn) returns at once.
@@ -8,6 +8,8 @@ from otc_orders.application.ports.saga_signal import SagaCommandRef, SagaCommand
 from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.application.saga.dispatch_events import (
     CreditRejectionRecorded,
+    CreditReleaseOwed,
+    OperatorCancelAccepted,
     OrderConfirmedBySaga,
     OrderMarkedDespatched,
     OrderMarkedStockReserved,
@@ -53,3 +55,19 @@ class OrderDespatchedSaga:
 
     async def handle(self, event: OrderMarkedDespatched, /) -> None:
         self._signal.signal(SagaCommandRef(event.order_id, SagaCommandKind.INVOICE_ISSUE))
+
+
+class CreditReleaseSaga:
+    def __init__(self, signal: SagaCommandSignal) -> None:
+        self._signal = signal
+
+    async def handle(self, event: CreditReleaseOwed, /) -> None:
+        self._signal.signal(SagaCommandRef(event.order_id, SagaCommandKind.CREDIT_RELEASE))
+
+
+class OperatorCancelSaga:
+    def __init__(self, signal: SagaCommandSignal) -> None:
+        self._signal = signal
+
+    async def handle(self, event: OperatorCancelAccepted, /) -> None:
+        self._signal.signal(SagaCommandRef(event.order_id, SagaCommandKind.STOCK_RELEASE))

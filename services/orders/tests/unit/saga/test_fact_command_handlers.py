@@ -19,6 +19,7 @@ from otc_cqrs import Dispatcher
 from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.application.saga.dispatch_events import (
     CreditRejectionRecorded,
+    CreditReleaseOwed,
     OrderConfirmedBySaga,
     OrderMarkedDespatched,
     OrderMarkedStockReserved,
@@ -26,6 +27,7 @@ from otc_orders.application.saga.dispatch_events import (
 )
 from otc_orders.application.saga.fact import SagaFact
 from otc_orders.application.saga.fact_command_handlers import (
+    DISPATCH_EVENTS,
     FactPayloadError,
     SagaFactCommandHandler,
     build_saga_fact,
@@ -164,6 +166,7 @@ def stub_the_step(
         (SagaCommandKind.STOCK_RELEASE, CreditRejectionRecorded),
         (SagaCommandKind.DESPATCH_CREATE, OrderConfirmedBySaga),
         (SagaCommandKind.INVOICE_ISSUE, OrderMarkedDespatched),
+        (SagaCommandKind.CREDIT_RELEASE, CreditReleaseOwed),  # feature 41
     ],
 )
 async def test_a_dispatch_owed_event_is_published_only_for_a_processed_fact_that_enqueued_a_command(
@@ -187,6 +190,20 @@ async def test_a_dispatch_owed_event_is_published_only_for_a_processed_fact_that
     assert event.triggering_event_id.value == EVENT_ID  # type: ignore[attr-defined]
     assert used_scope is scope
     assert calls == ["step returned", "publish"], "published strictly after the step returned"
+
+
+def test_every_command_kind_a_fact_can_owe_has_a_dispatch_owed_event() -> None:
+    """The six kinds, as a literal (feature 41 added `credit.release`): a kind with no entry would
+    raise `KeyError` AFTER the fact's transaction committed, leaving the row to the sweeper."""
+    assert set(DISPATCH_EVENTS) == {
+        SagaCommandKind.STOCK_RESERVE,
+        SagaCommandKind.CREDIT_HOLD,
+        SagaCommandKind.STOCK_RELEASE,
+        SagaCommandKind.DESPATCH_CREATE,
+        SagaCommandKind.INVOICE_ISSUE,
+        SagaCommandKind.CREDIT_RELEASE,
+    }
+    assert set(DISPATCH_EVENTS) == set(SagaCommandKind)
 
 
 @pytest.mark.parametrize(

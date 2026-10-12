@@ -1,7 +1,8 @@
-"""The five dispatch-owed events (`design.md` 7.7; #8's names, a deliberate parity cost).
+"""The dispatch-owed events (`design.md` 7.7; #8's names, a deliberate parity cost): five owed by
+facts, and (feature 41) two more, `CreditReleaseOwed` and `OperatorCancelAccepted`.
 
-Published through `scope.dispatcher` strictly AFTER the fact's transaction committed, and only for a
-fact that was processed and enqueued a command. Each is handled by one `order_sagas` handler, which
+Published through `scope.dispatcher` strictly AFTER the transaction that enqueued the command
+committed, and only when it enqueued one. Each is handled by one `order_sagas` handler, which
 signals the fast path. (`OrderConfirmedBySaga`, not #7's `OrderConfirmed`: the domain event of that
 name exists.)
 """
@@ -37,5 +38,24 @@ class OrderConfirmedBySaga:
 
 @dataclass(frozen=True, slots=True)
 class OrderMarkedDespatched:
+    order_id: UniqueId
+    triggering_event_id: UniqueId
+
+
+@dataclass(frozen=True, slots=True)
+class CreditReleaseOwed:
+    """`credit.release` was enqueued: by `stock.released.v1` at `credit_approved` / `confirmed`, or
+    by a late `credit.approved.v1` after an accepted operator cancellation."""
+
+    order_id: UniqueId
+    triggering_event_id: UniqueId
+
+
+@dataclass(frozen=True, slots=True)
+class OperatorCancelAccepted:
+    """The operator's cancellation was accepted and `stock.release` (reason `order_cancelled`) was
+    enqueued. The only dispatch-owed event whose trigger is a request, not a fact: its
+    `triggering_event_id` is the request's own id."""
+
     order_id: UniqueId
     triggering_event_id: UniqueId

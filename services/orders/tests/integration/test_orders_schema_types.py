@@ -142,6 +142,7 @@ EXPECTED: dict[str, dict[str, tuple[str, bool, str]]] = {
         "created_at": (TS3, False, ""),
         "updated_at": (TS3, False, ""),
         "sent_at": (TS3, True, ""),
+        "operator_note": (TEXT, True, ""),  # 0002, feature 41
     },
     "saga_ignored_facts": {
         "id": (UUID, False, ""),

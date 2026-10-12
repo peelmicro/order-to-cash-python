@@ -51,16 +51,31 @@ class FakeSubscription:
 
 
 class FakeConnection:
+    """One `FakeSubscription` per subject (the responder subscribes both of its subjects);
+    `callback` / `subscription` are the `orders.create` ones, what these tests drive."""
+
     def __init__(self) -> None:
-        self.callback: Callable[[Any], Awaitable[None]] | None = None
-        self.subscription = FakeSubscription()
+        self.callbacks: dict[str, Callable[[Any], Awaitable[None]]] = {}
+        self.subscriptions: dict[str, FakeSubscription] = {}
+
+    @property
+    def callback(self) -> Callable[[Any], Awaitable[None]] | None:
+        return self.callbacks.get("orders.create")
+
+    @property
+    def subscription(self) -> FakeSubscription:
+        return self.subscriptions["orders.create"]
 
     async def subscribe(
         self, subject: str, queue: str, cb: Callable[[Any], Awaitable[None]]
     ) -> FakeSubscription:
-        assert (subject, queue) == ("orders.create", "otc-orders")
-        self.callback = cb
-        return self.subscription
+        assert queue == "otc-orders", f"{subject} subscribed outside the queue group"
+        self.callbacks[subject] = cb
+        self.subscriptions[subject] = FakeSubscription()
+        return self.subscriptions[subject]
+
+    async def flush(self) -> None:
+        return None
 
 
 class GatedDispatcher:

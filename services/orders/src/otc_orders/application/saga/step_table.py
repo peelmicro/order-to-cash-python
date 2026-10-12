@@ -4,8 +4,8 @@ Pure data and pure functions. It imports the domain, `otc_shared_kernel` and the
 models only: no SQLAlchemy, aiokafka, nats or FastAPI.
 
 The value for a consumed fact is a TUPLE OF VARIANTS, each with its own precondition (#7's final
-shape), so feature 41 adds SA-4's variants as rows without reshaping the table. In this feature
-every consumed fact has exactly one variant.
+shape). Feature 41 added SA-4's variants as rows without reshaping the table: `stock.released.v1`
+and `credit.released.v1` each have three (saga.md 4.3 and 5); every other consumed fact has one.
 
 Every aggregate call is given `occurred_at=fact.occurred_at` and, where the method takes one,
 `causation_id=fact.event_id`: the instant is the fact's, never the clock's, and the chain of
@@ -18,7 +18,12 @@ is structural.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from otc_contracts.generated.asyncapi import Reason1, StockReleasedPayload
+from otc_contracts.generated.asyncapi import (
+    CreditReleasedPayload,
+    Reason1,
+    Reason3,
+    StockReleasedPayload,
+)
 from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.application.saga.fact import SagaFact
 from otc_orders.domain.order import Order
@@ -74,6 +79,48 @@ def release_steps_from(fact: SagaFact) -> tuple[CompensationStep, ...]:
     return (
         CompensationStep(
             step=CompensationStepKind.STOCK_RELEASED,
+            event_id=fact.event_id,
+            event_type=fact.event_type,
+            occurred_at=fact.occurred_at,
+            summary=None,
+        ),
+    )
+
+
+def map_credit_release_reason(fact: SagaFact) -> CancellationReason:
+    """`credit.released.v1`'s own `reason` at `credit_approved` / `confirmed` -> the cancellation
+    reason. `order_cancelled` is the only reason that completes an operator cancellation;
+    `invoice_paid` reaches this fact on the `paid` variant, which never calls this mapping."""
+    payload = fact.payload
+    if not isinstance(payload, CreditReleasedPayload):
+        raise TypeError(f"{fact.event_type} does not carry a CreditReleasedPayload")
+    if payload.reason is Reason3.order_cancelled:
+        return CancellationReason.OPERATOR_CANCELLED
+    # Any other reason at these statuses must fail loudly, never fall through to a guess.
+    raise ValueError(f"no cancellation reason is mapped for credit release reason {payload.reason}")
+
+
+def stock_then_credit_release_steps(fact: SagaFact) -> tuple[CompensationStep, ...]:
+    """The two releases of an operator cancellation from `credit_approved` / `confirmed`, in the
+    order they happened (stock first, saga.md 4.3), built at the moment the cancellation completes:
+    the credit step from the OBSERVED `credit.released.v1`. The stock step is SYNTHESISED: no state
+    survives from the earlier `stock.released.v1`, so it carries no `event_id` (optional on the
+    wire) and the current fact's instant. A disclosed limitation, not a silent one (#7
+    `saga-steps.ts` and #8 `SagaStepTable.cs` make the same trade)."""
+    return (
+        CompensationStep(
+            step=CompensationStepKind.STOCK_RELEASED,
+            event_id=None,
+            event_type="stock.released.v1",
+            occurred_at=fact.occurred_at,
+            summary=(
+                "stock released - reason: order_cancelled (the contested resource, released "
+                "first so that Fulfillment's lock decides against a despatch already "
+                "requested - saga.md 4.3)"
+            ),
+        ),
+        CompensationStep(
+            step=CompensationStepKind.CREDIT_RELEASED,
             event_id=fact.event_id,
             event_type=fact.event_type,
             occurred_at=fact.occurred_at,
@@ -152,11 +199,26 @@ SAGA_STEPS: Mapping[str, Skip | tuple[Variant, ...]] = {
             command_after=SagaCommandKind.STOCK_RELEASE,
         ),
     ),
+    # Three variants (saga.md 4.3, 5). From `stock_reserved` the release fact cancels (R28). From
+    # `credit_approved` / `confirmed` an operator cancellation released the stock FIRST (the
+    # contested resource: Fulfillment's lock arbitrates it against the despatch already requested),
+    # so this fact is the release winning the race and owes `credit.release`; the status is
+    # unchanged until `credit.released.v1` completes the cancellation.
     "stock.released.v1": (
         Cancel(
             precondition=OrderStatus.STOCK_RESERVED,
             reason=map_release_reason,
             compensation_steps=release_steps_from,
+        ),
+        Advance(
+            precondition=OrderStatus.CREDIT_APPROVED,
+            apply=None,
+            command_after=SagaCommandKind.CREDIT_RELEASE,
+        ),
+        Advance(
+            precondition=OrderStatus.CONFIRMED,
+            apply=None,
+            command_after=SagaCommandKind.CREDIT_RELEASE,
         ),
     ),
     "order.despatched.v1": (
@@ -172,8 +234,20 @@ SAGA_STEPS: Mapping[str, Skip | tuple[Variant, ...]] = {
     "payment.received.v1": (
         Advance(precondition=OrderStatus.INVOICED, apply=_pay, command_after=None),
     ),
+    # Three variants: `paid` completes the order (R24); `credit_approved` / `confirmed` complete an
+    # operator cancellation (saga.md 4.3: the cancelling fact is the credit release).
     "credit.released.v1": (
         Advance(precondition=OrderStatus.PAID, apply=_complete, command_after=None),
+        Cancel(
+            precondition=OrderStatus.CREDIT_APPROVED,
+            reason=map_credit_release_reason,
+            compensation_steps=stock_then_credit_release_steps,
+        ),
+        Cancel(
+            precondition=OrderStatus.CONFIRMED,
+            reason=map_credit_release_reason,
+            compensation_steps=stock_then_credit_release_steps,
+        ),
     ),
     "order.confirmed.v1": Skip(),
     "order.completed.v1": Skip(),

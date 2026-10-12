@@ -14,6 +14,13 @@ domain `code` under `details.code` (the key is `code`), `NOT_FOUND` with
 own code passed through when it is one of the wire enum's twelve (else `UNAVAILABLE` carrying it as
 `details.responderCode`).
 `INTERNAL_ERROR` never carries the exception's text (it can hold SQL or a path); it is logged.
+
+`map_error` is the mapping of the service's ONE responder, so it also maps the refusal of a
+`catalog.reference.list` request (`InvalidCatalogReferenceListRequestError` -> `VALIDATION_FAILED`,
+feature 40) and the refusals of `orders.cancel` (feature 41): a malformed request ->
+`VALIDATION_FAILED`, an unknown order -> `NOT_FOUND`, an order that cannot be cancelled
+(`despatched` onwards, or already `cancelled`) -> `ORDER_NOT_CANCELLABLE` with the order's status, a
+domain refusal and not a transport failure.
 """
 
 from datetime import datetime
@@ -28,6 +35,7 @@ from otc_contracts.generated.asyncapi import (
     RpcError,
     Shortage,
 )
+from otc_orders.application.commands.cancel_order import OrderNotFoundError
 from otc_orders.application.commands.place_order import (
     PlaceOrderCommand,
     PlaceOrderError,
@@ -42,6 +50,9 @@ from otc_orders.application.ports.stock_availability import (
     StockCheckTimeoutError,
     StockCheckTransportError,
 )
+from otc_orders.domain.errors import OrderNotCancellableError
+from otc_orders.presentation.catalog_reference_list import InvalidCatalogReferenceListRequestError
+from otc_orders.presentation.orders_cancel import InvalidOrdersCancelRequestError
 from otc_shared_kernel import DomainError, Quantity
 
 
@@ -122,9 +133,27 @@ def map_error(error: Exception, occurred_at: datetime) -> RpcError:
     """The `RpcError` for a failure of the `orders.create` path. Order matters: the specific
     refusals come before the general ones they are subclasses of."""
     match error:
-        case InvalidOrdersCreateRequestError():
+        case (
+            InvalidOrdersCreateRequestError()
+            | InvalidCatalogReferenceListRequestError()
+            | InvalidOrdersCancelRequestError()
+        ):
             return RpcError(
                 code=Code.validation_failed, message=str(error), occurred_at=occurred_at
+            )
+        case OrderNotFoundError():
+            return RpcError(
+                code=Code.not_found,
+                message=str(error),
+                details={"field": "orderId", "value": str(error.order_id.value)},
+                occurred_at=occurred_at,
+            )
+        case OrderNotCancellableError():  # before DomainError, which it is a subclass of
+            return RpcError(
+                code=Code.order_not_cancellable,
+                message=error.message,
+                details={"code": error.code, "status": error.source},
+                occurred_at=occurred_at,
             )
         case StockUnavailableError():
             return RpcError(

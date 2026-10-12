@@ -1,0 +1,12 @@
+# Brief — implementer, backlog 216, fix round (round 2, test-only)
+
+**Task:** fix D1 and the two non-blocking one-liners of `progress/review_operator_cancel_at_placed_strands_the_stock_reservation.md` (round 1, REJECTED) — read its "Defects" and "Non-blocking findings" sections first. **Test-only: no source change.** Backlog 216 is `in_progress`. CLAUDE.md on disk is binding.
+
+- **D1 (a):** commit a test that the new branch's precondition is exactly "`cancelled` with `operator_cancelled`": an order at `stock_reserved` **with an accepted operator cancel** (the shape `_is_late_approval` uses) that receives a `stock.reserved.v1` must still record it **ignored** (`saga_ignored_facts`, observed `stock_reserved`, expected `placed`) and issue no new row — `saga.md` §6. Arm with the reviewer's broadened precondition (its probe `.arm/r216/test_r216_r6b_probe.py`); it must fail.
+- **D1 (b):** commit a test for the record's prose claim: an order cancelled by its operator **from `stock_reserved`** already owes a `stock.release` row carrying the note; a (redelivered) `stock.reserved.v1` then adds no second row, sends no second request, and the stored note is unchanged. Arm by making the late path write its own row / clear the note.
+- The reviewer's drafts are in `.arm/r216/test_r216_scenarios.py` — adapt them into `services/orders/tests/integration/saga/test_late_stock_reservation.py` (keep its style and fixtures), do not commit them as-is from `.arm/`.
+- **N-a:** `tests/unit/saga/test_command_payloads.py`'s positive payload test uses the same reference for the order and the fact — give them distinct references so a payload built from the fact's reference fails; arm it.
+- **N-b:** the redelivery test's baseline `(rows_before and requests_before) == 1` does not assert a single row — assert `rows_before == 1 and requests_before == 1` (or two asserts); arm it.
+- One `./quality.sh` at the end (developer stack down; exit code, pytest time and pass count, time per test; wait on the real PID). Nobody else is running tests.
+
+**Bounds:** `services/orders/tests/**` and `progress/impl_operator_cancel_at_placed_strands_the_stock_reservation.md` (append "Round 2": what changed, the arms — mutation, test, verbatim message, `sha256`, `cmp`); 216's status line → `in_review`. No source edit. No git command that writes the index or working tree. Arming per CLAUDE.md in `.arm/n216r2/`. Return only "result in `progress/impl_operator_cancel_at_placed_strands_the_stock_reservation.md` (Round 2)" plus at most 3 lines.

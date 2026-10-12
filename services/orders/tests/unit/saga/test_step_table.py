@@ -1,3 +1,4 @@
+# ruff: noqa: E501 - test names are sentences naming the case, as in the integration suite
 """The saga's step table: every fact against every status (R19-R28, SO2, SO7).
 
 The expected outcome of every cell is a LITERAL transcribed from `specs/shared/saga.md` 3.1 / 4 / 5,
@@ -13,7 +14,7 @@ from typing import Any
 import pytest
 
 from otc_contracts import FACT_MODELS
-from otc_contracts.generated.asyncapi import Reason1
+from otc_contracts.generated.asyncapi import Reason1, Reason3
 from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.application.saga.fact import SagaFact
 from otc_orders.application.saga.step_table import (
@@ -21,9 +22,11 @@ from otc_orders.application.saga.step_table import (
     Advance,
     Cancel,
     Skip,
+    map_credit_release_reason,
     map_release_reason,
     release_steps_from,
     step_for_status,
+    stock_then_credit_release_steps,
     variants_for,
 )
 from otc_orders.domain.order import Order
@@ -33,24 +36,32 @@ from otc_orders.domain.value_objects.order_status import OrderStatus
 
 STATUSES = {status.value: status for status in OrderStatus}
 
-# fact -> (the one status at which it applies, (status after, events raised, command owed))
-CONSUMED: dict[str, tuple[str, tuple[str, tuple[str, ...], str | None]]] = {
-    "order.placed.v1": ("placed", ("placed", (), "stock.reserve")),  # R19
-    "stock.reserved.v1": ("placed", ("stock_reserved", (), "credit.hold")),  # R20
-    "stock.rejected.v1": ("placed", ("cancelled", ("order.cancelled.v1",), None)),  # R26
-    "credit.approved.v1": (  # R21
-        "stock_reserved",
-        ("confirmed", ("order.confirmed.v1",), "despatch.create"),
-    ),
-    "credit.rejected.v1": ("stock_reserved", ("stock_reserved", (), "stock.release")),  # R27
-    "stock.released.v1": (  # R28
-        "stock_reserved",
-        ("cancelled", ("order.cancelled.v1",), None),
-    ),
-    "order.despatched.v1": ("confirmed", ("despatched", (), "invoice.issue")),  # R22
-    "invoice.issued.v1": ("despatched", ("invoiced", (), None)),  # R23
-    "payment.received.v1": ("invoiced", ("paid", (), None)),  # R24 (first half)
-    "credit.released.v1": ("paid", ("completed", ("order.completed.v1",), None)),  # R24
+# fact -> {status at which it applies: (status after, events raised, command owed)}. Ten facts are
+# consumed; eight apply at exactly one status, `stock.released.v1` and `credit.released.v1` at three
+# (feature 41, saga.md 4.3 and 5).
+CONSUMED: dict[str, dict[str, tuple[str, tuple[str, ...], str | None]]] = {
+    "order.placed.v1": {"placed": ("placed", (), "stock.reserve")},  # R19
+    "stock.reserved.v1": {"placed": ("stock_reserved", (), "credit.hold")},  # R20
+    "stock.rejected.v1": {"placed": ("cancelled", ("order.cancelled.v1",), None)},  # R26
+    "credit.approved.v1": {  # R21
+        "stock_reserved": ("confirmed", ("order.confirmed.v1",), "despatch.create")
+    },
+    "credit.rejected.v1": {"stock_reserved": ("stock_reserved", (), "stock.release")},  # R27
+    "stock.released.v1": {
+        "stock_reserved": ("cancelled", ("order.cancelled.v1",), None),  # R28
+        # SA-4: the release won the race; the cancellation completes on credit.released.v1
+        "credit_approved": ("credit_approved", (), "credit.release"),
+        "confirmed": ("confirmed", (), "credit.release"),
+    },
+    "order.despatched.v1": {"confirmed": ("despatched", (), "invoice.issue")},  # R22
+    "invoice.issued.v1": {"despatched": ("invoiced", (), None)},  # R23
+    "payment.received.v1": {"invoiced": ("paid", (), None)},  # R24 (first half)
+    "credit.released.v1": {
+        "paid": ("completed", ("order.completed.v1",), None),  # R24
+        # SA-4: the credit release completes an operator cancellation
+        "credit_approved": ("cancelled", ("order.cancelled.v1",), None),
+        "confirmed": ("cancelled", ("order.cancelled.v1",), None),
+    },
 }
 SELF_PRODUCED = (
     "order.confirmed.v1",
@@ -90,14 +101,22 @@ def test_every_fact_against_every_status_does_what_saga_md_says_and_nothing_else
     order_in: Callable[..., Order],
     make_fact: Callable[..., SagaFact],
 ) -> None:
-    fact = make_fact(event_type)
+    # `credit.released.v1` completes an operator cancellation from `credit_approved` / `confirmed`
+    # (reason `order_cancelled`); from `paid` it is the payment's (`invoice_paid`, the default).
+    fact = make_fact(
+        event_type,
+        credit_release_reason=(
+            Reason3.invoice_paid if status is OrderStatus.PAID else Reason3.order_cancelled
+        ),
+    )
     step = step_for_status(event_type, status)
-    if event_type not in CONSUMED or CONSUMED[event_type][0] != status.value:
+    expected = CONSUMED.get(event_type, {}).get(status.value)
+    if expected is None:
         assert step is None, f"{event_type} must do nothing at {status.value}, got {step}"
         return
     assert step is not None, f"{event_type} must apply at {status.value}"
     order = order_in(status)
-    assert applied(order, fact) == CONSUMED[event_type][1], f"{event_type} at {status.value}"
+    assert applied(order, fact) == expected, f"{event_type} at {status.value}"
 
 
 def test_the_table_has_fourteen_rows_and_a_cell_for_each_of_the_126_pairs() -> None:
@@ -255,3 +274,106 @@ def test_a_release_step_from_a_non_release_payload_is_a_type_error(
 ) -> None:
     with pytest.raises(TypeError):
         map_release_reason(make_fact("credit.rejected.v1"))
+
+
+# ----------------------------------------------------------------- feature 41: SA-4's variants
+
+
+def test_the_two_released_facts_have_exactly_three_variants_with_these_preconditions_in_this_order() -> (
+    None
+):
+    stock_variants = variants_for("stock.released.v1")
+    credit_variants = variants_for("credit.released.v1")
+
+    assert isinstance(stock_variants, tuple)
+    assert isinstance(credit_variants, tuple)
+    assert [(type(v), v.precondition) for v in stock_variants] == [
+        (Cancel, OrderStatus.STOCK_RESERVED),
+        (Advance, OrderStatus.CREDIT_APPROVED),
+        (Advance, OrderStatus.CONFIRMED),
+    ]
+    assert [(type(v), v.precondition) for v in credit_variants] == [
+        (Advance, OrderStatus.PAID),
+        (Cancel, OrderStatus.CREDIT_APPROVED),
+        (Cancel, OrderStatus.CONFIRMED),
+    ]
+    one_variant = {
+        event_type
+        for event_type, value in SAGA_STEPS.items()
+        if isinstance(value, tuple) and len(value) == 1
+    }
+    assert len(one_variant) == 8, "every other consumed fact keeps exactly one variant"
+
+
+@pytest.mark.parametrize("status", [OrderStatus.CREDIT_APPROVED, OrderStatus.CONFIRMED])
+def test_stock_released_at_credit_approved_or_confirmed_changes_no_status_and_owes_credit_release(
+    status: OrderStatus, order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    step = step_for_status("stock.released.v1", status)
+    assert isinstance(step, Advance)
+    assert step.apply is None
+    assert step.command_after is SagaCommandKind.CREDIT_RELEASE
+    order = order_in(status)
+    fact = make_fact("stock.released.v1", release_reason=Reason1.order_cancelled)
+
+    assert applied(order, fact) == (status.value, (), "credit.release")
+
+
+def test_the_credit_release_cancel_names_stock_then_credit_built_from_the_observed_fact(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    fact = make_fact("credit.released.v1", credit_release_reason=Reason3.order_cancelled)
+
+    first, second = stock_then_credit_release_steps(fact)
+
+    assert (first.step, second.step) == (
+        CompensationStepKind.STOCK_RELEASED,
+        CompensationStepKind.CREDIT_RELEASED,
+    ), "stock first: the contested resource (saga.md 4.3)"
+    assert first.event_id is None, "no state survives from the earlier stock.released.v1"
+    assert first.event_type == "stock.released.v1"
+    assert first.summary is not None
+    assert "order_cancelled" in first.summary
+    assert second.event_id == fact.event_id
+    assert second.event_type == "credit.released.v1"
+    assert second.summary is None
+    assert first.occurred_at == second.occurred_at == fact.occurred_at
+    assert len(stock_then_credit_release_steps(fact)) == 2
+
+
+@pytest.mark.parametrize("status", [OrderStatus.CREDIT_APPROVED, OrderStatus.CONFIRMED])
+def test_credit_released_with_order_cancelled_cancels_with_operator_cancelled_caused_by_the_fact(
+    status: OrderStatus, order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    fact = make_fact("credit.released.v1", credit_release_reason=Reason3.order_cancelled)
+    order = order_in(status)
+
+    assert applied(order, fact) == ("cancelled", ("order.cancelled.v1",), None)
+
+    [cancelled] = order.domain_events
+    assert cancelled.cancellation_reason is CancellationReason.OPERATOR_CANCELLED  # type: ignore[attr-defined]
+    assert cancelled.causation_id == fact.event_id  # type: ignore[attr-defined]
+    assert cancelled.occurred_at == fact.occurred_at  # type: ignore[attr-defined]
+    assert cancelled.compensation_steps == stock_then_credit_release_steps(fact)  # type: ignore[attr-defined]
+
+
+def test_a_credit_release_reason_that_does_not_complete_a_cancellation_fails_loudly(
+    make_fact: Callable[..., SagaFact],
+) -> None:
+    paid = make_fact("credit.released.v1", credit_release_reason=Reason3.invoice_paid)
+
+    with pytest.raises(ValueError, match="invoice_paid"):
+        map_credit_release_reason(paid)
+    assert (
+        map_credit_release_reason(
+            make_fact("credit.released.v1", credit_release_reason=Reason3.order_cancelled)
+        )
+        is CancellationReason.OPERATOR_CANCELLED
+    )
+
+
+def test_a_credit_release_step_from_a_non_credit_release_payload_is_a_type_error(
+    make_fact: Callable[..., SagaFact],
+) -> None:
+    with pytest.raises(TypeError):
+        map_credit_release_reason(make_fact("stock.released.v1"))

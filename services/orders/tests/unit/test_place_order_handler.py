@@ -22,7 +22,13 @@ from otc_orders.application.commands.place_order import (
     ReferenceDataNotFoundError,
     StockUnavailableError,
 )
-from otc_orders.application.ports.reference_catalog import PartyReference, ProductReference
+from otc_orders.application.ports.reference_catalog import (
+    CurrencyListing,
+    PartyListing,
+    PartyReference,
+    ProductListing,
+    ProductReference,
+)
 from otc_orders.application.ports.stock_availability import (
     StockAvailabilityLine,
     StockAvailabilityLineResult,
@@ -76,6 +82,19 @@ class FakeCatalog:
         self.log.append("catalog.products")
         self.asked_products.append(tuple(product_codes))
         return {c: self.products[c] for c in product_codes if c in self.products}
+
+    # The listing side of the port (feature 40): placing an order never lists, so a call is a bug.
+    async def list_products(self, *, include_disabled: bool) -> Sequence[ProductListing]:
+        raise AssertionError("placing an order must not list products")
+
+    async def list_retailers(self, *, include_disabled: bool) -> Sequence[PartyListing]:
+        raise AssertionError("placing an order must not list retailers")
+
+    async def list_companies(self, *, include_disabled: bool) -> Sequence[PartyListing]:
+        raise AssertionError("placing an order must not list companies")
+
+    async def list_currencies(self) -> Sequence[CurrencyListing]:
+        raise AssertionError("placing an order must not list currencies")
 
 
 class FakeStock:

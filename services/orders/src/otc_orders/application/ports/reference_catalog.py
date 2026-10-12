@@ -2,9 +2,13 @@
 
 Each lookup answers `None` / `False` / a missing key for an unknown code; deciding that this is a
 refusal is the handler's. Prices are `Money` (int minor units) in the product's own currency.
+
+The four `list_*` methods are the SAME port's listing side (feature 40, `catalog.reference.list`):
+one adapter answers the place-order lookups and the listings, so the tables are read from one place.
+Each lists ordered by `code`; a row with `disabled_at` set is listed only when `include_disabled`.
 """
 
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -24,6 +28,37 @@ class ProductReference:
     price: Money
 
 
+@dataclass(frozen=True, slots=True)
+class ProductListing:
+    code: str
+    ean: str
+    name: str
+    description: str
+    price: Money
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PartyListing:
+    """A retailer or a company as the listing shows it (`gln` is the stored text)."""
+
+    code: str
+    name: str
+    country: str
+    vat: str
+    gln: str
+    currency: str
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CurrencyListing:
+    code: str
+    iso_number: str
+    symbol: str
+    decimal_points: int
+
+
 class ReferenceCatalog(Protocol):
     async def find_retailer(self, retailer_code: str) -> PartyReference | None: ...
 
@@ -34,3 +69,11 @@ class ReferenceCatalog(Protocol):
     async def find_products(
         self, product_codes: Collection[str]
     ) -> Mapping[str, ProductReference]: ...
+
+    async def list_products(self, *, include_disabled: bool) -> Sequence[ProductListing]: ...
+
+    async def list_retailers(self, *, include_disabled: bool) -> Sequence[PartyListing]: ...
+
+    async def list_companies(self, *, include_disabled: bool) -> Sequence[PartyListing]: ...
+
+    async def list_currencies(self) -> Sequence[CurrencyListing]: ...

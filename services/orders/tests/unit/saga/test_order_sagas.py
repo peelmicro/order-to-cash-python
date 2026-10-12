@@ -1,8 +1,9 @@
-"""The five `order_sagas` handlers, through the dispatcher BUILT BY `composition.py` (task 6.9).
+"""The seven `order_sagas` handlers, through the dispatcher BUILT BY `composition.py` (task 6.9;
+feature 41 added `CreditReleaseOwed` and `OperatorCancelAccepted`).
 
 `HandlerRegistry.register_event` accepts zero handlers silently (an event with no listener is not a
 boot error), so a missing registration would drop the fast path without failing anything. Publishing
-each of the five events through the composition root's own dispatcher is the guard.
+each of the seven events through the composition root's own dispatcher is the guard.
 """
 
 import uuid
@@ -14,6 +15,8 @@ from otc_orders.application.ports.saga_signal import SagaCommandRef
 from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.application.saga.dispatch_events import (
     CreditRejectionRecorded,
+    CreditReleaseOwed,
+    OperatorCancelAccepted,
     OrderConfirmedBySaga,
     OrderMarkedDespatched,
     OrderMarkedStockReserved,
@@ -32,6 +35,8 @@ EXPECTED = [
     (CreditRejectionRecorded, SagaCommandKind.STOCK_RELEASE),
     (OrderConfirmedBySaga, SagaCommandKind.DESPATCH_CREATE),
     (OrderMarkedDespatched, SagaCommandKind.INVOICE_ISSUE),
+    (CreditReleaseOwed, SagaCommandKind.CREDIT_RELEASE),  # feature 41
+    (OperatorCancelAccepted, SagaCommandKind.STOCK_RELEASE),  # feature 41: the operator's release
 ]
 
 
@@ -66,7 +71,7 @@ async def test_each_dispatch_owed_event_signals_exactly_its_own_command_through_
     assert signal.refs == [SagaCommandRef(ORDER, kind)]
 
 
-async def test_the_five_events_together_signal_five_distinct_commands() -> None:
+async def test_the_seven_events_together_signal_seven_commands_of_six_kinds() -> None:
     signal = RecordingSignal()
     dispatcher = build_dispatcher()
     scope = scope_with(signal)
@@ -75,7 +80,10 @@ async def test_the_five_events_together_signal_five_distinct_commands() -> None:
         await dispatcher.publish(event_type(order_id=ORDER, triggering_event_id=TRIGGER), scope)
 
     assert [ref.kind for ref in signal.refs] == [kind for _, kind in EXPECTED]
-    assert len({ref.kind for ref in signal.refs}) == 5
+    assert len(signal.refs) == 7
+    assert len({ref.kind for ref in signal.refs}) == 6, (
+        "six kinds: STOCK_RELEASE is signalled by the credit rejection AND by the operator cancel"
+    )
 
 
 async def test_a_scope_with_no_saga_signal_is_refused_not_dropped() -> None:

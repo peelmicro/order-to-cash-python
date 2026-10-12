@@ -110,7 +110,7 @@ uv sync
 
 Integration tests start their own PostgreSQL container through testcontainers, so the gate needs Docker but **not** the development stack — it passes with the stack stopped.
 
-The infrastructure runs too, and so do the first five services, Orders, Fulfillment, Billing, Notifications and the Projector (see *Running the services* below).
+The infrastructure runs too, and so do six services, Orders, Fulfillment, Billing, Notifications, the Projector and the Gateway, the system's only HTTP edge (see *Running the services* below).
 
 ```bash
 cp .env.example .env
@@ -183,6 +183,26 @@ docker exec otcpy-mongodb mongosh -u otc_mongo_root -p otc_mongo_dev_password --
 
 "Caused by" on a live timeline links facts whose `causationId` names another fact (Orders' and Billing's own chains); a fact produced by an RPC responder names the command that requested it, which is never a timeline entry (R12, made explicit in the contract by `SA-6`). The live walkthrough (the seeded documents byte-identical after a replay and a process restart, one order placed end to end) is in `progress/impl_projector_read_model.md` §9.
 
+The Gateway is the only HTTP edge: every route of `specs/shared/openapi.yaml`, a bearer token from `POST /auth/login`, order list and detail served from the read model, every other route forwarded over NATS to the service that owns it, and `GET /orders/stream`, server-sent events of each order's progress with `Last-Event-ID` reconnection. It needs the `JWT_*` and `GATEWAY_*` settings of `.env.example` in `.env` (an older `.env` lacks them; the boot refuses a missing `JWT_SECRET`). Start the infrastructure first and wait for Kafka to report healthy, or the services fail their boot:
+
+```bash
+docker compose -p otcpy -f docker-compose.infra.yml start postgres mongodb kafka nats
+until [ "$(docker inspect -f '{{.State.Health.Status}}' otcpy-kafka)" = healthy ]; do sleep 2; done
+# Orders, Fulfillment, Billing and the Projector as above, then:
+uv run python -m otc_gateway        # listens on GATEWAY_HOST:GATEWAY_PORT (3001); one worker only
+TOKEN=$(curl -s -X POST localhost:3001/auth/login -H 'content-type: application/json' \
+  -d '{"username":"operator","password":"otc_operator_dev_password_change_me"}' | jq -r .accessToken)
+curl -s localhost:3001/catalog/products -H "Authorization: Bearer $TOKEN" | jq '.items[0]'
+curl -N localhost:3001/orders/stream -H "Authorization: Bearer $TOKEN"     # live frames; Ctrl-C to stop
+ORDER_ID=$(curl -s -X POST localhost:3001/orders -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"retailerCode":"CarrefourEs","companyCode":"IBERFOODS","currency":"EUR","lines":[{"productCode":"PRD-0001","quantity":2}]}' | jq -r .orderId)
+curl -s -X POST localhost:3001/orders/$ORDER_ID/cancel -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{"note":"customer rang"}' | jq    # 202 while cancellable, 409 once despatched
+curl -s localhost:3001/orders/$ORDER_ID -H "Authorization: Bearer $TOKEN" | jq '.status, .events[-1]'
+```
+
+`uv run uvicorn otc_gateway.main:app --port N` also serves, but ignores `GATEWAY_PORT`. With Billing stopped the order holds at `stock_reserved`, so the cancel always has a reservation to release; the operator's note then reaches the timeline on `order.cancelled.v1`.
+
 ## How this is being built
 
 The development **process is a deliverable**, not a footnote: Spec-Driven Development plus an agent harness with a backlog state machine (`feature_list.json`, max one feature in progress), external memory (`progress/`), a specification that precedes the code, and separate leader / spec-author / implementer / reviewer subagents each with an explicitly declared model. Every large feature passes a human approval gate at its specification, and every phase is tested by a human before its commit. `docs/PROCESS.md` explains all of it; the git history is the evidence, and for this repository it reads **harness first, specification copy second, code after**.
@@ -203,7 +223,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 10 | Billing service | ✅ the `BuyerCredit` aggregate over an append-only hold / release / consume ledger, every credit decision taken under a lock on the credit line at a pinned `READ COMMITTED` (measured: `REPEATABLE READ` would silently approve over the limit); the `.99` simulator evaluated before a seeded failure-rate draw, and a rate the boot refuses by value (Python's `float()` accepts `1_0`, `nan` and `inf`); invoices issued on despatch with `INV-######` numbers, a non-zero discount in every fixture and the gross derived from the lines (#8's discount set to `0` had left 273 tests green); remittance intake idempotent by `paymentReference`, emitting `payment.received.v1` then `credit.released.v1` caused by it in one transaction (#8 id 57); Billing's outbox joins the copy-parity guard, now a census of every service owning an `outbox` table. **The order-to-cash cycle closes end to end for the first time in #9; the feature that closes it changed nothing under `services/orders` (the phase's only Orders edit is feature 19's Kafka client-id pattern, `BC34`). Four features, five review rounds: `billing_credit` rejected once (three test-only defects), the other three approved first pass** |
 | 11 | Notifications service | ✅ the seven notified facts consumed from Kafka and filtered by event type, the filter guarded in both directions (deleting any of the seven, or adding any `stock.*` / `credit.*` sibling, fails a test: #8's guards ran past the filter and never crossed it); seven templates whose 109 payload sites are enumerated and mutated by a committed sweep (`scripts/notification-template-sweep.py`, 198 of 198 mutations caught; #8 counted the same population by hand as 14, 89 and 95); aiosmtplib into Mailpit behind one port with the console adapter, degrading to the console on a permanent refusal (#8 id 73); the durable `processed_events` ledger through a byte-identical copy of Orders' idempotent consumer, recorded before the send and forgotten on a transient failure, and the parity guard's every-consumer-carries-a-copy case live for the first time. **Approved first pass, the first of the three builds to pass this feature in round one** (#7 and #8 were each rejected once) |
 | 12 | Projector service + MongoDB read model | ✅ all fourteen facts projected into `order_timeline` by the only writer of the read model, in causal timeline order, with placeholders, a status that never regresses and idempotent replay (the dedup key written in the same atomic update); indexes checked against the server's stored specification at boot; the update signal on NATS for the Gateway's SSE; the read-model constants pinned to the same fixture the seed is pinned to. Backlog 201 ruled at the gate: R12 kept, and **`SA-6`**, the first amendment raised in #9, corrects the `causationId` description in all three repositories. Every fact value placed in a MongoDB update is `$literal`-wrapped: an operator note beginning with `$` is evaluated by the server in #7's and #8's projectors (measured, recorded as a predecessor finding). Rejected twice, every time on what the tests could see and never on production behaviour; approved in a scoped third round (#8: three rejections; #7: one). Also: Orders, Fulfillment and Billing now fail their boot within a bound on an unreachable NATS (backlog 214) |
-| 13 | Gateway / BFF | ⬜ |
+| 13 | Gateway / BFF | ✅ the Gateway, the system's only HTTP edge: every route of the contract, PyJWT bearer auth (the public set a literal, the protected set derived from the served routes), a login rate limit, list and detail from the read model only, every RPC subject and payload asserted against `asyncapi.yaml`, and server-sent events with a heartbeat, a replay buffer and `Last-Event-ID` reconnection (a client that falls behind is disconnected and resumes, never silently skipped); Orders' catalog and operator-cancel responders, with `SA-4`'s release order, the late credit approval, the race against forward progress proved both ways under a held lock, and the operator's note on the timeline. Three amendments raised and applied to all three repositories: **`SA-7`** (the missing `credit.release` row), **`SA-8`** (a stock reservation stranded by an operator cancel at `placed`, in all three builds, now released) and **`SA-9`** (every Gateway status declared; a timeout no longer promises "not applied"). Four units rejected once, two approved first time, none on production behaviour |
 | 14 | Health checks, OTel propagation, retry + DLQ | ⬜ |
 | 15 | End-to-end saga verification | ⬜ |
 | 16 | Angular (Analog) web app | ⬜ |

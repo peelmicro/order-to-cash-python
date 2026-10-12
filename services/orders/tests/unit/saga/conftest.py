@@ -122,7 +122,12 @@ def order_in() -> Callable[..., Order]:
     return build
 
 
-def _payload_of(event_type: str, *, release_reason: Reason1) -> WireModel:
+def _payload_of(
+    event_type: str,
+    *,
+    release_reason: Reason1,
+    credit_release_reason: Reason3 = Reason3.invoice_paid,
+) -> WireModel:
     reservation = ReservationRef(
         reservation_id=uuid.UUID("00000000-0000-4000-8000-0000000000f1"),
         product_code="SKU-A",
@@ -225,7 +230,7 @@ def _payload_of(event_type: str, *, release_reason: Reason1) -> WireModel:
                 currency="EUR",
                 released_amount=8115,
                 available_credit_after=100000,
-                reason=Reason3.invoice_paid,
+                reason=credit_release_reason,
             )
         case "order.confirmed.v1":
             return OrderConfirmedPayload(
@@ -270,13 +275,14 @@ FactBuilder = Callable[..., SagaFact]
 
 @pytest.fixture
 def make_fact() -> FactBuilder:
-    """`make_fact(event_type, release_reason=..., **overrides)`: a consumed fact whose event id,
-    correlation id and aggregate id are pairwise distinct."""
+    """`make_fact(event_type, release_reason=..., credit_release_reason=..., **overrides)`: a
+    consumed fact whose event id, correlation id and aggregate id are pairwise distinct."""
 
     def build(
         event_type: str,
         *,
         release_reason: Reason1 = Reason1.credit_rejected,
+        credit_release_reason: Reason3 = Reason3.invoice_paid,
         **overrides: Any,
     ) -> SagaFact:
         fact = SagaFact(
@@ -284,7 +290,11 @@ def make_fact() -> FactBuilder:
             event_type=event_type,
             correlation_id=ORDER_ID,
             occurred_at=FACT_INSTANT,
-            payload=_payload_of(event_type, release_reason=release_reason),
+            payload=_payload_of(
+                event_type,
+                release_reason=release_reason,
+                credit_release_reason=credit_release_reason,
+            ),
             topic="otc.test.facts.v1",
         )
         return dataclasses.replace(fact, **overrides)

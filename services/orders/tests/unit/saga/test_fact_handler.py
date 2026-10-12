@@ -1,3 +1,4 @@
+# ruff: noqa: E501 - test names are sentences naming the case, as in the integration suite
 """`SagaFactHandler.handle` with fakes: the transactional unit of `design.md` 7.1.
 
 R25, SO3, SO8, SO12.
@@ -15,7 +16,12 @@ from dataclasses import dataclass, field
 import pytest
 
 from otc_contracts import to_wire_json
-from otc_orders.application.ports.saga_command_store import EnqueueOutcome, OwedCommand
+from otc_contracts.generated.asyncapi import Reason1, Reason3
+from otc_orders.application.ports.saga_command_store import (
+    AcceptedOperatorCancel,
+    EnqueueOutcome,
+    OwedCommand,
+)
 from otc_orders.application.ports.saga_ignored_facts import IgnoredFactMarker
 from otc_orders.application.ports.unit_of_work import OrdersTransaction
 from otc_orders.application.saga.command_kind import SagaCommandKind
@@ -27,6 +33,7 @@ from otc_orders.application.saga.fact_handler import (
     SagaFactResult,
 )
 from otc_orders.domain.order import Order
+from otc_orders.domain.value_objects.cancellation_reason import CancellationReason
 from otc_orders.domain.value_objects.order_status import OrderStatus
 from otc_shared_kernel import UniqueId
 
@@ -57,9 +64,21 @@ class FakeOrders:
 
 
 class FakeQueue:
-    def __init__(self, recorder: Recorder, outcome: EnqueueOutcome) -> None:
+    def __init__(
+        self,
+        recorder: Recorder,
+        outcome: EnqueueOutcome,
+        accepted: AcceptedOperatorCancel | None = None,
+    ) -> None:
         self._recorder = recorder
         self._outcome = outcome
+        self._accepted = accepted
+
+    async def find_accepted_operator_cancel(
+        self, order_id: UniqueId
+    ) -> AcceptedOperatorCancel | None:
+        self._recorder.calls.append("find_accepted_operator_cancel")
+        return self._accepted
 
     async def enqueue(self, command: OwedCommand) -> EnqueueOutcome:
         self._recorder.calls.append("enqueue")
@@ -77,9 +96,15 @@ class FakeIgnored:
 
 
 class FakeTransaction:
-    def __init__(self, recorder: Recorder, order: Order | None, outcome: EnqueueOutcome) -> None:
+    def __init__(
+        self,
+        recorder: Recorder,
+        order: Order | None,
+        outcome: EnqueueOutcome,
+        accepted: AcceptedOperatorCancel | None = None,
+    ) -> None:
         self.orders = FakeOrders(recorder, order)
-        self.saga_commands = FakeQueue(recorder, outcome)
+        self.saga_commands = FakeQueue(recorder, outcome, accepted)
         self.ignored_facts = FakeIgnored(recorder)
         self.order_numbers = None
 
@@ -105,9 +130,12 @@ def handler_over(
     *,
     duplicate: bool = False,
     outcome: EnqueueOutcome = EnqueueOutcome.ENQUEUED,
+    accepted: AcceptedOperatorCancel | None = None,
 ) -> tuple[SagaFactHandler, Recorder, FakeConsumption]:
     recorder = Recorder()
-    consumption = FakeConsumption(FakeTransaction(recorder, order, outcome), duplicate=duplicate)
+    consumption = FakeConsumption(
+        FakeTransaction(recorder, order, outcome, accepted), duplicate=duplicate
+    )
     return SagaFactHandler(consumption), recorder, consumption
 
 
@@ -219,7 +247,12 @@ async def test_credit_approved_takes_both_edges_in_one_save_and_enqueues_despatc
     result = await handler.handle(make_fact("credit.approved.v1"))
 
     assert result.enqueued is SagaCommandKind.DESPATCH_CREATE
-    assert recorder.calls == ["load_for_update", "save", "enqueue"]
+    assert recorder.calls == [
+        "load_for_update",
+        "find_accepted_operator_cancel",
+        "save",
+        "enqueue",
+    ], "a credit approval at stock_reserved first asks whether an operator cancel was accepted"
     assert order.status is OrderStatus.CONFIRMED
     assert len(order.domain_events) == 1
 
@@ -297,3 +330,199 @@ async def test_the_enqueued_payload_is_the_one_serializer_text_of_the_request_mo
     assert owed.payload == to_wire_json(
         build_command_payload(SagaCommandKind.STOCK_RESERVE, order, fact)
     )
+
+
+# ----------------------------------------------------------------- feature 41: SA-4's branches
+
+
+async def test_a_late_credit_approval_at_stock_reserved_with_an_accepted_cancel_owes_credit_release_and_changes_nothing(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    order = order_in(OrderStatus.STOCK_RESERVED)
+    handler, recorder, _ = handler_over(order, accepted=AcceptedOperatorCancel(note="n"))
+    fact = make_fact("credit.approved.v1")
+
+    result = await handler.handle(fact)
+
+    assert result == SagaFactResult(SagaFactOutcome.PROCESSED, SagaCommandKind.CREDIT_RELEASE)
+    assert recorder.calls == ["load_for_update", "find_accepted_operator_cancel", "enqueue"]
+    assert recorder.saved == [], "no transition: nothing is saved"
+    assert order.status is OrderStatus.STOCK_RESERVED
+    assert order.domain_events == (), "no order.confirmed.v1"
+    [owed] = recorder.enqueued
+    assert owed.kind is SagaCommandKind.CREDIT_RELEASE
+    assert owed.triggering_event_id == fact.event_id
+    assert owed.operator_note is None, "the late release is not the operator's request"
+    assert '"orderReference":"ORD-000007"' in owed.payload
+
+
+async def test_a_late_credit_approval_at_stock_reserved_without_an_accepted_cancel_confirms_as_usual(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    order = order_in(OrderStatus.STOCK_RESERVED)
+    handler, recorder, _ = handler_over(order, accepted=None)
+
+    result = await handler.handle(make_fact("credit.approved.v1"))
+
+    assert result == SagaFactResult(SagaFactOutcome.PROCESSED, SagaCommandKind.DESPATCH_CREATE)
+    assert order.status is OrderStatus.CONFIRMED
+    assert [c.kind for c in recorder.enqueued] == [SagaCommandKind.DESPATCH_CREATE]
+
+
+async def test_a_credit_approval_for_an_order_already_cancelled_by_the_operator_owes_credit_release_only(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    order = order_in(OrderStatus.CANCELLED, reason=CancellationReason.OPERATOR_CANCELLED)
+    handler, recorder, _ = handler_over(order, accepted=None)
+
+    result = await handler.handle(make_fact("credit.approved.v1"))
+
+    assert result == SagaFactResult(SagaFactOutcome.PROCESSED, SagaCommandKind.CREDIT_RELEASE)
+    assert recorder.calls == ["load_for_update", "enqueue"], (
+        "the cancelled shape needs no query: the aggregate already says operator_cancelled"
+    )
+    assert recorder.saved == []
+
+
+@pytest.mark.parametrize(
+    "reason", [CancellationReason.CREDIT_REJECTED, CancellationReason.STOCK_REJECTED]
+)
+async def test_a_credit_approval_for_a_cancellation_the_saga_decided_is_ignored(
+    reason: CancellationReason,
+    order_in: Callable[..., Order],
+    make_fact: Callable[..., SagaFact],
+) -> None:
+    order = order_in(OrderStatus.CANCELLED, reason=reason)
+    handler, recorder, _ = handler_over(order, accepted=AcceptedOperatorCancel(note=None))
+
+    result = await handler.handle(make_fact("credit.approved.v1"))
+
+    assert result == SagaFactResult(SagaFactOutcome.IGNORED, None)
+    assert recorder.enqueued == []
+    assert recorder.saved == []
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        OrderStatus.PLACED,
+        OrderStatus.CREDIT_APPROVED,
+        OrderStatus.CONFIRMED,
+        OrderStatus.DESPATCHED,
+        OrderStatus.COMPLETED,
+    ],
+)
+async def test_a_credit_approval_at_any_other_status_is_never_a_late_approval_even_with_an_accepted_cancel(
+    status: OrderStatus, order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    handler, recorder, _ = handler_over(
+        order_in(status), accepted=AcceptedOperatorCancel(note=None)
+    )
+
+    result = await handler.handle(make_fact("credit.approved.v1"))
+
+    assert result == SagaFactResult(SagaFactOutcome.IGNORED, None)
+    assert recorder.enqueued == []
+
+
+async def test_the_late_credit_release_that_is_already_owed_is_still_reported_owed_and_warns(
+    order_in: Callable[..., Order],
+    make_fact: Callable[..., SagaFact],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    handler, _, _ = handler_over(
+        order_in(OrderStatus.STOCK_RESERVED),
+        outcome=EnqueueOutcome.ALREADY_OWED,
+        accepted=AcceptedOperatorCancel(note=None),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = await handler.handle(make_fact("credit.approved.v1"))
+
+    assert result.enqueued is SagaCommandKind.CREDIT_RELEASE
+    [warning] = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warning.command == "credit.release"  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("status", [OrderStatus.CREDIT_APPROVED, OrderStatus.CONFIRMED])
+async def test_stock_released_at_credit_approved_or_confirmed_saves_nothing_and_owes_credit_release(
+    status: OrderStatus, order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    order = order_in(status)
+    handler, recorder, _ = handler_over(order)
+    fact = make_fact("stock.released.v1", release_reason=Reason1.order_cancelled)
+
+    result = await handler.handle(fact)
+
+    assert result == SagaFactResult(SagaFactOutcome.PROCESSED, SagaCommandKind.CREDIT_RELEASE)
+    assert recorder.calls == ["load_for_update", "enqueue"], "the status is unchanged: no save"
+    assert order.status is status
+    [owed] = recorder.enqueued
+    assert owed.triggering_event_id == fact.event_id
+
+
+async def test_an_operator_cancellation_completed_by_the_stock_fact_carries_the_accepted_notes_text(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    order = order_in(OrderStatus.STOCK_RESERVED)
+    handler, recorder, _ = handler_over(order, accepted=AcceptedOperatorCancel(note="$operator"))
+
+    result = await handler.handle(
+        make_fact("stock.released.v1", release_reason=Reason1.order_cancelled)
+    )
+
+    assert result == SagaFactResult(SagaFactOutcome.PROCESSED, None)
+    assert recorder.calls == ["load_for_update", "find_accepted_operator_cancel", "save"]
+    [cancelled] = order.domain_events
+    assert cancelled.note == "$operator"  # type: ignore[attr-defined]
+    assert cancelled.cancellation_reason is CancellationReason.OPERATOR_CANCELLED  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("status", [OrderStatus.CREDIT_APPROVED, OrderStatus.CONFIRMED])
+async def test_an_operator_cancellation_completed_by_the_credit_fact_carries_the_accepted_notes_text(
+    status: OrderStatus, order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    order = order_in(status)
+    handler, _, _ = handler_over(order, accepted=AcceptedOperatorCancel(note="$operator"))
+
+    await handler.handle(
+        make_fact("credit.released.v1", credit_release_reason=Reason3.order_cancelled)
+    )
+
+    [cancelled] = order.domain_events
+    assert cancelled.note == "$operator"  # type: ignore[attr-defined]
+    assert len(cancelled.compensation_steps) == 2  # type: ignore[attr-defined]
+
+
+async def test_an_operator_cancellation_with_no_accepted_note_carries_no_note(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    order = order_in(OrderStatus.STOCK_RESERVED)
+    handler, _, _ = handler_over(order, accepted=AcceptedOperatorCancel(note=None))
+
+    await handler.handle(make_fact("stock.released.v1", release_reason=Reason1.order_cancelled))
+
+    [cancelled] = order.domain_events
+    assert cancelled.note is None  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    ("event_type", "status"),
+    [("stock.rejected.v1", OrderStatus.PLACED), ("stock.released.v1", OrderStatus.STOCK_RESERVED)],
+)
+async def test_a_saga_decided_cancellation_never_reads_an_operator_note(
+    event_type: str,
+    status: OrderStatus,
+    order_in: Callable[..., Order],
+    make_fact: Callable[..., SagaFact],
+) -> None:
+    """`stock.rejected.v1` and a credit-rejected release cancel for the saga's own reason: even if a
+    note were stored beside the order's release row, it is not this cancellation's."""
+    order = order_in(status)
+    handler, recorder, _ = handler_over(order, accepted=AcceptedOperatorCancel(note="not mine"))
+
+    await handler.handle(make_fact(event_type))
+
+    assert "find_accepted_operator_cancel" not in recorder.calls
+    [cancelled] = order.domain_events
+    assert cancelled.note is None  # type: ignore[attr-defined]

@@ -24,18 +24,20 @@ Waits = Callable[..., Awaitable[None]]
 OrderAt = Callable[..., Awaitable[Order]]
 
 # fact -> (the status the order is in when the fact is redelivered, the fact's precondition):
-# `saga.md` 6, "Per-fact redelivery behaviour".
-REDELIVERY: dict[str, tuple[OrderStatus, str]] = {
+# `saga.md` 6, "Per-fact redelivery behaviour". A fact with several variants records NO expected
+# status (`design.md` 7.4: "None when a fact type has several"); since feature 41 those are
+# `stock.released.v1` and `credit.released.v1` (three variants each).
+REDELIVERY: dict[str, tuple[OrderStatus, str | None]] = {
     "order.placed.v1": (OrderStatus.STOCK_RESERVED, "placed"),
     "stock.reserved.v1": (OrderStatus.STOCK_RESERVED, "placed"),
     "credit.approved.v1": (OrderStatus.CONFIRMED, "stock_reserved"),
     "order.despatched.v1": (OrderStatus.DESPATCHED, "confirmed"),
     "invoice.issued.v1": (OrderStatus.INVOICED, "despatched"),
     "payment.received.v1": (OrderStatus.PAID, "invoiced"),
-    "credit.released.v1": (OrderStatus.COMPLETED, "paid"),
+    "credit.released.v1": (OrderStatus.COMPLETED, None),
     "stock.rejected.v1": (OrderStatus.CANCELLED, "placed"),
     "credit.rejected.v1": (OrderStatus.CANCELLED, "stock_reserved"),
-    "stock.released.v1": (OrderStatus.CANCELLED, "stock_reserved"),
+    "stock.released.v1": (OrderStatus.CANCELLED, None),
 }
 
 

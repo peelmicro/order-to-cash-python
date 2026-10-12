@@ -1,3 +1,4 @@
+# ruff: noqa: E501 - test names are sentences naming the case, as in the integration suite
 """`build_command_payload`: the request of each saga command from the LOADED AGGREGATE.
 
 R19, R20, design 9.4.
@@ -25,6 +26,7 @@ from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.application.saga.command_payloads import (
     UnsupportedReleaseTriggerError,
     build_command_payload,
+    build_operator_stock_release_payload,
 )
 from otc_orders.application.saga.fact import SagaFact
 from otc_orders.domain.order import Order
@@ -121,17 +123,37 @@ def test_stock_release_is_owed_by_credit_rejected_with_that_reason(
     assert payload.order_reference == "ORD-000007"
 
 
+def test_stock_release_owed_by_a_late_reservation_is_the_operators_order_cancelled_release(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    """SA-8: a `stock.reserved.v1` after the operator cancellation owes `order_cancelled`, with the
+    AGGREGATE's reference (SO12) and no note."""
+    order = order_in(OrderStatus.CANCELLED)
+    base = make_fact("stock.reserved.v1")
+    decoy = "ORD-000099"  # distinct from the order's reference: equality cannot hold by accident
+    assert decoy != order.order_reference.value
+    fact = make_fact(
+        "stock.reserved.v1", payload=base.payload.model_copy(update={"order_reference": decoy})
+    )
+
+    payload = build_command_payload(SagaCommandKind.STOCK_RELEASE, order, fact)
+
+    assert isinstance(payload, StockReleaseRequestPayload)
+    assert payload.reason is Reason4.order_cancelled
+    assert payload.order_reference == order.order_reference.value
+    assert payload.order_reference != decoy
+
+
 @pytest.mark.parametrize(
     "event_type",
     [
         "order.placed.v1",
-        "stock.reserved.v1",
         "stock.released.v1",
         "credit.approved.v1",
         "order.despatched.v1",
     ],
 )
-def test_stock_release_owed_by_any_fact_but_credit_rejected_raises(
+def test_stock_release_owed_by_any_fact_but_credit_rejected_and_the_late_reservation_raises(
     event_type: str, order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
 ) -> None:
     with pytest.raises(UnsupportedReleaseTriggerError, match=event_type):
@@ -153,3 +175,51 @@ def test_every_payload_serialises_through_the_one_serializer_as_compact_camel_ca
         '{"orderReference":"ORD-000007","retailerCode":"RET-01","companyCode":"CMP-01",'
         '"amount":{"amount":8115,"currency":"EUR"}}'
     )
+
+
+# ----------------------------------------------------------------- feature 41: the release requests
+
+
+def test_the_operators_stock_release_carries_the_aggregates_reference_and_the_reason_order_cancelled(
+    order_in: Callable[..., Order],
+) -> None:
+    payload = build_operator_stock_release_payload(order_in(OrderStatus.CONFIRMED))
+
+    assert isinstance(payload, StockReleaseRequestPayload)
+    assert payload.reason is Reason4.order_cancelled
+    assert to_wire_json(payload) == '{"orderReference":"ORD-000007","reason":"order_cancelled"}'
+    assert "note" not in to_wire_json(payload), "the contract declares no note on this request"
+
+
+@pytest.mark.parametrize("event_type", ["stock.released.v1", "credit.approved.v1"])
+def test_credit_release_is_owed_by_the_stock_release_fact_and_by_a_late_credit_approval(
+    event_type: str, order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    payload = build_command_payload(
+        SagaCommandKind.CREDIT_RELEASE, order_in(OrderStatus.CONFIRMED), make_fact(event_type)
+    )
+
+    assert isinstance(payload, CreditReleaseRequestPayload)
+    assert to_wire_json(payload) == (
+        '{"orderReference":"ORD-000007","retailerCode":"RET-01","companyCode":"CMP-01"}'
+    )
+
+
+@pytest.mark.parametrize(
+    "event_type",
+    [
+        "order.placed.v1",
+        "stock.reserved.v1",
+        "credit.rejected.v1",
+        "order.despatched.v1",
+        "credit.released.v1",
+        "payment.received.v1",
+    ],
+)
+def test_credit_release_owed_by_any_other_fact_raises(
+    event_type: str, order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    with pytest.raises(UnsupportedReleaseTriggerError, match=event_type):
+        build_command_payload(
+            SagaCommandKind.CREDIT_RELEASE, order_in(OrderStatus.CONFIRMED), make_fact(event_type)
+        )

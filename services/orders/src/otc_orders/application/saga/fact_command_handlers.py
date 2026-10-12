@@ -17,6 +17,7 @@ from otc_contracts import FACT_MODELS, WireModel, from_wire_json, to_wire_json, 
 from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.application.saga.dispatch_events import (
     CreditRejectionRecorded,
+    CreditReleaseOwed,
     OrderConfirmedBySaga,
     OrderMarkedDespatched,
     OrderMarkedStockReserved,
@@ -36,7 +37,8 @@ log = logging.getLogger("otc_orders.saga.fact_command_handlers")
 
 
 # The command each dispatch-owed event signals (and `order_sagas.py` signals): the one place the
-# kind -> event pairing is written. `credit.release` is owed by no step in this feature.
+# kind -> event pairing is written. A `stock.release` owed by the OPERATOR's request is signalled by
+# `OperatorCancelAccepted` (the cancel handler), not through this table, which is for facts.
 class _DispatchEventFactory(Protocol):
     def __call__(self, *, order_id: UniqueId, triggering_event_id: UniqueId) -> object: ...
 
@@ -48,6 +50,7 @@ DISPATCH_EVENTS: Mapping[SagaCommandKind, _DispatchEventFactory] = MappingProxyT
         SagaCommandKind.STOCK_RELEASE: CreditRejectionRecorded,
         SagaCommandKind.DESPATCH_CREATE: OrderConfirmedBySaga,
         SagaCommandKind.INVOICE_ISSUE: OrderMarkedDespatched,
+        SagaCommandKind.CREDIT_RELEASE: CreditReleaseOwed,
     }
 )
 

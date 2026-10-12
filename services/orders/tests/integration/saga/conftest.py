@@ -115,7 +115,13 @@ class KafkaServerShape(Protocol):
 # ------------------------------------------------------------------------------------- the facts
 
 
-def fact_payload(event_type: str, reference: str, *, release_reason: Reason1) -> Any:
+def fact_payload(
+    event_type: str,
+    reference: str,
+    *,
+    release_reason: Reason1,
+    credit_release_reason: Reason3 = Reason3.invoice_paid,
+) -> Any:
     reservation = ReservationRef(
         reservation_id=uuid.UUID("00000000-0000-4000-8000-0000000000f1"),
         product_code="SKU-A",
@@ -186,7 +192,7 @@ def fact_payload(event_type: str, reference: str, *, release_reason: Reason1) ->
                 currency="EUR",
                 released_amount=8115,
                 available_credit_after=100000,
-                reason=Reason3.invoice_paid,
+                reason=credit_release_reason,
             )
         case "order.despatched.v1":
             return OrderDespatchedPayload(
@@ -266,12 +272,20 @@ def fact_bytes(
     event_id: uuid.UUID,
     causation_id: uuid.UUID | None = None,
     release_reason: Reason1 = Reason1.credit_rejected,
+    credit_release_reason: Reason3 = Reason3.invoice_paid,
     occurred_at: datetime | None = None,
     payload: Mapping[str, Any] | None = None,
     raw: Mapping[str, Any] | None = None,
 ) -> bytes:
     document_payload = json.loads(
-        to_wire_json(fact_payload(event_type, reference, release_reason=release_reason))
+        to_wire_json(
+            fact_payload(
+                event_type,
+                reference,
+                release_reason=release_reason,
+                credit_release_reason=credit_release_reason,
+            )
+        )
     )
     if payload is not None:
         document_payload = dict(payload)
@@ -377,7 +391,18 @@ EMITS: dict[SagaCommandKind, str] = {
     SagaCommandKind.DESPATCH_CREATE: "order.despatched.v1",
     SagaCommandKind.CREDIT_HOLD: "credit.approved.v1",
     SagaCommandKind.INVOICE_ISSUE: "invoice.issued.v1",
+    SagaCommandKind.CREDIT_RELEASE: "credit.released.v1",  # feature 41
 }
+
+
+@dataclass(frozen=True)
+class Arrival:
+    """One request as the six stand-ins received it, in the order the NATS server delivered them
+    to the (single) stand-in connection: the order the saga issued its commands in."""
+
+    kind: SagaCommandKind
+    order_id: uuid.UUID
+    reason: str | None  # the request's own `reason` (`stock.release` only)
 
 
 class StandIn:
@@ -386,6 +411,7 @@ class StandIn:
         kind: SagaCommandKind,
         client: NatsClient,
         publish: Callable[..., Awaitable[uuid.UUID]],
+        arrivals: list[Arrival] | None = None,
     ) -> None:
         self.kind = kind
         self.subject = SUBJECT_OF[kind]
@@ -393,6 +419,10 @@ class StandIn:
         self.emit = False
         self.emit_as: str | None = None  # override the fact type (e.g. credit.rejected.v1)
         self.requests: list[Recorded] = []
+        self.arrivals: list[Arrival] = arrivals if arrivals is not None else []
+        """SHARED by the six stand-ins of one test: the total order of the commands received."""
+        self.emitted: list[uuid.UUID] = []
+        """The event ids of the facts this stand-in published after answering."""
         self._client = client
         self.publish = publish
 
@@ -406,15 +436,32 @@ class StandIn:
             body=message.data,
         )
         self.requests.append(recorded)
+        self.arrivals.append(
+            Arrival(
+                self.kind,
+                uuid.UUID(recorded.headers["x-correlation-id"]),
+                recorded.request.get("reason"),
+            )
+        )
         reply = self.behaviour(recorded)
         if reply is not None:
             await message.respond(reply)
             if self.emit:
-                await self.publish(
-                    self.emit_as or EMITS[self.kind],
-                    correlation_id=uuid.UUID(recorded.headers["x-correlation-id"]),
-                    reference=recorded.request["orderReference"],
-                    causation_id=uuid.UUID(recorded.headers["x-request-id"]),
+                # The fact a real responder would publish: `stock.released.v1` carries the REQUEST's
+                # reason; `credit.released.v1` after a `credit.release` is always `order_cancelled`.
+                reasons: dict[str, Any] = {}
+                if self.kind is SagaCommandKind.STOCK_RELEASE:
+                    reasons["release_reason"] = Reason1(recorded.request["reason"])
+                if self.kind is SagaCommandKind.CREDIT_RELEASE:
+                    reasons["credit_release_reason"] = Reason3.order_cancelled
+                self.emitted.append(
+                    await self.publish(
+                        self.emit_as or EMITS[self.kind],
+                        correlation_id=uuid.UUID(recorded.headers["x-correlation-id"]),
+                        reference=recorded.request["orderReference"],
+                        causation_id=uuid.UUID(recorded.headers["x-request-id"]),
+                        **reasons,
+                    )
                 )
 
     def requests_for(self, order_id: uuid.UUID) -> list[Recorded]:
@@ -447,7 +494,8 @@ class Db:
         key = order_id.value if isinstance(order_id, UniqueId) else order_id
         return await self.fetch(
             "SELECT id, command, status, attempts, last_error, payload::text AS payload, "
-            "next_attempt_at, sent_at FROM saga_commands WHERE order_id = $1 ORDER BY created_at",
+            "triggering_event_id, operator_note, next_attempt_at, sent_at FROM saga_commands "
+            "WHERE order_id = $1 ORDER BY created_at",
             key,
         )
 
@@ -726,7 +774,8 @@ async def saga_stand_ins(nats_server: Any) -> AsyncIterator[dict[SagaCommandKind
         raise AssertionError(f"{event_type}: a stand-in emitted before the harness started")
 
     client = await nats.connect(nats_server.url)
-    stand_ins = {kind: StandIn(kind, client, not_yet) for kind in SagaCommandKind}
+    arrivals: list[Arrival] = []
+    stand_ins = {kind: StandIn(kind, client, not_yet, arrivals) for kind in SagaCommandKind}
     try:
         for stand_in in stand_ins.values():
             await stand_in.start()
@@ -846,6 +895,13 @@ class Broker:
 
     async def partitions_of(self, topic: str) -> list[int]:
         return await partitions_of(self.bootstrap_servers, topic)
+
+
+@pytest.fixture
+def commit_at_end() -> Callable[[str, str], Awaitable[None]]:
+    """`commit_at_end(bootstrap_servers, group)`: `commit_group_at_end` for a group of the test's
+    own (a conftest function cannot be imported by name under `--import-mode=importlib`)."""
+    return commit_group_at_end
 
 
 @pytest.fixture

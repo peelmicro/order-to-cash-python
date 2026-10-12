@@ -14,12 +14,23 @@ stored as the text that will be sent (L21).
 
 from uuid import uuid4
 
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from otc_orders.application.ports.clock import Clock
-from otc_orders.application.ports.saga_command_store import EnqueueOutcome, OwedCommand
+from otc_orders.application.ports.saga_command_store import (
+    AcceptedOperatorCancel,
+    EnqueueOutcome,
+    OwedCommand,
+)
+from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.infrastructure.persistence.models import SagaCommand
+from otc_shared_kernel import UniqueId
+
+# The `stock.release` request's `reason` that marks an accepted operator cancellation
+# (`asyncapi.yaml` `StockReleaseRequestPayload`; the saga's own release carries `credit_rejected`).
+OPERATOR_CANCEL_RELEASE_REASON = "order_cancelled"
 
 
 class SqlAlchemySagaCommandQueue:
@@ -39,6 +50,7 @@ class SqlAlchemySagaCommandQueue:
                     command=command.kind.value,
                     payload=command.payload,
                     triggering_event_id=command.triggering_event_id.value,
+                    operator_note=command.operator_note,
                     status="pending",
                     created_at=now,
                     updated_at=now,
@@ -48,3 +60,22 @@ class SqlAlchemySagaCommandQueue:
             )
         ).first()
         return EnqueueOutcome.ENQUEUED if inserted is not None else EnqueueOutcome.ALREADY_OWED
+
+    async def find_accepted_operator_cancel(
+        self, order_id: UniqueId
+    ) -> AcceptedOperatorCancel | None:
+        # `payload` is a `json` column (never `jsonb`): `json_extract_path_text` reads the request's
+        # own `reason`, so the answer is decided by what was sent to Fulfillment, not by a column
+        # that could drift from it. Three narrowings, each guarded against a decoy row: the order,
+        # the command, the reason.
+        row = (
+            await self._session.execute(
+                select(SagaCommand.operator_note).where(
+                    SagaCommand.order_id == order_id.value,
+                    SagaCommand.command == SagaCommandKind.STOCK_RELEASE.value,
+                    func.json_extract_path_text(SagaCommand.payload, "reason")
+                    == OPERATOR_CANCEL_RELEASE_REASON,
+                )
+            )
+        ).first()
+        return None if row is None else AcceptedOperatorCancel(note=row.operator_note)

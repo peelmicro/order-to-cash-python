@@ -645,3 +645,154 @@ async def orders_host(
     """The host over a database holding `reference_data`, relay on, stock-check budget 1.5 s."""
     async with orders_host_factory() as host:
         yield host
+
+
+# ------------------------------------------------------------ feature 40: catalog.reference.list
+
+
+@dataclass(frozen=True)
+class CatalogData:
+    """The reference rows `catalog_data` inserted, as the WIRE shows them, each list sorted by code
+    and INCLUDING the disabled row (`enabled: False`). Currencies have no `disabled_at` column."""
+
+    products: list[dict[str, Any]]
+    retailers: list[dict[str, Any]]
+    companies: list[dict[str, Any]]
+    currencies: list[dict[str, Any]]
+    insertion: dict[str, list[str]]  # kind -> codes in the order the rows were INSERTED
+
+    def listed(self, kind: str, *, include_disabled: bool) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = getattr(self, kind)
+        return rows if include_disabled else [row for row in rows if row.get("enabled", True)]
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def catalog_data(migrated_db: FreshDatabase) -> CatalogData:
+    """Every field of every row is distinct from every other field in its row, and no value
+    contains another. INSERTION order differs from code order AND from its reverse in each list,
+    both with and without the disabled row (one disabled row per kind that has the notion).
+    ALSO (B1, review round 1): ordering by ANY sibling column (product name/ean/description, party
+    name/vat/gln/country, currency iso_number/symbol) differs from code order, with and without the
+    disabled row, so `ORDER BY <sibling>` cannot pass for `ORDER BY code`.
+    `test_catalog_data_fixture.py` asserts all of this about the data.
+
+    * products   inserted B, D(disabled), C, A  -> code order A B C D
+    * retailers  inserted N, X(disabled), K, M  -> code order K M N X
+    * companies  inserted R, S(disabled), P, Q  -> code order P Q R S
+    * currencies inserted USD, EUR, JPY         -> code order EUR JPY USD
+    """
+    currencies = {
+        "USD": ("840", "AD$", 2),
+        "EUR": ("978", "CE€", 2),
+        "JPY": ("392", "BJ¥", 0),
+    }
+    currency_ids = {code: uuid.uuid4() for code in currencies}
+    disabled_at = datetime(2026, 9, 1, 8, 30, 0, 250000, tzinfo=UTC)
+    products = {
+        # code: (ean, name, description, price, currency, disabled)
+        "PRD-B": ("5400000000018", "Dune crate", "twelve bottles, shrink-wrapped", 2468, "JPY", 0),
+        "PRD-D": ("5400000000124", "Cobalt drum", "dried fruit, ten-kilo sack", 4096, "EUR", 1),
+        "PRD-C": ("5400000000346", "Anvil carton", "forty-eight cans per tray", 31337, "USD", 0),
+        "PRD-A": ("5400000000230", "Birch pallet", "eight-bottle gift set", 1999, "EUR", 0),
+    }
+    parties = {
+        # code: (name, country, vat, gln, currency, disabled)
+        "retailers": {
+            "RET-N": ("Dijon Market", "AT", "AA1234567", "4012345000030", "EUR", 0),
+            "RET-X": ("Corfu Stores", "FI", "DD7654321", "4012345000016", "USD", 1),
+            "RET-K": ("Bergen Retail", "SE", "BB1122334", "4012345000047", "JPY", 0),
+            "RET-M": ("Albacete Foods", "DK", "CC9988776", "4012345000023", "USD", 0),
+        },
+        "companies": {
+            "CMP-R": ("Durango Supplies", "CZ", "CA1357913", "5412345000020", "EUR", 0),
+            "CMP-S": ("Bahia Exports", "GR", "CC2468024", "5412345000013", "JPY", 1),
+            "CMP-P": ("Cuzco Trading", "NO", "CB3692581", "5412345000044", "USD", 0),
+            "CMP-Q": ("Aconcagua Goods", "CH", "CD1472583", "5412345000037", "EUR", 0),
+        },
+    }
+    conn = await asyncpg.connect(migrated_db.dsn)
+    try:
+        for code, (iso, symbol, points) in currencies.items():
+            await conn.execute(
+                "INSERT INTO currencies VALUES ($1, $2, $3, $4, $5, $6, $6)",
+                currency_ids[code],
+                code,
+                iso,
+                symbol,
+                points,
+                NOW,
+            )
+        for code, (ean, name, description, price, currency, disabled) in products.items():
+            await conn.execute(
+                "INSERT INTO products (id, code, ean, name, description, price, currency_id,"
+                " disabled_at, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)",
+                uuid.uuid4(),
+                code,
+                ean,
+                name,
+                description,
+                price,
+                currency_ids[currency],
+                disabled_at if disabled else None,
+                NOW,
+            )
+        for table, rows in parties.items():
+            for code, (name, country, vat, gln, currency, disabled) in rows.items():
+                await conn.execute(
+                    f"INSERT INTO {table} (id, code, name, country, vat, gln, currency_id,"  # noqa: S608
+                    " disabled_at, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)",
+                    uuid.uuid4(),
+                    code,
+                    name,
+                    country,
+                    vat,
+                    gln,
+                    currency_ids[currency],
+                    disabled_at if disabled else None,
+                    NOW,
+                )
+    finally:
+        await conn.close()
+
+    def party_wire(rows: dict[str, tuple[str, str, str, str, str, int]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "code": code,
+                "name": name,
+                "country": country,
+                "vat": vat,
+                "gln": gln,
+                "currency": currency,
+                "enabled": not disabled,
+            }
+            for code, (name, country, vat, gln, currency, disabled) in sorted(rows.items())
+        ]
+
+    return CatalogData(
+        insertion={
+            "products": list(products),
+            "retailers": list(parties["retailers"]),
+            "companies": list(parties["companies"]),
+            "currencies": list(currencies),
+        },
+        products=[
+            {
+                "code": code,
+                "ean": ean,
+                "name": name,
+                "description": description,
+                "price": price,
+                "currency": currency,
+                "enabled": not disabled,
+            }
+            for code, (ean, name, description, price, currency, disabled) in sorted(
+                products.items()
+            )
+        ],
+        retailers=party_wire(parties["retailers"]),
+        companies=party_wire(parties["companies"]),
+        currencies=[
+            {"code": code, "isoNumber": iso, "symbol": symbol, "decimalPoints": points}
+            for code, (iso, symbol, points) in sorted(currencies.items())
+        ],
+    )

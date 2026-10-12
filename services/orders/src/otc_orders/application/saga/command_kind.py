@@ -2,7 +2,8 @@
 
 The token is what `saga_commands.command` stores (the longest, `despatch.create`, is 15 characters
 in a `varchar(30)`). `credit.release` is present because it is a saga command in `asyncapi.yaml`
-(`creditRelease`); no step of the table owes it until feature 41 adds the rows.
+(`creditRelease`); feature 41's rows owe it: `stock.released.v1` at `credit_approved` / `confirmed`
+and a late `credit.approved.v1` after an accepted operator cancellation.
 """
 
 from enum import Enum
