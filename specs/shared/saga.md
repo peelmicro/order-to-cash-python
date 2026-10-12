@@ -259,6 +259,17 @@ or already `cancelled` with reason `operator_cancelled` — issues `credit.relea
 unwound. That release is not one of the cancellation's recorded compensation
 steps; it reaches the timeline as its own `credit.released.v1`.
 
+**A stock reservation that arrives after the cancellation.** An operator
+cancellation of a `placed` order acquires nothing *yet*, but once
+`order.placed.v1` has been processed a `stock.reserve` is already owed and may
+already be at Fulfillment, so the reservation can still be made. A
+`stock.reserved.v1` for an order already `cancelled` with reason
+`operator_cancelled` issues `stock.release` (reason `order_cancelled`) and
+**nothing else**: no transition, no `credit.hold`. The reservation was
+acquired, so it is unwound. That release is not one of the cancellation's
+recorded compensation steps; it reaches the timeline as its own
+`stock.released.v1`.
+
 ### 4.4 Sequence diagram — `CreditRejected` compensation
 
 ```mermaid
@@ -299,7 +310,7 @@ sequenceDiagram
 | Fact | Orchestrator | Projector | Notifications |
 |---|:---:|:---:|:---:|
 | `order.placed.v1` | ✅ issue `stock.reserve` | ✅ | ✅ |
-| `stock.reserved.v1` | ✅ → `stock_reserved`, issue `credit.hold` | ✅ | — |
+| `stock.reserved.v1` | ✅ → `stock_reserved`, issue `credit.hold`; for an order already cancelled by its operator, issue `stock.release` only (§4.3) | ✅ | — |
 | `stock.rejected.v1` | ✅ → `cancelled` (`stock_rejected`) | ✅ | — |
 | `stock.released.v1` | ✅ from `stock_reserved` → `cancelled` (`credit_rejected` / `operator_cancelled`); from `credit_approved` / `confirmed` during an operator cancellation, issue `credit.release` | ✅ | — |
 | `credit.approved.v1` | ✅ → `credit_approved` → `confirmed`, issue `despatch.create`; for an order whose operator cancellation was already accepted, issue `credit.release` only (§4.3) | ✅ | — |
@@ -369,7 +380,7 @@ outcome and emits no second fact (**B10**, R48).
 | Redelivered fact | Order's status at redelivery | What happens | Why it is safe |
 |---|---|---|---|
 | `order.placed.v1` | any status ≠ *n/a* | Dedup record hit → ack, no command. If missed: `stock.reserve` re-issued, responder returns the existing reservation | Layers 1 + 3 |
-| `stock.reserved.v1` | `stock_reserved` or later | Precondition `placed` unmet → ignored, recorded as out-of-order | Layers 1 + 2 |
+| `stock.reserved.v1` | `stock_reserved` or later | Precondition `placed` unmet → ignored, recorded as out-of-order. At `cancelled` with `operator_cancelled`: §4.3 — `stock.release` (re-)issued; the command is idempotent on `(orderReference, release)` and the responder no-ops (**F5**, R34) without a second `stock.released.v1` | Layers 1 + 2 + 3 |
 | `credit.approved.v1` | `credit_approved`, `confirmed` or later | Precondition `stock_reserved` unmet → ignored. No second `order.confirmed.v1`, no second despatch | Layers 1 + 2 |
 | `order.despatched.v1` | `despatched` or later | Precondition `confirmed` unmet → ignored. No second `invoice.issue` (and if issued, **B7** returns the existing invoice) | Layers 1 + 2 + 3 |
 | `invoice.issued.v1` | `invoiced` or later | Precondition `despatched` unmet → ignored | Layers 1 + 2 |
