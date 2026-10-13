@@ -203,6 +203,7 @@ class FakeMessage:
     def __init__(self, data: bytes) -> None:
         self.data = data
         self.reply = "_INBOX.x"
+        self.headers: dict[str, str] | None = None  # nats-py's `Msg.headers` is always an attribute
         self.replies: list[bytes] = []
         self.answered = asyncio.Event()
 

@@ -14,6 +14,9 @@ The isolation level is PINNED before the first statement of every attempt, never
 `REPEATABLE READ` PostgreSQL raises `40001` on the stock lock itself (measured), and the in-lock
 re-reads of feature 18 rely on a statement-scoped snapshot (#8 id 54, L13). The session belongs to
 one attempt and is closed with it; there is no module-level session.
+
+Each attempt is one `writemodel.transaction` INTERNAL span (`R56`), a child of the request's server
+span and the context every outbox row written inside it records as its `trace_parent`.
 """
 
 import asyncio
@@ -22,11 +25,16 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 import sqlalchemy.exc
+from opentelemetry.trace import SpanKind, Tracer
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from otc_fulfillment.application.ports.clock import Clock
 from otc_fulfillment.application.ports.stock_store import StockTransaction, StoreUnavailableError
+from otc_fulfillment.infrastructure.observability.trace_context import (
+    NO_TRACER,
+    TRANSACTION_SPAN,
+)
 from otc_fulfillment.infrastructure.outbox.relay import DEADLOCK_DETECTED, sqlstate_of
 from otc_fulfillment.infrastructure.outbox.writer import OutboxWriter
 from otc_fulfillment.infrastructure.persistence.despatch_number_allocator import (
@@ -102,6 +110,7 @@ class SqlAlchemyStockTransactions:
         outbox: OutboxWriter,
         clock: Clock,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        tracer: Tracer = NO_TRACER,
         repository_factory: RepositoryFactory = SqlAlchemyStockRepository,
         despatch_repository_factory: DespatchRepositoryFactory = SqlAlchemyDespatchRepository,
     ) -> None:
@@ -109,6 +118,7 @@ class SqlAlchemyStockTransactions:
         self._outbox = outbox
         self._clock = clock
         self._sleep = sleep
+        self._tracer = tracer
         self._repository_factory = repository_factory
         self._despatch_repository_factory = despatch_repository_factory
 
@@ -116,19 +126,20 @@ class SqlAlchemyStockTransactions:
         attempt = 1
         while True:
             try:
-                async with self._sessions() as session, session.begin():
-                    await session.connection(
-                        execution_options={"isolation_level": "READ COMMITTED"}
-                    )
-                    repository = self._repository_factory(session, self._outbox, self._clock)
-                    despatches = self._despatch_repository_factory(
-                        session, self._outbox, self._clock
-                    )
-                    result = await work(
-                        SqlAlchemyStockTransaction(
-                            repository, despatches, SqlAlchemyDespatchNumberAllocator(session)
+                with self._tracer.start_as_current_span(TRANSACTION_SPAN, kind=SpanKind.INTERNAL):
+                    async with self._sessions() as session, session.begin():
+                        await session.connection(
+                            execution_options={"isolation_level": "READ COMMITTED"}
                         )
-                    )
+                        repository = self._repository_factory(session, self._outbox, self._clock)
+                        despatches = self._despatch_repository_factory(
+                            session, self._outbox, self._clock
+                        )
+                        result = await work(
+                            SqlAlchemyStockTransaction(
+                                repository, despatches, SqlAlchemyDespatchNumberAllocator(session)
+                            )
+                        )
                 # the commit has returned: only now may the aggregates forget their events
                 repository.clear_saved_events()
                 despatches.clear_saved_events()

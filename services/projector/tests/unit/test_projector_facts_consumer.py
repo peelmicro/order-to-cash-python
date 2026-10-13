@@ -6,6 +6,7 @@ the offset is committed; a raise means it is not (the subscriber seeks back and 
 
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 import pytest
@@ -13,7 +14,11 @@ import pytest
 from otc_contracts import FACT_MODELS
 from otc_cqrs import Dispatcher
 from otc_projector.application.messages import ProjectFactCommand
-from otc_projector.application.ports.fact_stream import FactMessage, FactStreamSubscriber
+from otc_projector.application.ports.fact_stream import (
+    FactMessage,
+    FactProcessor,
+    FactStreamSubscriber,
+)
 from otc_projector.application.scope import ProjectorScope
 from otc_projector.presentation.projector_facts_consumer import ProjectorFactsConsumerTask
 
@@ -28,16 +33,38 @@ class RecordingDispatcher:
         self.sent.append(command)
 
 
+class RecordingRetry:
+    """The `FactProcessor` the task is handed: it records every record that reaches the wrapper and
+    runs `work` `attempts` times, so a test can tell what is INSIDE the wrapper from what is
+    outside it."""
+
+    def __init__(self, attempts: int = 1) -> None:
+        self.calls: list[tuple[FactMessage, str]] = []
+        self._attempts = attempts
+
+    async def process(
+        self, message: FactMessage, event_type: str, work: Callable[[], Awaitable[None]]
+    ) -> None:
+        self.calls.append((message, event_type))
+        for _ in range(self._attempts):
+            await work()
+
+
 class NoSubscriber:
     async def run(self, handler: Any, stop: Any) -> None:
         raise AssertionError("not driven in these tests")
 
 
-def task_over(dispatcher: RecordingDispatcher) -> ProjectorFactsConsumerTask:
+def task_over(
+    dispatcher: RecordingDispatcher,
+    retry: FactProcessor | None = None,
+    scope_factory: Callable[[], ProjectorScope] | None = None,
+) -> ProjectorFactsConsumerTask:
     return ProjectorFactsConsumerTask(
         subscriber=cast("FactStreamSubscriber", NoSubscriber()),
         dispatcher=cast("Dispatcher[ProjectorScope]", dispatcher),
-        scope_factory=lambda: cast("ProjectorScope", object()),
+        scope_factory=scope_factory or (lambda: cast("ProjectorScope", object())),
+        retry=RecordingRetry() if retry is None else retry,
     )
 
 
@@ -125,3 +152,65 @@ async def test_pr36_each_of_the_fourteen_facts_reaches_the_dispatcher_typed_by_t
     sent = dispatcher.sent[0].event
     assert isinstance(sent, FACT_MODELS[event_type])
     assert sent == event
+
+
+async def test_or1_the_processing_runs_through_the_retry_wrapper_with_a_fresh_scope_per_attempt(
+    facts: Any,
+) -> None:
+    built: list[object] = []
+
+    def scope_factory() -> ProjectorScope:
+        built.append(object())
+        return cast("ProjectorScope", built[-1])
+
+    dispatcher, retry = RecordingDispatcher(), RecordingRetry(attempts=2)
+    event = facts.build("stock.reserved.v1")
+    value = facts.wire(event)
+
+    await task_over(dispatcher, retry, scope_factory).handle(message(value))
+
+    [(wrapped, event_type)] = retry.calls
+    assert (wrapped.value, event_type) == (value, "stock.reserved.v1")
+    assert len(dispatcher.sent) == 2, "the wrapper ran the work twice, so two dispatches"
+    assert len(built) == 2, "a fresh scope per attempt, never one scope reused across attempts"
+
+
+@pytest.mark.parametrize("case", ["not json", "not an object", "empty value", "upper case"])
+async def test_or1_a_malformed_envelope_never_invokes_the_retry_wrapper(
+    facts: Any, case: str
+) -> None:
+    document = valid_document(facts)
+    value = {
+        "not json": b"{not json",
+        "not an object": b'["order.placed.v1"]',
+        "empty value": b"",
+        "upper case": json.dumps({**document, "eventType": "Order.Placed.v1"}).encode(),
+    }[case]
+    dispatcher, retry = RecordingDispatcher(), RecordingRetry()
+
+    await task_over(dispatcher, retry).handle(message(value))
+
+    assert retry.calls == [], f"{case} reached the retry wrapper: it would be retried"
+    assert dispatcher.sent == []
+
+
+@pytest.mark.parametrize("event_type", ["order.shipped.v1", "order.placed.v2"])
+async def test_or1_an_unregistered_type_is_swallowed_inside_the_wrapped_callable_never_escaping_it(
+    facts: Any, caplog: pytest.LogCaptureFixture, event_type: str
+) -> None:
+    """`PR4` (#7 and #8 L11): the unknown type is logged at ERROR and the callable RETURNS, so a
+    real wrapper counts one successful attempt and dead-letters nothing. If it escaped, the wrapper
+    would retry it N times and publish a dead letter for a type no retry can fix."""
+    document = valid_document(facts)
+    document["eventType"] = event_type
+    dispatcher, retry = RecordingDispatcher(), RecordingRetry(attempts=3)
+
+    with caplog.at_level(logging.ERROR, logger=LOGGER):
+        await task_over(dispatcher, retry).handle(message(json.dumps(document).encode()))
+
+    [(_, wrapped_type)] = retry.calls
+    assert wrapped_type == event_type
+    assert dispatcher.sent == []
+    assert len([r for r in caplog.records if r.levelno == logging.ERROR]) == 3, (
+        "the callable ran three times because the fake runs it three times, and returned each time"
+    )

@@ -26,6 +26,7 @@ from otc_orders.infrastructure.saga.command_ledger import SqlAlchemySagaCommandL
 from otc_shared_kernel import UniqueId
 
 START = datetime(2026, 10, 7, 12, 0, 0, 0, tzinfo=UTC)
+FIRST_FAILED = START - timedelta(seconds=3)  # an instant no other value in this file equals
 LEASE_MS = 60_000
 GRACE_MS = 10_000
 
@@ -99,6 +100,8 @@ async def test_enqueueing_a_command_already_owed_returns_already_owed_leaves_the
         kind=SagaCommandKind.CREDIT_HOLD,
         payload='{"first":true}',
         triggering_event_id=UniqueId.new(),
+        triggering_event_envelope=b'{"first": "envelope"}',
+        triggering_event_topic="otc.first.facts.v1",
     )
     second = OwedCommand(
         order_id=order_id,
@@ -106,6 +109,8 @@ async def test_enqueueing_a_command_already_owed_returns_already_owed_leaves_the
         kind=SagaCommandKind.CREDIT_HOLD,
         payload='{"second":true}',
         triggering_event_id=UniqueId.new(),
+        triggering_event_envelope=b'{"second": "envelope"}',
+        triggering_event_topic="otc.second.facts.v1",
     )
     async with unit_of_work.begin() as transaction:
         assert await transaction.saga_commands.enqueue(first) is EnqueueOutcome.ENQUEUED
@@ -130,6 +135,10 @@ async def test_enqueueing_a_command_already_owed_returns_already_owed_leaves_the
         '{"first":true}',
         "pending",
     ), "the existing row is untouched"
+    assert (after["triggering_event_envelope"], after["triggering_event_topic"]) == (
+        b'{"first": "envelope"}',
+        "otc.first.facts.v1",
+    ), "S4.11: a duplicate enqueue with a different envelope keeps the FIRST envelope and topic"
     assert len(await db.ignored(order_id)) == 1, "the later statement committed"
 
 
@@ -248,7 +257,11 @@ async def test_leases_and_park_times_come_from_the_clock_port(
     fake_clock.advance(minutes=1, milliseconds=11)
     parked_at = fake_clock.now()
     returned = await ledger.park(
-        claimed.id, total_attempts=3, last_error="x", retry_after_ms=61_234
+        claimed.id,
+        total_attempts=3,
+        last_error="x",
+        retry_after_ms=61_234,
+        first_failed_at=FIRST_FAILED,
     )
 
     [row] = await db.command_rows(command.order_id)
@@ -264,8 +277,20 @@ async def test_marks_are_conditional_and_attempts_accumulate(
     claimed = await ledger.try_claim(command.order_id, command.kind)
     assert claimed is not None
 
-    await ledger.park(claimed.id, total_attempts=3, last_error="first error", retry_after_ms=1000)
-    await ledger.park(claimed.id, total_attempts=6, last_error="second error", retry_after_ms=2000)
+    await ledger.park(
+        claimed.id,
+        total_attempts=3,
+        last_error="first error",
+        retry_after_ms=1000,
+        first_failed_at=FIRST_FAILED,
+    )
+    await ledger.park(
+        claimed.id,
+        total_attempts=6,
+        last_error="second error",
+        retry_after_ms=2000,
+        first_failed_at=FIRST_FAILED,
+    )
     [row] = await db.command_rows(command.order_id)
     assert row["attempts"] == 6, "the total the caller accumulated, not the cycle count"
     assert row["last_error"] == "second error"
@@ -280,12 +305,45 @@ async def test_marks_are_conditional_and_attempts_accumulate(
 
     fake_clock.advance(seconds=5)
     await ledger.mark_sent(claimed.id)  # a sent row: nothing changes
-    await ledger.park(claimed.id, total_attempts=9, last_error="late", retry_after_ms=1000)
+    await ledger.park(
+        claimed.id,
+        total_attempts=9,
+        last_error="late",
+        retry_after_ms=1000,
+        first_failed_at=FIRST_FAILED,
+    )
     [still] = await db.command_rows(command.order_id)
     assert still["status"] == "sent", "a sent row is never moved back to parked"
     assert still["sent_at"] == sent_at
     assert still["attempts"] == 6
     assert still["last_error"] == "second error"
+
+
+async def test_sa3_the_first_failed_attempts_instant_is_recorded_once_and_a_later_failure_never_overwrites_it(
+    ledger: SqlAlchemySagaCommandLedger, owe: Owe, db: Any
+) -> None:
+    """SA-3 `x-first-failed-at`: `park` writes `COALESCE(first_failed_at, :given)`. Two parks hand
+    two different instants; the stored one is the FIRST. A `COALESCE` replaced by a plain
+    assignment stores the second."""
+    command = await owe()
+    claimed = await ledger.try_claim(command.order_id, command.kind)
+    assert claimed is not None
+    [before] = await db.command_rows(command.order_id)
+    assert before["first_failed_at"] is None, "a row that never failed records no failure"
+    first, second = START + timedelta(seconds=11), START + timedelta(seconds=22)
+
+    await ledger.park(
+        claimed.id, total_attempts=3, last_error="a", retry_after_ms=1, first_failed_at=first
+    )
+    await ledger.park(
+        claimed.id, total_attempts=6, last_error="b", retry_after_ms=1, first_failed_at=second
+    )
+
+    [row] = await db.command_rows(command.order_id)
+    assert row["first_failed_at"] == first, (
+        "SA-3: the row's FIRST failure is kept; the second park overwrote it "
+        f"({row['first_failed_at']} != {first})"
+    )
 
 
 async def test_so5_a_parked_rows_backoff_is_enforced_on_both_claims_and_ends_exactly_at_next_attempt_at(
@@ -296,7 +354,13 @@ async def test_so5_a_parked_rows_backoff_is_enforced_on_both_claims_and_ends_exa
     claimed = await ledger.try_claim(command.order_id, command.kind)
     assert claimed is not None
     fake_clock.advance(minutes=3)  # past the lease and the pending grace: only the back-off holds
-    await ledger.park(claimed.id, total_attempts=3, last_error="x", retry_after_ms=retry_after_ms)
+    await ledger.park(
+        claimed.id,
+        total_attempts=3,
+        last_error="x",
+        retry_after_ms=retry_after_ms,
+        first_failed_at=FIRST_FAILED,
+    )
     parked_at = fake_clock.now()
 
     fake_clock.advance(milliseconds=retry_after_ms - 1)
@@ -322,7 +386,13 @@ async def test_so5_a_parked_rows_backoff_ends_exactly_at_next_attempt_at_for_the
     command = await owe(kind=SagaCommandKind.CREDIT_HOLD)
     claimed = await ledger.try_claim(command.order_id, command.kind)
     assert claimed is not None
-    await ledger.park(claimed.id, total_attempts=3, last_error="x", retry_after_ms=retry_after_ms)
+    await ledger.park(
+        claimed.id,
+        total_attempts=3,
+        last_error="x",
+        retry_after_ms=retry_after_ms,
+        first_failed_at=FIRST_FAILED,
+    )
 
     fake_clock.advance(milliseconds=retry_after_ms - 1)
     assert await ledger.try_claim(command.order_id, command.kind) is None, (
@@ -376,7 +446,13 @@ async def test_park_with_an_attempt_count_outside_int32_raises_the_range_guards_
     assert claimed is not None
 
     with pytest.raises(IntegerOutOfRangeError) as refused:
-        await ledger.park(claimed.id, total_attempts=2**31, last_error="x", retry_after_ms=1000)
+        await ledger.park(
+            claimed.id,
+            total_attempts=2**31,
+            last_error="x",
+            retry_after_ms=1000,
+            first_failed_at=FIRST_FAILED,
+        )
 
     assert refused.value.CODE == "storage.integer_out_of_range"
     assert "saga_commands.attempts" in str(refused.value)
@@ -389,7 +465,71 @@ async def test_a_long_last_error_is_truncated_to_2000_characters(
     claimed = await ledger.try_claim(command.order_id, command.kind)
     assert claimed is not None
 
-    await ledger.park(claimed.id, total_attempts=3, last_error="e" * 5000, retry_after_ms=1000)
+    await ledger.park(
+        claimed.id,
+        total_attempts=3,
+        last_error="e" * 5000,
+        retry_after_ms=1000,
+        first_failed_at=FIRST_FAILED,
+    )
 
     [row] = await db.command_rows(command.order_id)
     assert row["last_error"] == "e" * 2000
+
+
+async def test_r29_the_stored_triggering_envelope_is_byte_equal_to_the_bytes_the_broker_delivered_and_its_topic_is_the_source_topic(
+    saga_harness: Any,
+    private_topics: Any,
+    kafka_server: Any,
+    order_at: Any,
+    waits: Any,
+    make_fact_bytes: Any,
+) -> None:
+    """S4.11: the bytes the test produced are NOT what any serializer would write: the keys are in
+    reverse order, the separators carry spaces, a top-level field the model does not declare is
+    present, and the payload holds non-ASCII text. A stored `to_wire_json(envelope)` therefore
+    differs from them."""
+    import json
+
+    from aiokafka import AIOKafkaProducer
+
+    from otc_orders.domain.value_objects.order_status import OrderStatus
+
+    order = await order_at(OrderStatus.PLACED)
+    event_id = uuid.uuid4()
+    canonical = json.loads(
+        make_fact_bytes(
+            "order.placed.v1",
+            correlation_id=order.id.value,
+            reference=order.order_reference.value,
+            event_id=event_id,
+        )
+    )
+    canonical["zzUndeclared"] = {"keep": "ñandú 日本"}
+    produced = json.dumps(
+        dict(reversed(list(canonical.items()))), separators=(", ", ": "), ensure_ascii=False
+    ).encode("utf-8")
+    assert produced != json.dumps(canonical, separators=(",", ":")).encode("utf-8")
+
+    producer = AIOKafkaProducer(bootstrap_servers=kafka_server.bootstrap_servers)
+    await producer.start()
+    try:
+        async with saga_harness(topics=private_topics, SAGA_SWEEPER_ENABLED="false") as saga:
+            await producer.send_and_wait(
+                private_topics.orders, key=str(order.id.value).encode(), value=produced
+            )
+
+            async def stored() -> bool:
+                row = await saga.db.command_row(order.id, SagaCommandKind.STOCK_RESERVE)
+                return row is not None and row["triggering_event_envelope"] is not None
+
+            await waits(stored, "the stock.reserve row holds the triggering envelope")
+            row = await saga.db.command_row(order.id, SagaCommandKind.STOCK_RESERVE)
+            assert row is not None
+            assert bytes(row["triggering_event_envelope"]) == produced, (
+                "the stored envelope is the RECEIVED bytes, not a re-serialisation"
+            )
+            assert row["triggering_event_topic"] == private_topics.orders
+            assert row["dead_lettered_at"] is None
+    finally:
+        await producer.stop()

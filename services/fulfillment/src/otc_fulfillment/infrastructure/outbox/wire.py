@@ -15,7 +15,9 @@ from otc_fulfillment.infrastructure.outbox.publisher import PublishableFact
 from otc_fulfillment.infrastructure.persistence.models import Outbox
 
 
-def to_publishable_fact(row: Outbox) -> PublishableFact:
+def to_publishable_fact(
+    row: Outbox, trace_headers: tuple[tuple[str, bytes], ...] = ()
+) -> PublishableFact:
     envelope = Envelope[dict[str, Any]](
         event_id=row.event_id,
         event_type=row.event_type,
@@ -32,5 +34,6 @@ def to_publishable_fact(row: Outbox) -> PublishableFact:
         headers=(
             ("x-event-type", row.event_type.encode("utf-8")),
             ("content-type", b"application/json"),
+            *trace_headers,
         ),
     )

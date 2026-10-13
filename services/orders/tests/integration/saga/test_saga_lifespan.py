@@ -27,25 +27,40 @@ async def readiness(app: Any) -> httpx.Response:
         return await client.get("/health/ready")
 
 
+def down_checks(response: httpx.Response) -> dict[str, str]:
+    """Check name -> detail, for the checks the readiness body reports `down`."""
+    checks: dict[str, dict[str, str]] = response.json()["checks"]
+    return {name: check["detail"] for name, check in checks.items() if check["status"] == "down"}
+
+
 async def test_the_three_saga_tasks_start_beside_the_responder_and_the_relay(
     saga_harness: Any,
 ) -> None:
     async with saga_harness() as saga:
         tasks = dict(saga.runtime.tasks)
 
-        assert set(tasks) == {"nats-responder", "outbox-relay", *SAGA_TASKS}
+        assert set(tasks) == {"nats-responder", "outbox-relay", "dlq-depth", *SAGA_TASKS}
         assert all(not task.done() for task in tasks.values())
         response = await readiness(saga.app)
-        assert (response.status_code, response.json()) == (200, {"status": "ready"})
+        assert (response.status_code, response.json()["status"]) == (200, "up")
     assert all(task.done() and not task.cancelled() for task in tasks.values()), (
         "the lifespan awaited every task it created"
     )
     assert [task.exception() for task in tasks.values()] == [None] * len(tasks)
 
 
-@pytest.mark.parametrize("task_name", SAGA_TASKS)
+# Each task is attributed to the check of the dependency it serves (`R60`, design 7.2): the fast
+# path and the sweeper issue RPC commands, the consumer reads the fact stream.
+@pytest.mark.parametrize(
+    ("task_name", "check_name"),
+    [
+        ("saga-fast-path", "rpcTransport"),
+        ("saga-sweeper", "rpcTransport"),
+        ("saga-consumer", "factStream"),
+    ],
+)
 async def test_a_saga_task_that_ends_unexpectedly_takes_readiness_down_and_names_it(
-    saga_harness: Any, task_name: str
+    saga_harness: Any, task_name: str, check_name: str
 ) -> None:
     async with saga_harness() as saga:
         assert (await readiness(saga.app)).status_code == 200
@@ -57,10 +72,10 @@ async def test_a_saga_task_that_ends_unexpectedly_takes_readiness_down_and_names
 
         response = await readiness(saga.app)
         assert response.status_code == 503
-        assert response.json() == {
-            "status": "unready",
-            "reasons": [f"transport task {task_name} is not running"],
-        }
+        assert response.json()["status"] == "down"
+        assert down_checks(response) == {
+            check_name: f"transport task {task_name} is not running"
+        }, "only the check of the dead task's dependency is down, with the task named"
         assert all(not t.done() for t in survivors), "only the dead task is named"
 
 
@@ -89,6 +104,7 @@ async def test_a_consumer_disabled_process_runs_the_fast_path_and_the_sweeper_bu
             assert set(saga.runtime.tasks) == {
                 "nats-responder",
                 "outbox-relay",
+                "dlq-depth",
                 "saga-fast-path",
                 "saga-sweeper",
             }

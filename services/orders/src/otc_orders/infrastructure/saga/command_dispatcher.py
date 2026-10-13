@@ -16,7 +16,8 @@ the in-line back-off (`500 ms` doubling) is slept unless it was the last attempt
 business `RpcError` (`SagaCommandBusinessRejectionError`, feature 42) is resolved on the FIRST
 attempt through `ledger.reject` (`rejected`, lease cleared), never retried and never parked.
 Exhausted: the row is parked with the accumulated attempts and the last error, and a structured
-ERROR is logged (SO5).
+ERROR is logged (SO5); then the first-park hook runs (`R29`: `order.saga_failed.v1` and the dead
+letter, once per row).
 The order is never loaded or written here (R29: its status is unchanged).
 
 Budget (`design.md` 5.2): the numbers are #7's and #8's (5 000 ms x 3 attempts, 500 ms back-off), so
@@ -35,6 +36,12 @@ import asyncio
 import enum
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import datetime
+
+from opentelemetry import trace
+from opentelemetry.context import Context
+from opentelemetry.trace import SpanKind, Tracer
+from structlog.contextvars import bound_contextvars
 
 from otc_contracts import format_instant
 from otc_orders.application.ports.clock import Clock
@@ -45,11 +52,15 @@ from otc_orders.application.ports.saga_commands import (
     SagaCommandMeta,
     SagaCommands,
 )
+from otc_orders.application.ports.saga_first_park import SagaFirstPark
 from otc_orders.application.saga.command_kind import SagaCommandKind
+from otc_orders.infrastructure.observability.trace_context import context_from_traceparent
 from otc_orders.infrastructure.saga.backoff import in_line_backoff_ms, park_backoff_ms
 from otc_shared_kernel import UniqueId
 
 log = logging.getLogger("otc_orders.saga.command_dispatcher")
+
+DISPATCH_SPAN = "saga.command.dispatch"
 
 
 class DispatchOutcome(enum.Enum):
@@ -69,6 +80,8 @@ class SagaCommandDispatcher:
         max_attempts: int,
         backoff_ms: int,
         park_cap_ms: int,
+        first_park: SagaFirstPark,
+        tracer: Tracer,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._ledger = ledger
@@ -77,6 +90,8 @@ class SagaCommandDispatcher:
         self._max_attempts = max_attempts
         self._backoff_ms = backoff_ms
         self._park_cap_ms = park_cap_ms
+        self._first_park = first_park
+        self._tracer = tracer
         self._sleep = sleep
 
     async def dispatch(self, order_id: UniqueId, kind: SagaCommandKind) -> DispatchOutcome:
@@ -86,9 +101,34 @@ class SagaCommandDispatcher:
         return await self.dispatch_claimed(row)
 
     async def dispatch_claimed(self, row: ClaimedCommand) -> DispatchOutcome:
+        """One claimed row is one unit of work: its lines carry the order id as `correlationId`
+        (`saga.md` 1), on the fast path and on the sweeper's path alike."""
+        with (
+            bound_contextvars(correlationId=str(row.order_id)),
+            self._tracer.start_as_current_span(
+                DISPATCH_SPAN,
+                context=self._parent_of(row),
+                kind=SpanKind.INTERNAL,
+                attributes={"saga.command": row.kind.value},
+            ),
+        ):
+            return await self._dispatch_claimed(row)
+
+    @staticmethod
+    def _parent_of(row: ClaimedCommand) -> Context | None:
+        """`OR10`: the fast path's task runs inside the fact's (or the request's) own span, which is
+        the live trace and is kept (`None` = the current context). The sweeper has none, so the
+        trace recorded at enqueue is restored as the parent; a row that recorded none starts a
+        trace of its own (an EMPTY context: a root span, never a fabricated parent)."""
+        if trace.get_current_span().get_span_context().is_valid:
+            return None
+        return context_from_traceparent(row.trace_parent) or Context()
+
+    async def _dispatch_claimed(self, row: ClaimedCommand) -> DispatchOutcome:
         request = row.payload.encode("utf-8")  # the committed text, never re-serialised (L21)
         meta = SagaCommandMeta(correlation_id=row.order_id, request_id=row.id)
         last_error = ""
+        first_failed_at: datetime | None = None
         for attempt in range(1, self._max_attempts + 1):
             try:
                 await self._issue(row.kind, request, meta)
@@ -97,7 +137,10 @@ class SagaCommandDispatcher:
                 # and never parked. Caught before the generic `SagaCommandError` clause.
                 total_attempts = row.attempts + attempt
                 await self._ledger.reject(
-                    row.id, total_attempts=total_attempts, last_error=str(rejection)
+                    row.id,
+                    total_attempts=total_attempts,
+                    last_error=str(rejection),
+                    first_failed_at=first_failed_at or self._clock.now(),
                 )
                 log.error(
                     "saga command rejected",
@@ -111,6 +154,8 @@ class SagaCommandDispatcher:
                 )
                 return DispatchOutcome.REJECTED
             except SagaCommandError as error:
+                if first_failed_at is None:
+                    first_failed_at = self._clock.now()  # SA-3 `x-first-failed-at`
                 last_error = str(error)
                 log.warning(
                     "saga command attempt failed",
@@ -132,7 +177,11 @@ class SagaCommandDispatcher:
             total, max_attempts=self._max_attempts, cap_ms=self._park_cap_ms
         )
         next_attempt_at = await self._ledger.park(
-            row.id, total_attempts=total, last_error=last_error, retry_after_ms=retry_after_ms
+            row.id,
+            total_attempts=total,
+            last_error=last_error,
+            retry_after_ms=retry_after_ms,
+            first_failed_at=first_failed_at or self._clock.now(),
         )
         log.error(
             "saga command parked",
@@ -144,6 +193,16 @@ class SagaCommandDispatcher:
                 "nextAttemptAt": format_instant(next_attempt_at),
             },
         )
+        try:
+            # `R29`: the first park of a row appends `order.saga_failed.v1` and dead-letters the
+            # triggering envelope; every later park of the same row emits neither. The park above
+            # is already durable, so a failure here is logged and the next park tries again.
+            await self._first_park.on_parked(row, total_attempts=total, last_error=last_error)
+        except Exception:
+            log.exception(
+                "first-park bookkeeping failed; the next park of this row will try again",
+                extra={"correlationId": str(row.order_id), "rowId": str(row.id)},
+            )
         return DispatchOutcome.PARKED
 
     async def _issue(self, kind: SagaCommandKind, request: bytes, meta: SagaCommandMeta) -> object:

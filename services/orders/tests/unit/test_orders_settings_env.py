@@ -63,14 +63,24 @@ ENV: dict[str, tuple[str, str, Any]] = {
     "SAGA_SWEEPER_BATCH_LIMIT": ("saga.sweeper_batch_limit", "41", 41),
     "SAGA_FAST_PATH_MAX_IN_FLIGHT": ("saga.fast_path_max_in_flight", "99", 99),
     "SAGA_CONSUMER_ENABLED": ("saga.consumer_enabled", "false", False),
+    "OTEL_EXPORTER_OTLP_ENDPOINT": (
+        "telemetry.otlp_endpoint",
+        "http://otlp.sentinel:14318",
+        "http://otlp.sentinel:14318",
+    ),
+    # Feature 27 (`R16`, S4.2): the fact consumer's retry knobs.
+    "FACT_RETRY_MAX_ATTEMPTS": ("fact_retry.max_attempts", "7", 7),
+    "FACT_RETRY_BACKOFF_MS": ("fact_retry.backoff_ms", "271", 271),
 }
 SETTINGS_CLASSES = {
+    "FactRetrySettings",
     "NatsSettings",
     "KafkaSettings",
     "OrdersDatabaseSettings",
     "OutboxRelaySettings",
     "SagaSettings",
     "ServerSettings",
+    "TelemetrySettings",
 }
 
 
@@ -200,3 +210,92 @@ def test_bc34_an_empty_or_blank_client_id_fails_naming_the_variable(
     # the control: a well-formed id is accepted
     clean_environment.setenv("KAFKA_CLIENT_ID", "otc-orders-Ok_1.v2")
     assert load_settings().kafka.client_id == "otc-orders-Ok_1.v2"
+
+
+def test_fact_retry_defaults_are_three_attempts_and_five_hundred_milliseconds(
+    clean_environment: pytest.MonkeyPatch,
+) -> None:
+    clean_environment.setenv("POSTGRES_APP_PASSWORD", "baseline-password")
+
+    settings = load_settings()
+
+    assert (settings.fact_retry.max_attempts, settings.fact_retry.backoff_ms) == (3, 500)
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("FACT_RETRY_MAX_ATTEMPTS", "0"),
+        ("FACT_RETRY_MAX_ATTEMPTS", "11"),
+        ("FACT_RETRY_MAX_ATTEMPTS", "-1"),
+        ("FACT_RETRY_BACKOFF_MS", "-1"),
+    ],
+)
+def test_fact_retry_refuses_a_value_outside_its_range_naming_the_variable(
+    clean_environment: pytest.MonkeyPatch, variable: str, value: str
+) -> None:
+    clean_environment.setenv("POSTGRES_APP_PASSWORD", "baseline-password")
+    clean_environment.setenv(variable, value)
+
+    with pytest.raises(ValidationError) as refused:
+        load_settings()
+
+    # the MESSAGE names the variable: pydantic also echoes the raw input (keyed by the variable) in
+    # the rendered error, which would satisfy a `match=` on the text of the whole error
+    [error] = refused.value.errors()
+    assert variable in error["msg"], error["msg"]
+    assert value in error["msg"], error["msg"]
+
+
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("FACT_RETRY_MAX_ATTEMPTS", "10"),
+        ("FACT_RETRY_MAX_ATTEMPTS", "1"),
+        ("FACT_RETRY_BACKOFF_MS", "0"),
+    ],
+)
+def test_fact_retry_accepts_its_boundaries(
+    clean_environment: pytest.MonkeyPatch, variable: str, value: str
+) -> None:
+    clean_environment.setenv("POSTGRES_APP_PASSWORD", "baseline-password")
+    clean_environment.setenv(variable, value)
+
+    load_settings()
+
+
+@pytest.mark.parametrize(
+    ("attempts", "backoff_ms"),
+    [("2", "299999"), ("10", "587")],
+    ids=["two attempts, one millisecond under", "ten attempts, the last backoff that fits"],
+)
+def test_f2_a_worst_case_backoff_under_the_poll_interval_is_accepted(
+    clean_environment: pytest.MonkeyPatch, attempts: str, backoff_ms: str
+) -> None:
+    clean_environment.setenv("POSTGRES_APP_PASSWORD", "baseline-password")
+    clean_environment.setenv("FACT_RETRY_MAX_ATTEMPTS", attempts)
+    clean_environment.setenv("FACT_RETRY_BACKOFF_MS", backoff_ms)
+
+    load_settings()
+
+
+@pytest.mark.parametrize(
+    ("attempts", "backoff_ms", "worst_case_ms"),
+    [("2", "300000", "300000"), ("10", "588", "300468")],
+    ids=["two attempts, exactly at the interval", "ten attempts, the first backoff that is over"],
+)
+def test_f2_a_worst_case_backoff_that_reaches_the_poll_interval_is_refused_naming_both_variables(
+    clean_environment: pytest.MonkeyPatch, attempts: str, backoff_ms: str, worst_case_ms: str
+) -> None:
+    clean_environment.setenv("POSTGRES_APP_PASSWORD", "baseline-password")
+    clean_environment.setenv("FACT_RETRY_MAX_ATTEMPTS", attempts)
+    clean_environment.setenv("FACT_RETRY_BACKOFF_MS", backoff_ms)
+
+    with pytest.raises(ValidationError) as refused:
+        load_settings()
+
+    [error] = refused.value.errors()
+    assert "FACT_RETRY_MAX_ATTEMPTS=" + attempts in error["msg"], error["msg"]
+    assert "FACT_RETRY_BACKOFF_MS=" + backoff_ms in error["msg"], error["msg"]
+    assert f"waits {worst_case_ms} ms" in error["msg"], error["msg"]
+    assert "max_poll_interval_ms (300000)" in error["msg"], error["msg"]

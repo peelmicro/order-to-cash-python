@@ -24,6 +24,7 @@ from uuid import UUID
 
 import nats.errors
 from nats.aio.client import Client
+from opentelemetry.trace import SpanKind, Tracer
 from pydantic import ValidationError
 
 from otc_contracts import WireModel, from_wire_json, to_wire_json
@@ -33,15 +34,17 @@ from otc_gateway.application.errors import (
     RpcTimeoutError,
     RpcUnavailableError,
 )
+from otc_gateway.infrastructure.observability.trace_context import NO_TRACER, inject_nats
 
 CORRELATION_HEADER = "x-correlation-id"
 REQUEST_HEADER = "x-request-id"
 
 
 class NatsRpcClient:
-    def __init__(self, connection: Client, *, timeout_ms: int) -> None:
+    def __init__(self, connection: Client, *, timeout_ms: int, tracer: Tracer = NO_TRACER) -> None:
         self._connection = connection
         self._timeout_ms = timeout_ms
+        self._tracer = tracer
 
     async def call[R: WireModel](
         self,
@@ -52,16 +55,24 @@ class NatsRpcClient:
         correlation_id: UUID,
         request_id: UUID,
     ) -> R:
+        # A new dict per call: concurrent requests share this client (`R56`, ledger L23).
+        headers = {
+            CORRELATION_HEADER: str(correlation_id),
+            REQUEST_HEADER: str(request_id),
+        }
         try:
-            reply = await self._connection.request(
-                subject,
-                to_wire_json(request).encode("utf-8"),
-                timeout=self._timeout_ms / 1000,
-                headers={
-                    CORRELATION_HEADER: str(correlation_id),
-                    REQUEST_HEADER: str(request_id),
-                },
-            )
+            with self._tracer.start_as_current_span(
+                f"{subject} request",
+                kind=SpanKind.CLIENT,
+                attributes={"messaging.system": "nats", "messaging.destination.name": subject},
+            ):
+                inject_nats(headers)  # the CLIENT span's context, into THIS call's dict
+                reply = await self._connection.request(
+                    subject,
+                    to_wire_json(request).encode("utf-8"),
+                    timeout=self._timeout_ms / 1000,
+                    headers=headers,
+                )
         except nats.errors.NoRespondersError:
             raise RpcUnavailableError(
                 subject, f"no responder is subscribed to {subject}."

@@ -78,13 +78,14 @@ def build_saga_fact(command: FactCommand) -> SagaFact:
         occurred_at=wire_instant(envelope.occurred_at),
         payload=payload,
         topic=command.topic,
+        raw=command.raw,
     )
 
 
 class SagaFactCommandHandler:
     def __init__(self, scope: OrdersScope) -> None:
         self._scope = scope
-        self._handler = SagaFactHandler(scope.required_fact_consumption())
+        self._handler = SagaFactHandler(scope.required_fact_consumption(), scope.saga_metrics)
         self._dispatcher = scope.required_dispatcher()
 
     async def handle(self, command: FactCommand, /) -> SagaFactResult:

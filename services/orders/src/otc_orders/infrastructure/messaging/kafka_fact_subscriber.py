@@ -29,7 +29,9 @@ built in `__init__`; `run` builds and starts it inside the running loop and stop
 The calls this module makes are typed through a private `Protocol` (aiokafka ships no stubs); it
 returns only `FactMessage`, `None` or its own errors.
 
-Until feature 27 a record whose handler keeps raising holds its partition and is retried forever,
+Since `R16` the handler the consumer task passes in retries a processing failure itself and
+dead-letters it (`FactRetry`, `R16`), so it raises HERE only when the dead-letter publication itself
+fails (`OR8`) or on cancellation. Such a record still holds its partition and is delivered again,
 paced 1 s doubling to a 30 s cap for consecutive failures of the same (partition, offset) and reset
 by a success (#7's kafkajs crash-loop on the offset, #8's re-entry after 2 s).
 """
@@ -42,11 +44,14 @@ from typing import Protocol
 
 from aiokafka import AIOKafkaConsumer
 from aiokafka.errors import CommitFailedError
+from opentelemetry.trace import SpanKind, Tracer
 
 from otc_orders.application.ports.fact_stream import FactMessage
 from otc_orders.infrastructure.messaging.consumer_name import ConsumerName
+from otc_orders.infrastructure.messaging.fact_retry import FactRetryStopped
 from otc_orders.infrastructure.messaging.fact_topics import SAGA_FACT_TOPICS
-from otc_orders.infrastructure.settings import KafkaSettings
+from otc_orders.infrastructure.observability.trace_context import NO_TRACER, extract_kafka
+from otc_orders.infrastructure.settings import CONSUMER_MAX_POLL_INTERVAL_MS, KafkaSettings
 
 log = logging.getLogger("otc_orders.messaging.kafka_fact_subscriber")
 
@@ -101,7 +106,9 @@ class KafkaFactSubscriber:
         consumer_factory: ConsumerFactory = AIOKafkaConsumer,
         sleep: Callable[[float], Awaitable[None]] | None = None,
         poll_ms: int = POLL_MS,
+        tracer: Tracer = NO_TRACER,
     ) -> None:
+        self._tracer = tracer
         self._settings = settings
         self._topics = tuple(topics)
         self._consumer_factory = consumer_factory
@@ -114,6 +121,7 @@ class KafkaFactSubscriber:
             "group_id": ConsumerName.ORDERS_SAGA.value,
             "client_id": CLIENT_ID,
             "enable_auto_commit": False,
+            "max_poll_interval_ms": CONSUMER_MAX_POLL_INTERVAL_MS,
             "auto_offset_reset": "earliest",
         }
 
@@ -148,16 +156,42 @@ class KafkaFactSubscriber:
             for partition, records in batch.items():
                 record = records[0]
                 try:
-                    await handler(
-                        FactMessage(
-                            topic=record.topic,
-                            partition=record.partition,
-                            offset=record.offset,
-                            key=record.key,
-                            value=record.value if record.value is not None else b"",
-                            headers=tuple(record.headers),
+                    with self._tracer.start_as_current_span(
+                        f"{record.topic} process",
+                        context=extract_kafka(record.headers),
+                        kind=SpanKind.CONSUMER,
+                        attributes={
+                            "messaging.system": "kafka",
+                            "messaging.destination.name": record.topic,
+                            "messaging.kafka.partition": record.partition,
+                            "messaging.kafka.offset": record.offset,
+                        },
+                    ):
+                        await handler(
+                            FactMessage(
+                                topic=record.topic,
+                                partition=record.partition,
+                                offset=record.offset,
+                                key=record.key,
+                                value=record.value if record.value is not None else b"",
+                                headers=tuple(record.headers),
+                            )
                         )
+                except FactRetryStopped:
+                    # A shutdown ended the retry back-off (`stop_aware_sleep`): not a handler
+                    # failure, so no failure line, no count and no seek. Nothing was committed, the
+                    # loop ends with the stop signal, and the record is redelivered after the
+                    # restart for a fresh round of attempts.
+                    log.info(
+                        "fact retry interrupted by shutdown; the offset is not committed and the "
+                        "record will be delivered after the restart",
+                        extra={
+                            "topic": record.topic,
+                            "partition": record.partition,
+                            "offset": record.offset,
+                        },
                     )
+                    continue
                 except Exception:
                     log.exception(
                         "fact handler failed; the offset is not committed and the record will be "

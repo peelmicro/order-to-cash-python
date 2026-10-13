@@ -199,3 +199,19 @@ class SseSettings(BaseSettings):
                 "is disconnected and resumes from the buffer, which must hold what its queue held"
             )
         return self
+
+
+class TelemetrySettings(BaseSettings):
+    """Where traces and metrics are exported (`OTEL_EXPORTER_OTLP_ENDPOINT`, the OpenTelemetry
+    standard name and #8's). A BASE URL (`http://host:4318`): the exporters append `/v1/traces` and
+    `/v1/metrics`. EMPTY by default, which means no exporter at all, so nothing is sent to whatever
+    listens on `localhost` (#8 id 104's shape).
+
+    Same rule as the other settings classes: a `validation_alias` and NO `populate_by_name`. This is
+    the only place the variable is read (FastAPI's own auto-configuration would read it too; every
+    app switches that off, `tests/architecture/test_telemetry_wiring.py`).
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    otlp_endpoint: str = Field(default="", validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT")

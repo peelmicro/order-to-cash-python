@@ -12,7 +12,7 @@ credential committed to source.
 from enum import StrEnum
 from typing import Self
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -121,11 +121,94 @@ class SmtpSettings(BaseSettings):
     password: str | None = Field(default=None, validation_alias="SMTP_PASSWORD")
     start_tls: bool = Field(default=False, validation_alias="SMTP_START_TLS")
 
+    @field_validator("user", "password", mode="before")
+    @classmethod
+    def _a_blank_credential_is_unset(cls, value: object) -> object:
+        # `.env.example` ships both blank (`SMTP_USER=`), which the environment delivers as `''`.
+        # The pair rule below already treats `''` as unset, but the sender would pass it to
+        # aiosmtplib, which then attempts AUTH and a server without the extension (Mailpit)
+        # refuses every send. Whitespace-only is blank too (#7 `isConfigured` trims).
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @model_validator(mode="after")
     def _a_credential_is_a_pair(self) -> Self:
         if bool(self.user) != bool(self.password):
             raise ValueError(
                 "SMTP_USER and SMTP_PASSWORD must both be set or both be left unset: a partially "
                 "configured credential pair is refused rather than silently ignored"
+            )
+        return self
+
+
+class TelemetrySettings(BaseSettings):
+    """Where traces and metrics are exported (`OTEL_EXPORTER_OTLP_ENDPOINT`, the OpenTelemetry
+    standard name and #8's). A BASE URL (`http://host:4318`): the exporters append `/v1/traces` and
+    `/v1/metrics`. EMPTY by default, which means no exporter at all, so nothing is sent to whatever
+    listens on `localhost` (#8 id 104's shape).
+
+    Same rule as the other settings classes: a `validation_alias` and NO `populate_by_name`. This is
+    the only place the variable is read (FastAPI's own auto-configuration would read it too; every
+    app switches that off, `tests/architecture/test_telemetry_wiring.py`).
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    otlp_endpoint: str = Field(default="", validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT")
+
+
+# What the fact subscriber configures as `max_poll_interval_ms` (it is aiokafka's default, written
+# down so that the retry settings below and the subscriber read the SAME number).
+CONSUMER_MAX_POLL_INTERVAL_MS = 300_000
+
+
+class FactRetrySettings(BaseSettings):
+    """How a fact consumer retries a record before it dead-letters it (`R16`, `OR1`).
+
+    `FACT_RETRY_MAX_ATTEMPTS` is the number of times the record's processing is attempted (3 by
+    default, 1 to 10: a value outside the range would either never process or retry for minutes
+    while the partition is held). `FACT_RETRY_BACKOFF_MS` is the wait after the first failed attempt
+    (500 by default); it doubles after every further failure and may be 0 (no wait). Both names are
+    #7's and #8's.
+
+    Same rule as the other settings classes: a `validation_alias` per field and NO
+    `populate_by_name`. A value that would silently do something else is refused at boot, naming the
+    variable and the value.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    max_attempts: int = Field(default=3, validation_alias="FACT_RETRY_MAX_ATTEMPTS")
+    backoff_ms: int = Field(default=500, validation_alias="FACT_RETRY_BACKOFF_MS")
+
+    @model_validator(mode="after")
+    def _the_attempt_count_is_one_to_ten(self) -> Self:
+        if not 1 <= self.max_attempts <= 10:
+            raise ValueError(f"FACT_RETRY_MAX_ATTEMPTS must be 1..10, got {self.max_attempts}")
+        return self
+
+    @model_validator(mode="after")
+    def _the_backoff_is_not_negative(self) -> Self:
+        if self.backoff_ms < 0:
+            raise ValueError(f"FACT_RETRY_BACKOFF_MS must not be negative, got {self.backoff_ms}")
+        return self
+
+    @model_validator(mode="after")
+    def _the_worst_case_backoff_stays_under_the_consumers_poll_interval(self) -> Self:
+        # Between attempts the record's partition is held, the consumer polls nothing and is
+        # evicted from its group once `max_poll_interval_ms` has passed (aiokafka). The worst case
+        # waits `backoff * (2^(attempts-1) - 1)`: whole milliseconds, integer arithmetic only.
+        # Runs after the range checks above (a refused value never reaches this sum).
+        if not 1 <= self.max_attempts <= 10 or self.backoff_ms < 0:
+            return self
+        worst_case_ms = self.backoff_ms * ((1 << (self.max_attempts - 1)) - 1)
+        if worst_case_ms >= CONSUMER_MAX_POLL_INTERVAL_MS:
+            raise ValueError(
+                f"FACT_RETRY_MAX_ATTEMPTS={self.max_attempts} with FACT_RETRY_BACKOFF_MS="
+                f"{self.backoff_ms} waits {worst_case_ms} ms between attempts in the worst case, "
+                f"which reaches the consumer's max_poll_interval_ms "
+                f"({CONSUMER_MAX_POLL_INTERVAL_MS}): the consumer would be evicted from its group "
+                "while it retries"
             )
         return self

@@ -34,6 +34,7 @@ from otc_gateway.domain.issued_order_window import IssuedOrderWindow
 from otc_gateway.domain.login_throttle import LoginThrottle
 from otc_gateway.infrastructure.health_checks import HealthCheck
 from otc_gateway.infrastructure.jwt_token_service import JwtTokenService
+from otc_gateway.infrastructure.observability.telemetry import build_telemetry
 from otc_gateway.infrastructure.operator_directory import ConfiguredOperator
 from otc_gateway.presentation.app import create_app
 from otc_gateway.presentation.runtime import GatewayRuntime
@@ -268,6 +269,7 @@ async def harness() -> AsyncIterator[Harness]:
         openapi_document=(REPO_ROOT / "specs/shared/openapi.yaml").read_text(encoding="utf-8"),
         stream_hub=hub,
         stream_ping_interval_seconds=30.0,  # long: a test that wants pings asks for them
+        telemetry=build_telemetry("gateway", ""),  # no exporter: nothing leaves the process
     )
     app = create_app()
     app.state.runtime = runtime

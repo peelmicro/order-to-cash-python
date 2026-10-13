@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Collection, Mapping, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
 import pytest
 
@@ -117,11 +118,14 @@ class FakeOrders:
     def __init__(self, log: Log, saved: list[Order], fail: bool) -> None:
         self._log, self._saved, self._fail = log, saved, fail
 
-    async def save(self, order: Order) -> None:
+    async def save(self, order: Order, *, request_id: UUID | None = None) -> None:
         self._log.append("orders.save")
         if self._fail:
             raise RuntimeError("the insert failed")
         self._saved.append(order)
+
+    async def find_by_request_id(self, request_id: UUID) -> Order | None:
+        raise AssertionError("this module's commands carry no requestId: no lookup (RI4)")
 
     async def get_by_id(self, order_id: Any) -> Order | None:
         raise NotImplementedError

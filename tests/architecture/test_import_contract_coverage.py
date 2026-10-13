@@ -4,6 +4,7 @@ import-linter wildcards cannot express `otc_*.domain`, so the lists are literal.
 under services/ without being added to the contracts would otherwise be silently unguarded.
 """
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -15,8 +16,24 @@ def _contracts() -> dict[str, dict[str, object]]:
     return {c["id"]: c for c in data["tool"]["importlinter"]["contracts"]}
 
 
+VALID_SERVICE_NAME = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def service_directories(root: Path) -> set[str]:
+    """The directories under `services/` that can be a service package.
+
+    A tool cache (`.mypy_cache`, `.ruff_cache`) is not a service; excluding it HERE, where the
+    listing is built, keeps it out of the population instead of filtering results.
+    """
+    return {
+        p.name
+        for p in (root / "services").iterdir()
+        if p.is_dir() and VALID_SERVICE_NAME.fullmatch(p.name)
+    }
+
+
 def _services() -> set[str]:
-    return {p.name for p in (REPO_ROOT / "services").iterdir() if p.is_dir()}
+    return service_directories(REPO_ROOT)
 
 
 def test_domain_purity_contract_lists_every_service_domain() -> None:
@@ -54,3 +71,19 @@ def test_forbidden_lists_include_every_framework_and_otc_cqrs() -> None:
     for contract_id in ("domain-purity", "shared-kernel-purity"):
         forbidden = set(_contracts()[contract_id]["forbidden_modules"])  # type: ignore[call-overload]
         assert forbidden == required, f"{contract_id}: forbidden module list drifted"
+
+
+def test_a_dot_directory_under_services_is_not_a_service_but_a_real_undeclared_one_is(
+    tmp_path: Path,
+) -> None:
+    """S5.10 sentinel: the instrument's premises (P1 a dot-directory is a tool cache; P2 a name that
+    is a valid package identifier is a service, declared or not) hold on a temporary tree."""
+    (tmp_path / "services" / "orders").mkdir(parents=True)
+    cache = tmp_path / "services" / ".sentinel_cache"
+    cache.mkdir()
+    (cache / "stray.py").write_text("X = 1\n")
+    assert service_directories(tmp_path) == {"orders"}, "a dot-directory joined the population"
+    (tmp_path / "services" / "undeclared").mkdir()
+    assert service_directories(tmp_path) == {"orders", "undeclared"}, (
+        "a real undeclared service directory must stay in the population"
+    )

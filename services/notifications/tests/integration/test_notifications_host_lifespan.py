@@ -45,6 +45,12 @@ async def readiness(app: Any) -> httpx.Response:
         return await client.get("/health/ready")
 
 
+def down_checks(response: httpx.Response) -> dict[str, str]:
+    """Check name -> detail, for the checks the readiness body reports `down`."""
+    checks: dict[str, dict[str, str]] = response.json()["checks"]
+    return {name: check["detail"] for name, check in checks.items() if check["status"] == "down"}
+
+
 # ------------------------------------------------------------- the task the lifespan owns
 
 
@@ -58,7 +64,7 @@ async def test_the_lifespan_starts_the_fact_consumer_and_awaits_it_on_shutdown(
         )
         assert all(not task.done() for task in tasks.values())
         response = await readiness(host.app)
-        assert (response.status_code, response.json()) == (200, {"status": "ready"})
+        assert (response.status_code, response.json()["status"]) == (200, "up")
 
     # the lifespan has exited: every task it created has been awaited to completion, none cancelled
     assert all(task.done() and not task.cancelled() for task in tasks.values())
@@ -79,8 +85,9 @@ async def test_a_fact_consumer_that_dies_takes_readiness_down_and_names_it(
 
         response = await readiness(host.app)
         assert response.status_code == 503
-        reasons = response.json()["reasons"]
-        assert "transport task fact-consumer is not running" in reasons
+        down = down_checks(response)
+        assert list(down) == ["factStream"], "only the fact stream is named"
+        assert "transport task fact-consumer is not running" in down["factStream"]
 
 
 async def test_readiness_is_503_before_the_lifespan_has_started() -> None:
@@ -88,7 +95,7 @@ async def test_readiness_is_503_before_the_lifespan_has_started() -> None:
 
     response = await readiness(create_app())
     assert response.status_code == 503
-    assert response.json()["reasons"] == ["the service has not started"]
+    assert response.json() == {"status": "down", "checks": {}}
 
 
 async def test_readiness_names_a_consumer_that_has_not_joined_its_group(
@@ -98,7 +105,9 @@ async def test_readiness_names_a_consumer_that_has_not_joined_its_group(
         host.runtime.subscriber._ready.clear()
         response = await readiness(host.app)
         assert response.status_code == 503
-        assert response.json()["reasons"] == ["the Kafka fact consumer has not joined its group"]
+        assert down_checks(response) == {
+            "factStream": "the Kafka fact consumer has not joined its group"
+        }
 
 
 # ------------------------------------ a boot that fails part-way closes what it already opened

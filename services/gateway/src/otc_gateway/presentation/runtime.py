@@ -14,6 +14,7 @@ from otc_gateway.application.scope import GatewayScope
 from otc_gateway.application.stream.hub import StreamHub
 from otc_gateway.domain.login_throttle import LoginThrottle
 from otc_gateway.infrastructure.health_checks import HealthCheck
+from otc_gateway.infrastructure.observability.telemetry import Telemetry
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,3 +28,4 @@ class GatewayRuntime:
     openapi_document: str  # the committed specs/shared/openapi.yaml, as text (GET /docs)
     stream_hub: StreamHub  # GET /orders/stream: the replay buffer and the fan-out
     stream_ping_interval_seconds: float  # the heartbeat of every open stream
+    telemetry: Telemetry  # this runtime's own tracer and meter providers (`TelemetryMiddleware`)

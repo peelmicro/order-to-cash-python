@@ -44,6 +44,12 @@ async def readiness(app: Any) -> httpx.Response:
         return await client.get("/health/ready")
 
 
+def down_checks(response: httpx.Response) -> dict[str, str]:
+    """Check name -> detail, for the checks the readiness body reports `down`."""
+    checks: dict[str, dict[str, str]] = response.json()["checks"]
+    return {name: check["detail"] for name, check in checks.items() if check["status"] == "down"}
+
+
 # ------------------------------------------------------------- the tasks the lifespan owns (G7)
 
 
@@ -55,7 +61,7 @@ async def test_the_lifespan_starts_the_responder_and_the_relay_and_awaits_both_o
         assert set(tasks) == {"nats-responder", "outbox-relay"}
         assert all(not task.done() for task in tasks.values())
         response = await readiness(host.app)
-        assert (response.status_code, response.json()) == (200, {"status": "ready"})
+        assert (response.status_code, response.json()["status"]) == (200, "up")
 
     # the lifespan has exited: every task it created has been awaited to completion, none cancelled
     assert all(task.done() and not task.cancelled() for task in tasks.values())
@@ -74,9 +80,14 @@ async def test_with_the_relay_disabled_no_relay_task_exists_and_kafka_is_never_c
         assert (await readiness(host.app)).status_code == 200
 
 
-@pytest.mark.parametrize("task_name", ["outbox-relay", "nats-responder"])
+# The task is attributed to the check of the dependency it serves (`R60`, design 7.2): the relay
+# drains the write model's outbox, the responder serves the RPC transport.
+@pytest.mark.parametrize(
+    ("task_name", "check_name"),
+    [("outbox-relay", "writeModel"), ("nats-responder", "rpcTransport")],
+)
 async def test_a_transport_task_that_dies_takes_readiness_down_and_names_it(
-    billing_host_factory: HostFactory, task_name: str
+    billing_host_factory: HostFactory, task_name: str, check_name: str
 ) -> None:
     async with billing_host_factory(OUTBOX_RELAY_ENABLED="true") as host:
         assert (await readiness(host.app)).status_code == 200
@@ -88,10 +99,10 @@ async def test_a_transport_task_that_dies_takes_readiness_down_and_names_it(
 
         response = await readiness(host.app)
         assert response.status_code == 503
-        assert response.json() == {
-            "status": "unready",
-            "reasons": [f"transport task {task_name} is not running"],
-        }
+        assert response.json()["status"] == "down"
+        assert down_checks(response) == {
+            check_name: f"transport task {task_name} is not running"
+        }, "only the check of the dead task's dependency is down, with the task named"
         assert all(not t.done() for t in survivors), "only the dead task is named"
 
 
@@ -105,7 +116,7 @@ async def test_a_closed_nats_connection_takes_readiness_down_even_though_no_task
 
         response = await readiness(host.app)
         assert response.status_code == 503
-        assert "the NATS connection is closed" in response.json()["reasons"]
+        assert down_checks(response) == {"rpcTransport": "NatsNotConnectedError"}
 
 
 async def test_readiness_is_503_before_the_lifespan_has_started() -> None:
@@ -113,7 +124,7 @@ async def test_readiness_is_503_before_the_lifespan_has_started() -> None:
 
     response = await readiness(create_app())
     assert response.status_code == 503
-    assert response.json()["reasons"] == ["the service has not started"]
+    assert response.json() == {"status": "down", "checks": {}}
 
 
 # ------------------------------------ a boot that fails part-way closes what it already opened

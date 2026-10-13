@@ -198,27 +198,28 @@ async def test_post_orders_is_a_201_whose_every_figure_equals_the_row_orders_sto
     assert body["projectionPending"] is True
 
 
-async def test_an_idempotency_key_is_accepted_and_forwarded_but_the_replay_is_not_built_yet(
+async def test_an_idempotency_key_is_forwarded_and_a_repeat_returns_the_original_order(
     stack: Any,
 ) -> None:
-    """The Gateway's half of R62: `Idempotency-Key` travels as the payload's `requestId`
-    (`tests/unit/test_gateway_orders_http.py` reads it off the wire). The replay itself is Orders'
-    and feature 27's: Orders carries `requestId` and stores NULL (`order_mapper.py:53`, "feature
-    15's (R62)"), so a repeat places a second order today. This test pins that fact, so the day
-    feature 27 builds the replay it fails and is rewritten to assert the original order returns."""
+    """The Gateway's half of R62 (feature 27, S2): `Idempotency-Key` travels as the payload's
+    `requestId` (`tests/unit/test_gateway_orders_http.py` reads it off the wire) and Orders replays:
+    the repeat returns the ORIGINAL order, no second row. This test used to pin the opposite (a
+    repeat placed a second order while Orders stored NULL); feature 27 built the replay, as its
+    docstring said it would, and the pin is rewritten to assert the original order returns."""
     key = {"Idempotency-Key": str(uuid.uuid4())}
 
     first = await place(stack, ORDER, **key)
     second = await place(stack, ORDER, **key)
 
     assert first.status_code == second.status_code == 201
-    assert first.json()["orderId"] != second.json()["orderId"]
+    assert first.json()["orderId"] == second.json()["orderId"]
+    assert first.json() == second.json(), "the replay answers the original order, field by field"
     [count] = await stack.rows("orders", "SELECT count(*) AS n FROM orders")
-    assert count["n"] == 8  # the six seeded and two new orders
+    assert count["n"] == 7  # the six seeded and ONE new order
     [stored] = await stack.rows(
         "orders", "SELECT count(request_id) AS n FROM orders WHERE order_reference > 'ORD-000006'"
     )
-    assert stored["n"] == 0
+    assert stored["n"] == 1
 
 
 async def test_a_stock_shortage_is_a_409_with_the_shortages_fulfillment_computed(

@@ -23,6 +23,7 @@ from otc_orders.infrastructure.saga.command_ledger import SqlAlchemySagaCommandL
 from otc_shared_kernel import UniqueId
 
 START = datetime(2026, 10, 7, 12, 0, 0, 0, tzinfo=UTC)
+FIRST_FAILED = START - timedelta(seconds=3)  # an instant no other value in this file equals
 LEASE_MS = 60_000
 GRACE_MS = 10_000
 
@@ -86,7 +87,12 @@ async def rejected_row(
     command = await owe(**kwargs)
     claimed = await ledger.try_claim(command.order_id, command.kind)
     assert claimed is not None
-    await ledger.reject(claimed.id, total_attempts=1, last_error="STOCK_UNAVAILABLE: none left")
+    await ledger.reject(
+        claimed.id,
+        total_attempts=1,
+        last_error="STOCK_UNAVAILABLE: none left",
+        first_failed_at=FIRST_FAILED,
+    )
     [row] = await db.command_rows(command.order_id)
     assert row["status"] == "rejected"
     return command, claimed.id, row
@@ -100,7 +106,12 @@ async def test_reject_resolves_a_claimed_row_to_rejected_clearing_the_lease_and_
     assert claimed is not None
     fake_clock.advance(seconds=2)
 
-    await ledger.reject(claimed.id, total_attempts=4, last_error="CONFLICT: " + "e" * 5000)
+    await ledger.reject(
+        claimed.id,
+        total_attempts=4,
+        last_error="CONFLICT: " + "e" * 5000,
+        first_failed_at=FIRST_FAILED,
+    )
 
     [row] = await db.command_rows(command.order_id)
     assert row["status"] == "rejected"
@@ -108,6 +119,7 @@ async def test_reject_resolves_a_claimed_row_to_rejected_clearing_the_lease_and_
     assert row["attempts"] == 4
     assert row["last_error"] == ("CONFLICT: " + "e" * 5000)[:2000]
     assert row["sent_at"] is None, "rejected is not sent"
+    assert row["first_failed_at"] == FIRST_FAILED, "the rejected attempt is a failure: recorded"
 
 
 async def test_reject_with_an_attempt_count_outside_int32_raises_the_range_guards_domain_error(
@@ -118,7 +130,9 @@ async def test_reject_with_an_attempt_count_outside_int32_raises_the_range_guard
     assert claimed is not None
 
     with pytest.raises(IntegerOutOfRangeError) as refused:
-        await ledger.reject(claimed.id, total_attempts=2**31, last_error="x")
+        await ledger.reject(
+            claimed.id, total_attempts=2**31, last_error="x", first_failed_at=FIRST_FAILED
+        )
 
     assert "saga_commands.attempts" in str(refused.value)
     [row] = await db.command_rows(command.order_id)
@@ -136,10 +150,14 @@ async def test_reject_never_moves_a_sent_row_and_a_rejected_row_is_not_rejected_
     claimed = await ledger.try_claim(control.order_id, control.kind)
     assert claimed is not None
 
-    await ledger.reject(sent.id, total_attempts=7, last_error="late")
-    await ledger.reject(claimed.id, total_attempts=1, last_error="first")
+    await ledger.reject(sent.id, total_attempts=7, last_error="late", first_failed_at=FIRST_FAILED)
+    await ledger.reject(
+        claimed.id, total_attempts=1, last_error="first", first_failed_at=FIRST_FAILED
+    )
     fake_clock.advance(seconds=5)
-    await ledger.reject(claimed.id, total_attempts=9, last_error="second")
+    await ledger.reject(
+        claimed.id, total_attempts=9, last_error="second", first_failed_at=FIRST_FAILED
+    )
 
     [still_sent] = await db.command_rows(sent_command.order_id)
     assert (still_sent["status"], still_sent["attempts"], still_sent["last_error"]) == (
@@ -215,8 +233,20 @@ async def test_park_never_re_parks_a_rejected_row_while_it_parks_a_claimed_contr
     assert claimed is not None
     fake_clock.advance(seconds=3)
 
-    await ledger.park(row_id, total_attempts=9, last_error="late", retry_after_ms=1000)
-    await ledger.park(claimed.id, total_attempts=3, last_error="x", retry_after_ms=1000)
+    await ledger.park(
+        row_id,
+        total_attempts=9,
+        last_error="late",
+        retry_after_ms=1000,
+        first_failed_at=FIRST_FAILED,
+    )
+    await ledger.park(
+        claimed.id,
+        total_attempts=3,
+        last_error="x",
+        retry_after_ms=1000,
+        first_failed_at=FIRST_FAILED,
+    )
 
     [after] = await db.command_rows(command.order_id)
     assert (after["status"], after["attempts"], after["last_error"], after["next_attempt_at"]) == (

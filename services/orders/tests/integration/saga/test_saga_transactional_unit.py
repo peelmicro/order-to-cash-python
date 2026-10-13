@@ -53,6 +53,7 @@ def credit_approved(order: Order) -> SagaFact:
             available_credit_after=91885,
         ),
         topic="otc.billing.facts.v1",
+        raw=b"{}",
     )
 
 
@@ -185,7 +186,9 @@ async def test_so3_the_fast_path_is_signalled_only_after_the_owed_command_row_is
         event_id=uuid.uuid4(),
     )
     command = HandleCreditApprovedFactCommand(
-        envelope=from_wire_json(Envelope[dict[str, Any]], raw), topic="otc.billing.facts.v1"
+        envelope=from_wire_json(Envelope[dict[str, Any]], raw),
+        topic="otc.billing.facts.v1",
+        raw=raw,
     )
 
     try:

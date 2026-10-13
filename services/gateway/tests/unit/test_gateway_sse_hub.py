@@ -166,3 +166,24 @@ async def test_r55_a_waiting_reader_is_woken_by_a_publish_and_by_an_overflow() -
 def test_r55_a_non_positive_subscriber_capacity_is_refused() -> None:
     with pytest.raises(ValueError, match="subscriber_capacity"):
         hub_of(subscriber=0)
+
+
+async def test_or13_end_all_ends_waiting_and_late_subscriptions_and_keeps_queued_frames() -> None:
+    hub = hub_of()
+    waiting = hub.subscribe()
+    reader = asyncio.create_task(waiting.get())
+    await asyncio.sleep(0)  # the reader is parked on an empty inbox
+    queued = hub.subscribe()
+    kept = hub.publish("order.updated", A, "1")
+
+    hub.end_all()
+
+    async with asyncio.timeout(2):
+        got = await reader
+    assert got is not None, "the frame published before the signal was delivered first"
+    assert got.cursor == kept.cursor
+    async with asyncio.timeout(2):
+        assert await waiting.get() is None, "OR13: a waiting subscription ends on end_all"
+        assert (await queued.get()) is not None, "a frame already queued is still delivered"
+        assert await queued.get() is None, "then the subscription ends"
+        assert await hub.subscribe().get() is None, "a subscription opened after the signal ends"

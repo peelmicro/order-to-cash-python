@@ -5,11 +5,12 @@ dispatcher stores none. A binding the root forgot is refused HERE, at constructi
 also does once at boot: never as an `AttributeError` on the first message.
 """
 
-from dataclasses import MISSING, dataclass, fields
+from dataclasses import MISSING, dataclass, field, fields
 
 from otc_cqrs import Dispatcher
 from otc_orders.application.ports.clock import Clock
 from otc_orders.application.ports.reference_catalog import ReferenceCatalog
+from otc_orders.application.ports.saga_metrics import NoSagaMetrics, SagaMetrics
 from otc_orders.application.ports.saga_signal import SagaCommandSignal
 from otc_orders.application.ports.stock_availability import StockAvailability
 from otc_orders.application.ports.unit_of_work import UnitOfWork
@@ -36,12 +37,14 @@ class OrdersScope:
     dispatcher: Dispatcher[OrdersScope] | None = None
     fact_consumption: FactConsumption | None = None
     saga_signal: SagaCommandSignal | None = None
+    # Reported after a step's commit (`R59`); the default records nothing.
+    saga_metrics: SagaMetrics = field(default_factory=NoSagaMetrics)
 
     def __post_init__(self) -> None:
-        for field in fields(self):
-            required = field.default is MISSING
-            if required and getattr(self, field.name) is None:
-                raise MissingBindingError(field.name)
+        for member in fields(self):
+            required = member.default is MISSING and member.default_factory is MISSING
+            if required and getattr(self, member.name) is None:
+                raise MissingBindingError(member.name)
 
     def required_dispatcher(self) -> Dispatcher[OrdersScope]:
         if self.dispatcher is None:

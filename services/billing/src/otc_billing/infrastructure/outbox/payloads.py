@@ -7,9 +7,10 @@ Amounts are plain `int` minor units already; no `Decimal`, no `float`, no `/` on
 `narrow` is the single place an unknown event class is refused; `build_fact` then has one `match`
 case per class (`assert_never` makes a sixth class a type error until it is mapped) and builds the
 typed `Envelope[<payload model>]`. Feature 21 added the two invoice facts: `invoice.issued.v1` and
-`payment.received.v1` (the latter has no caller until feature 22). The envelope is parametrised by
-the CONCRETE payload class on purpose: pydantic serialises a field by its declared type, so
-`Envelope[WireModel]` would write `{}`.
+`payment.received.v1` (the latter is raised by `Invoice.mark_paid`, which the payment-register
+handler, `application/payment_register.py`, calls). The envelope is parametrised by the CONCRETE
+payload class on purpose: pydantic serialises a field by its declared type, so `Envelope[WireModel]`
+would write `{}`.
 
 Service-specific, NOT a parity-guarded copy of Orders' module of the same name.
 """

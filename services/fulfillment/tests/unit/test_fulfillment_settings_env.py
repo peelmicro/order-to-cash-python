@@ -54,6 +54,11 @@ ENV: dict[str, tuple[str, str, Any]] = {
     "NATS_URL": ("nats.url", "nats://nats.sentinel:14222", "nats://nats.sentinel:14222"),
     "WEB_CONCURRENCY": ("server.web_concurrency", "3", 3),
     "FULFILLMENT_MAX_CONCURRENT_REQUESTS": ("responder.max_concurrent_requests", "7", 7),
+    "OTEL_EXPORTER_OTLP_ENDPOINT": (
+        "telemetry.otlp_endpoint",
+        "http://otlp.sentinel:14318",
+        "http://otlp.sentinel:14318",
+    ),
 }
 SETTINGS_CLASSES = {
     "FulfillmentDatabaseSettings",
@@ -62,6 +67,7 @@ SETTINGS_CLASSES = {
     "OutboxRelaySettings",
     "ResponderSettings",
     "ServerSettings",
+    "TelemetrySettings",
 }
 
 

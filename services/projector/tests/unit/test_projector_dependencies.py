@@ -22,6 +22,10 @@ EXPECTED = {
     "aiokafka",
     "nats-py",
     "pydantic-settings",
+    # feature 27: the log contract (structlog renders, stdlib stays the call API) and the traces
+    "structlog",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-http",
 }
 FORBIDDEN = {"motor", "sqlalchemy", "asyncpg", "alembic"}
 

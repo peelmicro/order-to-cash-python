@@ -22,13 +22,15 @@
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass, field
 from typing import Any
 
 import nats.errors
 from nats.aio.client import Client as NatsClient
+from opentelemetry.sdk.metrics.export import MetricReader
+from opentelemetry.sdk.trace import SpanProcessor
 from pymongo import AsyncMongoClient
 
 import otc_gateway.application
@@ -64,10 +66,13 @@ from otc_gateway.application.stock_handlers import ListStockHandler, ReplenishSt
 from otc_gateway.application.stream.hub import StreamHub
 from otc_gateway.domain.issued_order_window import IssuedOrderWindow
 from otc_gateway.domain.login_throttle import LoginThrottle
+from otc_gateway.infrastructure.health.mongo_probe import MongoProbe
+from otc_gateway.infrastructure.health.nats_probe import NatsProbe
 from otc_gateway.infrastructure.health_checks import HealthCheck
 from otc_gateway.infrastructure.jwt_token_service import JwtTokenService
 from otc_gateway.infrastructure.mongo_order_read_model import COLLECTION, MongoOrderReadModel
 from otc_gateway.infrastructure.nats_rpc_client import NatsRpcClient
+from otc_gateway.infrastructure.observability.telemetry import build_telemetry
 from otc_gateway.infrastructure.operator_directory import ConfiguredOperator
 from otc_gateway.infrastructure.settings import (
     DocsSettings,
@@ -79,6 +84,7 @@ from otc_gateway.infrastructure.settings import (
     OperatorSettings,
     ServerSettings,
     SseSettings,
+    TelemetrySettings,
 )
 from otc_gateway.infrastructure.stream_signal_subscriber import (
     StreamSubscriberDown,
@@ -110,6 +116,7 @@ class GatewaySettings:
     issued_orders: IssuedOrderWindowSettings
     docs: DocsSettings
     sse: SseSettings
+    telemetry: TelemetrySettings
 
 
 def load_settings() -> GatewaySettings:
@@ -123,6 +130,7 @@ def load_settings() -> GatewaySettings:
         issued_orders=IssuedOrderWindowSettings(),
         docs=DocsSettings(),
         sse=SseSettings(),
+        telemetry=TelemetrySettings(),
     )
 
 
@@ -248,9 +256,22 @@ async def start_runtime(
     nats_connect_seconds: float = NATS_CONNECT_SECONDS,
     mongo_ping_seconds: float = MONGO_PING_SECONDS,
     stream_subscribe_seconds: float = STREAM_SUBSCRIBE_SECONDS,
+    span_processors: Sequence[SpanProcessor] = (),
+    metric_readers: Sequence[MetricReader] = (),
 ) -> RunningGateway:
     outside = externals if externals is not None else Externals()
     async with AsyncExitStack() as stack:
+        # 0. This runtime's own tracer and meter providers (`R56`), first so that everything below
+        #    can make spans, and closed LAST: the stack unwinds in reverse, so the flush follows
+        #    every adapter's close. Never the process-global provider (`telemetry.py`).
+        telemetry = build_telemetry(
+            "gateway",
+            settings.telemetry.otlp_endpoint,
+            span_processors=span_processors,
+            metric_readers=metric_readers,
+        )
+        stack.push_async_callback(telemetry.aclose)
+
         # 1. The dispatcher is validated before anything is opened: a missing or duplicate handler
         #    is a boot failure that cost no connection.
         dispatcher, registered_factories = outside.wire()
@@ -302,7 +323,9 @@ async def start_runtime(
             clock=clock,
         )
         scope = GatewayScope(
-            rpc=NatsRpcClient(connection, timeout_ms=settings.nats.rpc_timeout_ms),
+            rpc=NatsRpcClient(
+                connection, timeout_ms=settings.nats.rpc_timeout_ms, tracer=telemetry.tracer
+            ),
             read_model=MongoOrderReadModel(collection),
             issued_orders=IssuedOrderWindow(
                 monotonic_ms,
@@ -318,11 +341,6 @@ async def start_runtime(
         )
         for factory in registered_factories:
             factory(scope)
-
-        async def ping_nats() -> None:
-            if not connection.is_connected:
-                raise ConnectionError("the NATS connection is not connected")
-            await connection.flush()
 
         async def stream_signals() -> None:
             reason = subscriber.unready_reason()
@@ -340,13 +358,14 @@ async def start_runtime(
             ),
             clock=clock,
             health_checks=(
-                HealthCheck("rpcTransport", ping_nats),
-                HealthCheck("readModel", lambda: database.command("ping")),
+                HealthCheck("rpcTransport", NatsProbe(connection)),
+                HealthCheck("readModel", MongoProbe(database)),
                 HealthCheck("streamSignals", stream_signals),
             ),
             openapi_document=openapi_document,
             stream_hub=hub,
             stream_ping_interval_seconds=settings.sse.ping_interval_ms / 1000,
+            telemetry=telemetry,
         )
         # `pop_all()` is the last statement: from here the returned object owns the connections.
         return RunningGateway(runtime=runtime, stack=stack.pop_all())

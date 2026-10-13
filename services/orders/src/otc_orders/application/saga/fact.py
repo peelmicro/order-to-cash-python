@@ -21,3 +21,4 @@ class SagaFact:
     occurred_at: datetime
     payload: WireModel
     topic: str
+    raw: bytes  # the bytes as received: stored with each command the fact owes (`R29`)

@@ -194,6 +194,12 @@ def hits(source: str) -> Counter[tuple[str, str]]:
 # classification is the comment). Empty for a service means "no write path exists yet".
 EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
     "orders": {
+        # Feature 27 (`R60`): the readiness probe's `SELECT 1` on a NullPool connection. Read-only,
+        # never a write; it is a classified entry so that a SECOND occurrence in the file still
+        # fails the count (counts read from `scan_service`).
+        "infrastructure/health/postgres_probe.py": Counter(
+            {("call", "execute"): 1, ("call", "text"): 1}
+        ),
         # kernel `Money.add` arithmetic, not a write: the domain imports no driver (domain-purity
         # contract). Three calls in `compute_totals`: the running initial amount, the running line
         # discounts, and the line discounts plus the (zero) order-level discount. Counts read from
@@ -253,8 +259,15 @@ EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
         # Feature 41 added a second `execute`: `find_accepted_operator_cancel`, a `select(...)`
         # (a read, so no `insert`/`update` was added and no guarded column is written; the insert
         # also stores `operator_note`, a `text` column).
+        # Feature 27 (`R29`) added the first-park claim: ONE ORM-enabled `update(SagaCommand)`
+        # through a third `execute`. It writes `dead_lettered_at` (a timestamp), no guarded integer.
         "infrastructure/saga/command_queue.py": Counter(
-            {("import", "insert as pg_insert"): 1, ("call", "execute"): 2, ("call", "insert"): 1}
+            {
+                ("import", "insert as pg_insert"): 1,
+                ("call", "execute"): 3,
+                ("call", "insert"): 1,
+                ("call", "update"): 1,
+            }
         ),
         # Feature 16 and 42, the ledger: five ORM-enabled `update(SagaCommand)` statements
         # (`try_claim`, `claim_due`, `mark_sent`, `reject`, `park`) through ONE `session.execute` in
@@ -302,6 +315,12 @@ EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
     # attribute event). Any `update(Stock).values(...)`, `insert(...)` or `text()` write that gets
     # added anywhere shows up below as an unclassified hit.
     "fulfillment": {
+        # Feature 27 (`R60`): the readiness probe's `SELECT 1` on a NullPool connection. Read-only,
+        # never a write; it is a classified entry so that a SECOND occurrence in the file still
+        # fails the count (counts read from `scan_service`).
+        "infrastructure/health/postgres_probe.py": Counter(
+            {("call", "execute"): 1, ("call", "text"): 1}
+        ),
         # The relay copy's stamp (parity-guarded against Orders'): `session.execute(update(Outbox)
         # ...values(published_at=...))`. NO GUARDED COLUMN: it writes one timestamptz.
         "infrastructure/outbox/relay.py": Counter({("call", "execute"): 1, ("call", "update"): 1}),
@@ -356,6 +375,12 @@ EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
     # it is the guarded path, the range guard being an ORM attribute event). The `credits`
     # row is never assigned. No `update(`, `delete(` or `on_conflict_*` is written by the service.
     "billing": {
+        # Feature 27 (`R60`): the readiness probe's `SELECT 1` on a NullPool connection. Read-only,
+        # never a write; it is a classified entry so that a SECOND occurrence in the file still
+        # fails the count (counts read from `scan_service`).
+        "infrastructure/health/postgres_probe.py": Counter(
+            {("call", "execute"): 1, ("call", "text"): 1}
+        ),
         # The relay copy's stamp (parity-guarded against Orders'): `session.execute(update(Outbox)
         # ...values(published_at=...))`. NO GUARDED COLUMN: it writes one timestamptz.
         "infrastructure/outbox/relay.py": Counter({("call", "execute"): 1, ("call", "update"): 1}),
@@ -419,6 +444,12 @@ EXPECTED: dict[str, dict[str, Counter[tuple[str, str]]]] = {
     # payload column, so there is no guarded column anywhere in this service). Counts read from
     # `scan_service("notifications")`, never predicted.
     "notifications": {
+        # Feature 27 (`R60`): the readiness probe's `SELECT 1` on a NullPool connection. Read-only,
+        # never a write; it is a classified entry so that a SECOND occurrence in the file still
+        # fails the count (counts read from `scan_service`).
+        "infrastructure/health/postgres_probe.py": Counter(
+            {("call", "execute"): 1, ("call", "text"): 1}
+        ),
         # The byte-identical copy of the canonical idempotent consumer: the same dedup INSERT ...
         # ON CONFLICT DO NOTHING as Orders' entry above, with the same three hits.
         "infrastructure/messaging/idempotent_consumer.py": Counter(

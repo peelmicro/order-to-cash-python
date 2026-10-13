@@ -23,6 +23,7 @@ BIGINT = "bigint"
 INT = "integer"
 JSON = "json"
 TEXT = "text"
+BYTEA = "bytea"
 
 
 def V(n: int) -> str:
@@ -143,6 +144,11 @@ EXPECTED: dict[str, dict[str, tuple[str, bool, str]]] = {
         "updated_at": (TS3, False, ""),
         "sent_at": (TS3, True, ""),
         "operator_note": (TEXT, True, ""),  # 0002, feature 41
+        "triggering_event_envelope": (BYTEA, True, ""),  # 0003, feature 27
+        "triggering_event_topic": (V(64), True, ""),  # 0003
+        "dead_lettered_at": (TS3, True, ""),  # 0003
+        "trace_parent": (V(55), True, ""),  # 0003
+        "first_failed_at": (TS3, True, ""),  # 0003, SA-3
     },
     "saga_ignored_facts": {
         "id": (UUID, False, ""),

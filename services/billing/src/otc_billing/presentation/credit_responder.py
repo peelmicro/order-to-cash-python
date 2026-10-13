@@ -31,6 +31,8 @@ import nats.errors
 from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
+from opentelemetry.trace import SpanKind, Tracer
+from structlog.contextvars import bound_contextvars
 
 from otc_billing.application.ports.clock import Clock
 from otc_billing.application.scope import BillingScope
@@ -43,6 +45,7 @@ from otc_billing.infrastructure.messaging.subjects import (
     INVOICE_LIST_SUBJECT,
     PAYMENT_REGISTER_SUBJECT,
 )
+from otc_billing.infrastructure.observability.trace_context import NO_TRACER, extract_nats
 from otc_billing.presentation import credit_wire, invoice_wire, payment_wire
 from otc_billing.presentation.credit_headers import optional_correlation_id, required_correlation
 from otc_billing.presentation.credit_rpc_errors import map_error
@@ -140,7 +143,9 @@ class CreditResponder:
         scope_factory: Callable[[], BillingScope],
         clock: Clock,
         max_concurrent_requests: int,
+        tracer: Tracer = NO_TRACER,
     ) -> None:
+        self._tracer = tracer
         self._connection = connection
         self._dispatcher = dispatcher
         self._scope_factory = scope_factory
@@ -209,6 +214,25 @@ class CreditResponder:
         await asyncio.gather(*tuple(in_flight), return_exceptions=True)
 
     async def _serve(self, subject: str, message: Msg) -> None:
+        """One request is one unit of work: its lines carry the caller's `x-correlation-id` when it
+        parses as a UUID, and no `correlationId` at all otherwise (never a fabricated one). It is
+        also one `SERVER` span, a child of the caller's span when the request carries a valid
+        `traceparent` and a root otherwise (`R56`; the single extraction site of this class: every
+        subject passes through here)."""
+        with self._tracer.start_as_current_span(
+            f"{subject} serve",
+            context=extract_nats(message.headers),
+            kind=SpanKind.SERVER,
+            attributes={"messaging.system": "nats", "messaging.destination.name": subject},
+        ):
+            correlation_id = optional_correlation_id(message.headers)
+            if correlation_id is None:
+                await self._answer(subject, message)
+                return
+            with bound_contextvars(correlationId=str(correlation_id)):
+                await self._answer(subject, message)
+
+    async def _answer(self, subject: str, message: Msg) -> None:
         if not message.reply:
             log.warning("%s request carried no reply subject; dropped", subject)
             return

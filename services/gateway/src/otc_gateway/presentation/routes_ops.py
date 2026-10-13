@@ -1,12 +1,12 @@
 """`GET /health/live`, `GET /health/ready`, `GET /docs` (tag `ops`); all three are public."""
 
-import asyncio
 import html
 
 from fastapi import APIRouter, Response
 from fastapi.responses import HTMLResponse
 
 from otc_contracts.generated import openapi
+from otc_gateway.infrastructure.health_checks import health_body, run_checks
 from otc_gateway.presentation import contract
 from otc_gateway.presentation.dependencies import Runtime
 from otc_gateway.presentation.wire import wire_response
@@ -37,18 +37,9 @@ async def live() -> Response:
 async def ready(runtime: Runtime) -> Response:
     # R60: the Gateway owns no write model; its dependencies are the RPC transport and the read
     # model. Each check is bounded, and they run together so a hung one costs one bound, not two.
-    results = await asyncio.gather(*(check.run() for check in runtime.health_checks))
+    results = await run_checks(runtime.health_checks)
+    body = health_body(results)
     up = all(result.up for result in results)
-    body = openapi.HealthResponse(
-        status=openapi.Status.up if up else openapi.Status.down,
-        checks={
-            result.name: openapi.Checks(
-                status=openapi.Status.up if result.up else openapi.Status.down,
-                detail=result.detail,
-            )
-            for result in results
-        },
-    )
     return wire_response(body, 200 if up else 503)
 
 

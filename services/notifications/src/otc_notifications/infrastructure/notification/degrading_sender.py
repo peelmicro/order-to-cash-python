@@ -6,7 +6,8 @@ is (a console-only binding has nothing to degrade from). On every send it delega
 sender and, only on failure, asks the classifier whether a retry could ever succeed:
 
 * TRANSIENT: the ORIGINAL exception is re-raised unchanged. Every caller above this (`dispatch`'s
-  compensating `forget`, feature 27's retry and dead-letter) behaves exactly as without the wrapper.
+  compensating `forget`, the fact retry and dead letter of `R16`) behaves exactly as without the
+  wrapper.
 * PERMANENT: ONE loud, structured error line naming the cause (`event=notification.send.degraded`,
   a stable field a log alert can match), the SAME message rendered through the fallback, and a
   NORMAL return. A caller that never sees a raise never retries and never dead-letters: the fact is

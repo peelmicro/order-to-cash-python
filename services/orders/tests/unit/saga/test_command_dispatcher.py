@@ -24,6 +24,7 @@ from otc_orders.application.ports.saga_commands import (
     SagaCommandTransportError,
 )
 from otc_orders.application.saga.command_kind import SagaCommandKind
+from otc_orders.infrastructure.observability.trace_context import NO_TRACER
 from otc_orders.infrastructure.saga.command_dispatcher import DispatchOutcome, SagaCommandDispatcher
 from otc_shared_kernel import UniqueId
 
@@ -43,6 +44,7 @@ def row(kind: SagaCommandKind = SagaCommandKind.STOCK_RESERVE, attempts: int = 0
         payload=PAYLOAD,
         attempts=attempts,
         triggering_event_id=TRIGGER,
+        trace_parent=None,
     )
 
 
@@ -64,13 +66,26 @@ class FakeLedger:
     async def mark_sent(self, row_id: uuid.UUID) -> None:
         self.sent.append(row_id)
 
-    async def reject(self, row_id: uuid.UUID, *, total_attempts: int, last_error: str) -> None:
+    async def reject(
+        self, row_id: uuid.UUID, *, total_attempts: int, last_error: str, first_failed_at: datetime
+    ) -> None:
         self.rejected.append(
-            {"row_id": row_id, "total_attempts": total_attempts, "last_error": last_error}
+            {
+                "row_id": row_id,
+                "total_attempts": total_attempts,
+                "last_error": last_error,
+                "first_failed_at": first_failed_at,
+            }
         )
 
     async def park(
-        self, row_id: uuid.UUID, *, total_attempts: int, last_error: str, retry_after_ms: int
+        self,
+        row_id: uuid.UUID,
+        *,
+        total_attempts: int,
+        last_error: str,
+        retry_after_ms: int,
+        first_failed_at: datetime,
     ) -> datetime:
         self.parked.append(
             {
@@ -78,6 +93,7 @@ class FakeLedger:
                 "total_attempts": total_attempts,
                 "last_error": last_error,
                 "retry_after_ms": retry_after_ms,
+                "first_failed_at": first_failed_at,
             }
         )
         return NOW + timedelta(milliseconds=retry_after_ms)
@@ -121,12 +137,35 @@ class FixedClock:
         return NOW
 
 
+class TickingClock:
+    """Every reading is a distinct instant (1 s apart), so which reading a value came from shows."""
+
+    def __init__(self) -> None:
+        self.readings = 0
+
+    def now(self) -> datetime:
+        self.readings += 1
+        return NOW + timedelta(seconds=self.readings)
+
+
+class FakeFirstPark:
+    def __init__(self, fail: bool = False) -> None:
+        self.calls: list[tuple[ClaimedCommand, int, str]] = []
+        self.fail = fail
+
+    async def on_parked(self, row: ClaimedCommand, *, total_attempts: int, last_error: str) -> None:
+        self.calls.append((row, total_attempts, last_error))
+        if self.fail:
+            raise RuntimeError("the bookkeeping failed")
+
+
 @dataclass
 class Rig:
     dispatcher: SagaCommandDispatcher
     ledger: FakeLedger
     commands: FakeCommands
     sleeps: list[float]
+    first_park: FakeFirstPark
 
 
 def rig(script: list[object], claimable: ClaimedCommand | None = None, **overrides: Any) -> Rig:
@@ -137,16 +176,19 @@ def rig(script: list[object], claimable: ClaimedCommand | None = None, **overrid
     async def sleep(seconds: float) -> None:
         sleeps.append(seconds)
 
+    first_park = FakeFirstPark(fail=overrides.get("first_park_fails", False))
     dispatcher = SagaCommandDispatcher(
         ledger=ledger,
         commands=commands,  # type: ignore[arg-type]
-        clock=FixedClock(),
+        clock=overrides.get("clock", FixedClock()),
         max_attempts=overrides.get("max_attempts", 3),
         backoff_ms=overrides.get("backoff_ms", 500),
         park_cap_ms=overrides.get("park_cap_ms", 900_000),
+        first_park=first_park,
+        tracer=NO_TRACER,
         sleep=sleep,
     )
-    return Rig(dispatcher, ledger, commands, sleeps)
+    return Rig(dispatcher, ledger, commands, sleeps, first_park)
 
 
 REPLY = from_wire_json(
@@ -349,3 +391,70 @@ async def test_cancellation_is_never_swallowed_and_leaves_the_row_leased() -> No
         await r.dispatcher.dispatch_claimed(row())
 
     assert r.ledger.sent == r.ledger.parked == []
+
+
+async def test_r29_a_parked_command_runs_the_first_park_hook_once_with_the_accumulated_attempts_and_the_last_error() -> (
+    None
+):
+    r = rig(
+        [SagaCommandTimeoutError("fulfillment.stock.reserve", "no reply within 5000 ms.")],
+        claimable=row(attempts=4),
+    )
+
+    outcome = await r.dispatcher.dispatch(ORDER, SagaCommandKind.STOCK_RESERVE)
+
+    assert outcome is DispatchOutcome.PARKED
+    [(parked_row, attempts, last_error)] = r.first_park.calls
+    assert parked_row.attempts == 4, "the row as claimed"
+    assert attempts == 7, "4 earlier + 3 this cycle"
+    assert last_error == "fulfillment.stock.reserve: no reply within 5000 ms."
+
+
+async def test_r29_a_sent_command_never_runs_the_first_park_hook() -> None:
+    r = rig([REPLY])
+
+    outcome = await r.dispatcher.dispatch(ORDER, SagaCommandKind.STOCK_RESERVE)
+
+    assert outcome is DispatchOutcome.SENT
+    assert r.first_park.calls == []
+
+
+async def test_r29_a_first_park_hook_that_fails_does_not_change_the_dispatch_outcome() -> None:
+    r = rig(
+        [SagaCommandTimeoutError("fulfillment.stock.reserve", "no reply within 5000 ms.")],
+        first_park_fails=True,
+    )
+
+    outcome = await r.dispatcher.dispatch(ORDER, SagaCommandKind.STOCK_RESERVE)
+
+    assert outcome is DispatchOutcome.PARKED, "the park is durable; the bookkeeping retries later"
+    assert len(r.first_park.calls) == 1
+
+
+async def test_r29_sa3_the_park_carries_the_instant_of_the_first_failed_attempt_not_the_last() -> (
+    None
+):
+    """SA-3 `x-first-failed-at`: three failed attempts read the clock; the ledger is handed the
+    FIRST reading (NOW + 1 s), so a dispatcher that restamped it on each failure hands NOW + 3 s."""
+    clock = TickingClock()
+    r = rig([SagaCommandTimeoutError("fulfillment.stock.reserve", "no reply")], clock=clock)
+
+    await r.dispatcher.dispatch(ORDER, SagaCommandKind.STOCK_RESERVE)
+
+    [parked] = r.ledger.parked
+    assert parked["first_failed_at"] == NOW + timedelta(seconds=1), (
+        "SA-3: the first failed attempt's instant is kept; the later attempts did not restamp it"
+    )
+
+
+async def test_r29_sa3_a_terminal_rejection_after_a_transient_failure_carries_the_first_failure() -> (
+    None
+):
+    clock = TickingClock()
+    rejection = SagaCommandBusinessRejectionError("s", "insufficient_stock", "no")
+    r = rig([SagaCommandTimeoutError("s", "no reply"), rejection], clock=clock)
+
+    await r.dispatcher.dispatch(ORDER, SagaCommandKind.STOCK_RESERVE)
+
+    [rejected] = r.ledger.rejected
+    assert rejected["first_failed_at"] == NOW + timedelta(seconds=1)

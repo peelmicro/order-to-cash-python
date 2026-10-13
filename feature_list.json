@@ -501,7 +501,7 @@
       "phase": 14,
       "title": "Health checks, OTel propagation through NATS and Kafka, structured logging, retry + DLQ, requestId idempotent replay",
       "sdd": true,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "one trace spans HTTP -> NATS -> the write database -> Kafka -> consumers",
         "correlationId in every log line",

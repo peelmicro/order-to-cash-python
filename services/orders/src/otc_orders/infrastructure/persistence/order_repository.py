@@ -57,11 +57,11 @@ class SqlAlchemyOrderRepository:
     def saved(self) -> tuple[Order, ...]:
         return tuple(self._saved)
 
-    async def save(self, order: Order) -> None:
+    async def save(self, order: Order, *, request_id: UUID | None = None) -> None:
         if order.id.value in self._loaded:
             await self._update(order)
         else:
-            await self._insert(order)
+            await self._insert(order, request_id)
             self._loaded.add(order.id.value)
         pending = [
             event
@@ -90,15 +90,18 @@ class SqlAlchemyOrderRepository:
     async def get_by_reference(self, reference: OrderNumber) -> Order | None:
         return await self._load(OrderRow.order_reference == reference.value)
 
+    async def find_by_request_id(self, request_id: UUID) -> Order | None:
+        return await self._load(OrderRow.request_id == request_id)
+
     # ----------------------------------------------------------------------------------- writes
 
-    async def _insert(self, order: Order) -> None:
+    async def _insert(self, order: Order, request_id: UUID | None) -> None:
         ids = ResolvedIds(
             retailer_id=await self._id_of(Retailer, order.retailer_code),
             company_id=await self._id_of(Company, order.company_code),
             currency_id=await self._id_of(Currency, order.currency),
         )
-        self._session.add(order_row_of(order, ids))
+        self._session.add(order_row_of(order, ids, request_id))
         await self._session.flush()  # the parent row exists before its items
         for line in order.lines:
             product_id = await self._id_of(Product, line.product_code)

@@ -1,4 +1,4 @@
-"""The four domain events of the Order aggregate (`design.md` section 7.3).
+"""The five domain events of the Order aggregate (`design.md` section 7.3).
 
 Domain types only (`OrderNumber`, `GLN`, `Money`, `UniqueId`, `datetime`), never `otc_contracts`
 models: mapping to the wire envelope is the outbox feature's. Frozen, slotted, keyword-only; every
@@ -87,4 +87,18 @@ class OrderCancelled(OrderEventBase):
     note: str | None = None
 
 
-type OrderEvent = OrderPlaced | OrderConfirmed | OrderCompleted | OrderCancelled
+@dataclass(frozen=True, slots=True, kw_only=True)
+class OrderSagaFailed(OrderEventBase):
+    """A saga command was parked for the FIRST time (`R29`): an operator-visible fact, not a
+    transition. Nothing about the order changes; `failed_at` is the instant of the park."""
+
+    EVENT_TYPE: ClassVar[str] = "order.saga_failed.v1"
+
+    order_reference: OrderNumber
+    command: str
+    attempts: int
+    last_error: str
+    failed_at: datetime
+
+
+type OrderEvent = OrderPlaced | OrderConfirmed | OrderCompleted | OrderCancelled | OrderSagaFailed

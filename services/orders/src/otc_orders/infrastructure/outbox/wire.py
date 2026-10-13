@@ -5,9 +5,10 @@ whole envelope is written through the one serializer (`to_wire_json`); splicing 
 a hand-assembled envelope would be a second serializer. For text the writer produced, and for #7's
 golden bytes, parse-and-rewrite is a fixed point (proved by the byte-exact wire test).
 
-No `traceparent` header and `trace_parent` stays NULL until feature 27 owns R56/R57: publishing
-without the header `FactHeaders` marks required is the documented gap #7 and #8 both shipped; a
-fabricated header would be worse.
+The `traceparent` header is NOT derived here: the relay restores the row's `trace_parent`, starts
+the `outbox.publish` PRODUCER span under it and hands this function that span's trace headers, so
+the header names the producer span and not the writer's (`R56`, `R57`). A row with no recorded
+trace gets no header at all; a fabricated one would be worse.
 
 A row that cannot become a valid envelope raises `ValueError` (pydantic's `ValidationError` and
 `json.JSONDecodeError` are both `ValueError`) or `TypeError`: the relay treats it as poison (OI18).
@@ -21,7 +22,9 @@ from otc_orders.infrastructure.outbox.publisher import PublishableFact
 from otc_orders.infrastructure.persistence.models import Outbox
 
 
-def to_publishable_fact(row: Outbox) -> PublishableFact:
+def to_publishable_fact(
+    row: Outbox, trace_headers: tuple[tuple[str, bytes], ...] = ()
+) -> PublishableFact:
     envelope = Envelope[dict[str, Any]](
         event_id=row.event_id,
         event_type=row.event_type,
@@ -38,5 +41,6 @@ def to_publishable_fact(row: Outbox) -> PublishableFact:
         headers=(
             ("x-event-type", row.event_type.encode("utf-8")),
             ("content-type", b"application/json"),
+            *trace_headers,
         ),
     )

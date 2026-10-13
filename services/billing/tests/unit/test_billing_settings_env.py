@@ -56,6 +56,11 @@ ENV: dict[str, tuple[str, str, Any]] = {
     "WEB_CONCURRENCY": ("server.web_concurrency", "3", 3),
     "BILLING_MAX_CONCURRENT_REQUESTS": ("responder.max_concurrent_requests", "7", 7),
     "CREDIT_FAILURE_RATE": ("credit_simulator.failure_rate", "0.37", 0.37),
+    "OTEL_EXPORTER_OTLP_ENDPOINT": (
+        "telemetry.otlp_endpoint",
+        "http://otlp.sentinel:14318",
+        "http://otlp.sentinel:14318",
+    ),
 }
 SETTINGS_CLASSES = {
     "BillingDatabaseSettings",
@@ -65,6 +70,7 @@ SETTINGS_CLASSES = {
     "OutboxRelaySettings",
     "ResponderSettings",
     "ServerSettings",
+    "TelemetrySettings",
 }
 
 

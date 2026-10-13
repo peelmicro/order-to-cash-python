@@ -42,6 +42,7 @@ ALLOWED_DECORATORS = {
     "asynccontextmanager": "lifespan context managers",
     "classmethod": "alternative constructors (Order.place / rehydrate style)",
     "dataclass": "value objects and records",
+    "field_validator": "pydantic settings single-field normalisation (blank SMTP credential)",
     "model_validator": "pydantic settings cross-field validation",
     "property": "read-only accessors",
     "staticmethod": "pure helpers on a class",

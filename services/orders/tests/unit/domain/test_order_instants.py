@@ -34,6 +34,7 @@ INSTANT_PARAMETERS = {
     ("add_line", "occurred_at"),
     ("remove_line", "occurred_at"),
     ("change_line", "occurred_at"),
+    ("record_saga_failure", "occurred_at"),
 }
 
 NAIVE = datetime(2026, 10, 1, 9, 0, 0)
@@ -53,7 +54,7 @@ def _public_instant_parameters() -> set[tuple[str, str]]:
 
 
 def test_the_instant_parameter_population_is_the_literal_list() -> None:
-    assert len(INSTANT_PARAMETERS) == 13
+    assert len(INSTANT_PARAMETERS) == 14
     assert _public_instant_parameters() == INSTANT_PARAMETERS
 
 
@@ -122,6 +123,16 @@ def test_every_instant_parameter_refuses_a_naive_or_non_utc_datetime(
             ),
         ),
         ("add_line", "occurred_at"): (OrderStatus.PLACED, add),
+        ("record_saga_failure", "occurred_at"): (
+            OrderStatus.PLACED,
+            lambda o: o.record_saga_failure(
+                command="stock.reserve",
+                attempts=1,
+                last_error="x",
+                occurred_at=bad,
+                causation_id=causation,
+            ),
+        ),
         ("remove_line", "occurred_at"): (
             OrderStatus.PLACED,
             lambda o: o.remove_line(line_id=o.lines[0].id, occurred_at=bad),

@@ -82,7 +82,7 @@ async def test_upgrade_downgrade_reupgrade_lifecycle(
     # the only sequences are the identity sequence of outbox.seq: closed, not "some sequence"
     assert {(n, k) for n, k in after_up if k != "r"} == {("outbox_seq_seq", "S")}
     assert await _namespaces(db.dsn) == {"public"}
-    assert await _version(db.dsn) == ["0002"]
+    assert await _version(db.dsn) == ["0003"]
 
     await alembic_runner(db.url, "downgrade", "base")
     after_down = await _relations(db.dsn)
@@ -94,7 +94,7 @@ async def test_upgrade_downgrade_reupgrade_lifecycle(
     await alembic_runner(db.url, "upgrade", "head")
     assert await _relations(db.dsn) == after_up
     assert await _namespaces(db.dsn) == {"public"}
-    assert await _version(db.dsn) == ["0002"]
+    assert await _version(db.dsn) == ["0003"]
 
 
 async def test_no_postgres_enum_types(migrated_db: Any) -> None:
@@ -108,3 +108,47 @@ async def test_no_postgres_enum_types(migrated_db: Any) -> None:
     finally:
         await conn.close()
     assert [r["typname"] for r in rows] == []
+
+
+SAGA_COMMANDS_COLUMNS = """
+SELECT column_name FROM information_schema.columns
+ WHERE table_schema = 'public' AND table_name = 'saga_commands'
+"""
+
+REVISION_0003_COLUMNS = {
+    "triggering_event_envelope",
+    "triggering_event_topic",
+    "dead_lettered_at",
+    "trace_parent",
+    "first_failed_at",
+}
+
+
+async def _saga_command_columns(dsn: str) -> set[str]:
+    conn = await asyncpg.connect(dsn)
+    try:
+        return {r["column_name"] for r in await conn.fetch(SAGA_COMMANDS_COLUMNS)}
+    finally:
+        await conn.close()
+
+
+async def test_0003_adds_exactly_its_four_columns_to_a_database_at_0002_and_downgrade_removes_them(
+    fresh_database: Any, alembic_runner: Any
+) -> None:
+    """S4.10: upgrade from `0002` (a database that already holds a parked row) adds the four
+    nullable columns and leaves the row's values alone; downgrade to `0002` removes exactly them."""
+    db = fresh_database
+    await alembic_runner(db.url, "upgrade", "0002")
+    at_0002 = await _saga_command_columns(db.dsn)
+    assert at_0002.isdisjoint(REVISION_0003_COLUMNS), "0002 already has a column of 0003"
+    assert await _version(db.dsn) == ["0002"]
+
+    await alembic_runner(db.url, "upgrade", "head")
+    at_0003 = await _saga_command_columns(db.dsn)
+    assert at_0003 - at_0002 == REVISION_0003_COLUMNS
+    assert at_0002 <= at_0003
+    assert await _version(db.dsn) == ["0003"]
+
+    await alembic_runner(db.url, "downgrade", "0002")
+    assert await _saga_command_columns(db.dsn) == at_0002
+    assert await _version(db.dsn) == ["0002"]

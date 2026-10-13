@@ -27,6 +27,7 @@ from otc_gateway.infrastructure.settings import (
     OperatorSettings,
     ServerSettings,
     SseSettings,
+    TelemetrySettings,
 )
 
 # variable -> (settings class, attribute, the default with the environment cleared)
@@ -52,6 +53,7 @@ DEFAULTS: dict[str, tuple[type[BaseSettings], str, Any]] = {
     "GATEWAY_SSE_BUFFER_CAPACITY": (SseSettings, "buffer_capacity", 500),
     "GATEWAY_SSE_PING_INTERVAL_MS": (SseSettings, "ping_interval_ms", 15_000),
     "GATEWAY_SSE_CLIENT_QUEUE_CAPACITY": (SseSettings, "client_queue_capacity", 256),
+    "OTEL_EXPORTER_OTLP_ENDPOINT": (TelemetrySettings, "otlp_endpoint", ""),
 }
 NO_DEFAULT = ("JWT_SECRET", "GATEWAY_OPERATOR_PASSWORD", "MONGO_INITDB_ROOT_PASSWORD", "MONGO_URI")
 GOOD_SECRET = "0123456789abcdef0123456789abcdef"  # exactly 32 bytes
@@ -204,6 +206,7 @@ def test_each_variable_set_to_a_sentinel_changes_exactly_the_field_that_reads_it
         "GATEWAY_SSE_BUFFER_CAPACITY": "900",
         "GATEWAY_SSE_PING_INTERVAL_MS": "4321",
         "GATEWAY_SSE_CLIENT_QUEUE_CAPACITY": "55",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otlp.sentinel:14318",
     }
     assert set(sentinels) == set(DEFAULTS)  # the literal covers every defaulted variable
     for variable, value in sentinels.items():

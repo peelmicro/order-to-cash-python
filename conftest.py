@@ -71,6 +71,21 @@ _USER = "postgres"
 _PASSWORD = "otc_test_password"  # noqa: S105 - a throwaway container's superuser password
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _no_session_exports_telemetry() -> Iterator[None]:
+    """No runtime built by the suite exports to a developer's collector (`OR4`, design 9.2).
+
+    Every settings class reads `.env`, and the developer's `.env` carries
+    `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`: a process variable set to the empty string
+    outranks the dotenv file, so every `TelemetrySettings()` the suite builds (and every child
+    process it spawns, which inherits this environment) holds an empty endpoint, which means no
+    exporter. A test that wants an exporter sets the variable itself, inside the test.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+        yield
+
+
 @dataclass(frozen=True)
 class PostgresServer:
     host: str
@@ -242,6 +257,11 @@ KAFKA_TOPIC_REPLICATION_FACTOR = 1  # .env.example KAFKA_TOPIC_REPLICATION_FACTO
 # Created up front: auto-creation is off. The three fact topics the Orders saga consumes
 # (`asyncapi.yaml` ordersFacts, fulfillmentFacts, billingFacts); each gets the same six partitions.
 KAFKA_FACT_TOPICS = ("otc.orders.facts.v1", "otc.fulfillment.facts.v1", "otc.billing.facts.v1")
+# Feature 27 (`R16`): each fact topic's dead-letter companion, `<topic>.dlq`, created up front as
+# `kafka-init` does in compose (`docker-compose.infra.yml`): a consumer that dead-letters a record
+# of a real topic writes to a topic that must exist, or its producer fails with
+# `UnknownTopicOrPartitionError` after its request timeout.
+KAFKA_FACT_DLQ_TOPICS = tuple(f"{topic}.dlq" for topic in KAFKA_FACT_TOPICS)
 
 
 @dataclass(frozen=True)
@@ -317,7 +337,7 @@ def kafka_server() -> Iterator[KafkaServer]:
             container
         )
         bootstrap_servers = f"{host}:{port}"
-        asyncio.run(_create_topics(bootstrap_servers, KAFKA_FACT_TOPICS))
+        asyncio.run(_create_topics(bootstrap_servers, (*KAFKA_FACT_TOPICS, *KAFKA_FACT_DLQ_TOPICS)))
         yield KafkaServer(bootstrap_servers=bootstrap_servers)
 
 

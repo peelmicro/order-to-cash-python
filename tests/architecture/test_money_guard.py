@@ -47,6 +47,7 @@ forbidden name anywhere, so the residual is only a module reached without that n
 """
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -314,10 +315,38 @@ def test_money_guard_walks_the_nested_domain_and_shared_kernel_population() -> N
     assert expected <= walked, f"money guard population is missing: {sorted(expected - walked)}"
 
 
+VALID_SERVICE_NAME = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def service_directories(root: Path) -> set[str]:
+    """Directories under `services/` that can be a service package: a tool cache such as
+    `.mypy_cache` is excluded where the listing is built, not filtered from results."""
+    return {
+        p.name
+        for p in (root / "services").iterdir()
+        if p.is_dir() and VALID_SERVICE_NAME.fullmatch(p.name)
+    }
+
+
 def test_money_guard_service_population_matches_the_literal_service_list() -> None:
-    on_disk = {p.name for p in (REPO_ROOT / "services").iterdir() if p.is_dir()}
+    on_disk = service_directories(REPO_ROOT)
     assert on_disk == set(SERVICES), (
         "a service was added or removed: update SERVICES so its domain is walked by the guard"
+    )
+
+
+def test_a_dot_directory_under_services_does_not_join_the_population_but_an_undeclared_service_does(
+    tmp_path: Path,
+) -> None:
+    """S5.10 sentinel (premises: a dot-directory is a tool cache; a valid name is a service)."""
+    (tmp_path / "services" / "orders").mkdir(parents=True)
+    cache = tmp_path / "services" / ".sentinel_cache"
+    cache.mkdir()
+    (cache / "stray.py").write_text("X = 1\n")
+    assert service_directories(tmp_path) == {"orders"}, "a dot-directory joined the population"
+    (tmp_path / "services" / "undeclared").mkdir()
+    assert service_directories(tmp_path) - {"orders"} == {"undeclared"}, (
+        "a real undeclared service directory must be seen, so the literal-list test fails on it"
     )
 
 

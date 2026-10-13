@@ -17,7 +17,7 @@ class FactMessage:
     offset: int
     key: bytes | None
     value: bytes
-    headers: tuple[tuple[str, bytes], ...]  # kept for feature 27's traceparent
+    headers: tuple[tuple[str, bytes], ...]  # the consume span's parent is read from `traceparent`
 
 
 class FactStreamSubscriber(Protocol):
@@ -31,3 +31,17 @@ class FactStreamSubscriber(Protocol):
         record of the same partition.
         """
         ...
+
+
+class FactProcessor(Protocol):
+    """The retry-then-dead-letter wrapper around a record's processing (`R16`; implemented by
+    `infrastructure.messaging.fact_retry.FactRetry`).
+
+    `process` runs `work` until it succeeds or the attempts are exhausted; in the latter case the
+    record is dead-lettered and the call RETURNS (the offset then commits). It raises only if the
+    dead-letter publication fails (the record is then delivered again) or on cancellation.
+    """
+
+    async def process(
+        self, message: FactMessage, event_type: str, work: Callable[[], Awaitable[None]]
+    ) -> None: ...

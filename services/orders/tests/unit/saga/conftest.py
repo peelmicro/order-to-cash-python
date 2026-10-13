@@ -296,6 +296,7 @@ def make_fact() -> FactBuilder:
                 credit_release_reason=credit_release_reason,
             ),
             topic="otc.test.facts.v1",
+            raw=b"{}",
         )
         return dataclasses.replace(fact, **overrides)
 

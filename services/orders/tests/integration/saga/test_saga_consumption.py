@@ -6,10 +6,18 @@ must be: the committed offset is read FROM THE BROKER (an admin call, never infe
 tables), and a failed record is redelivered by a genuinely NEW consumer (the lifespan is stopped and
 started again), not by an in-process retry. Failures are injected by replacing `SagaFactHandler.handle`
 for ONE event id, so the failure happens inside the real processing path.
+
+Since feature 27 (`R16`) the consumer retries a failing record itself and then DEAD-LETTERS it, so a
+processing failure no longer leaves the offset uncommitted: it commits past the record once the dead
+letter is durable. The redelivery that survives (and that `OR8` creates) is a dead letter that is NOT
+durable, so SO9 is proven with BOTH the handler and the dead-letter publication failing. The two
+cases below run on the test's PRIVATE topics (item 10) with a dead-letter producer the test replaces
+through the composition root's seam. The old "a poisoned payload is not committed and is retried"
+case was retired by `R16` (its claim is now false by requirement); its mutation (validating the
+payload in presentation) moved to the Orders dead-letter case.
 """
 
 import asyncio
-import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -57,6 +65,37 @@ def failing_once_for(
     return failed, attempts
 
 
+class UnreachableDeadLetterProducer:
+    """A dead-letter producer whose broker never acknowledges: `send_and_wait` raises, and every
+    refused publication is recorded in `refused` (the SUBSCRIBER-level redeliveries the record
+    needed, since each refusal ends one round of attempts)."""
+
+    def __init__(self, refused: list[str], **options: Any) -> None:
+        self._refused = refused
+        self.options = options
+
+    async def start(self) -> None:
+        return None
+
+    async def stop(self) -> None:
+        return None
+
+    async def send_and_wait(self, topic: str, **record: Any) -> None:
+        self._refused.append(topic)
+        raise ConnectionError("the dead-letter broker did not acknowledge")
+
+
+def unreachable(refused: list[str]) -> Callable[..., UnreachableDeadLetterProducer]:
+    def factory(**options: Any) -> UnreachableDeadLetterProducer:
+        return UnreachableDeadLetterProducer(refused, **options)
+
+    return factory
+
+
+# a short back-off keeps a record's three attempts inside a test's budget (the default is 500 ms)
+FAST_RETRY = {"FACT_RETRY_BACKOFF_MS": "20"}
+
+
 @pytest.mark.parametrize("topic", TOPICS)
 async def test_the_three_fact_topics_exist_with_six_partitions(topic: str, broker: Any) -> None:
     assert len(await broker.partitions_of(topic)) == 6
@@ -85,70 +124,52 @@ async def test_so1_first_boot_consumes_a_fact_published_before_the_consumer_grou
         assert await saga.db.status_of(order.id) == "stock_reserved"
 
 
-async def test_a_well_formed_envelope_with_a_poisoned_payload_is_not_committed_and_is_retried(
+async def test_so9_a_fact_whose_dead_letter_is_not_durable_leaves_the_committed_offset_unchanged_and_a_restarted_consumer_redelivers_it(
     saga_harness: Any,
-    broker: Any,
-    order_at: OrderAt,
-    waits: Waits,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    order = await order_at(OrderStatus.PLACED)
-    with caplog.at_level(logging.ERROR):
-        async with saga_harness() as saga:
-            before = await broker.committed()
-            poisoned = await saga.publish_fact(
-                "stock.reserved.v1",
-                correlation_id=order.id.value,
-                reference="ORD-000101",
-                payload={
-                    "orderReference": "ORD-000101"
-                },  # valid envelope, invalid StockReservedPayload
-            )
-            topic, partition, offset = saga.positions[poisoned]
-
-            def attempts() -> list[logging.LogRecord]:
-                return [
-                    r
-                    for r in caplog.records
-                    if r.name.endswith("kafka_fact_subscriber")
-                    and r.levelno == logging.ERROR
-                    and getattr(r, "offset", None) == offset
-                    and getattr(r, "partition", None) == partition
-                ]
-
-            async def retried_twice() -> bool:
-                return len(attempts()) >= 2
-
-            await waits(retried_twice, "two failed attempts of the poisoned record", seconds=30)
-
-            assert await broker.committed() == before, (
-                f"the committed offset of {topic}[{partition}] moved although the record never succeeded"
-            )
-            assert not await saga.db.processed(poisoned)
-            assert await saga.db.command_rows(order.id) == []
-            assert await saga.db.status_of(order.id) == "placed"
-
-
-async def test_so9_a_handler_that_throws_leaves_the_committed_offset_unchanged_and_a_restarted_consumer_redelivers_the_fact(
-    saga_harness: Any,
+    private_topics: Any,
     broker: Any,
     order_at: OrderAt,
     waits: Waits,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     order = await order_at(OrderStatus.PLACED)
-    fact_id = uuid.uuid4()
-    hold = asyncio.Event()
-    failed, attempts = failing_once_for(monkeypatch, fact_id, hold=hold)
+    baseline_id, fact_id = uuid.uuid4(), uuid.uuid4()
+    hold, recovered = asyncio.Event(), asyncio.Event()
+    failed, attempts = failing_once_for(monkeypatch, fact_id, until=recovered, hold=hold)
+    refused: list[str] = []
 
-    async with saga_harness(cleanup=False) as first:
+    async with saga_harness(
+        cleanup=False,
+        topics=private_topics,
+        dead_letter_producer_factory=unreachable(refused),
+        **FAST_RETRY,
+    ) as first:
+        # A fact of the SAME order and key (so the same partition) is processed and committed first:
+        # the committed offset is then a real position, not "nothing", and the failing record is the
+        # very next offset of that partition.
+        await first.publish_fact(
+            "stock.released.v1",
+            correlation_id=order.id.value,
+            reference="ORD-000101",
+            event_id=baseline_id,
+        )
+        topic, partition, baseline_offset = first.positions[baseline_id]
+
+        async def baseline_committed() -> bool:
+            return bool((await broker.committed()).get((topic, partition)) == baseline_offset + 1)
+
+        await waits(baseline_committed, "the baseline fact is processed and its offset committed")
         before = await broker.committed()
+
         await first.publish_fact(
             "stock.reserved.v1",
             correlation_id=order.id.value,
             reference="ORD-000101",
             event_id=fact_id,
         )
+        assert first.positions[fact_id][:2] == (topic, partition), "the same partition"
+        offset = first.positions[fact_id][2]
+        assert offset == baseline_offset + 1
         # The record is IN FLIGHT: its handler is running and has not returned. The committed
         # offset must not move while it runs, for longer than aiokafka's auto-commit interval
         # (5 s): a commit before the handler, or an auto-commit of the fetch position, shows here.
@@ -161,14 +182,26 @@ async def test_so9_a_handler_that_throws_leaves_the_committed_offset_unchanged_a
         finally:
             hold.set()  # now the handler raises (and a failed assertion cannot hang the shutdown)
         await asyncio.wait_for(failed.wait(), timeout=20)
+
+        async def dead_letter_refused() -> bool:
+            return len(refused) >= 1
+
+        await waits(
+            dead_letter_refused, "the consumer exhausted its attempts and tried to dead-letter"
+        )
         await asyncio.sleep(0.5)  # a (wrong) commit would have landed by now
-        assert await broker.committed() == before, "a failed handler must not advance the offset"
-        topic, partition, offset = first.positions[fact_id]
+        assert set(refused) == {f"{topic}.dlq"}, (
+            "the dead letter goes to the record's own companion"
+        )
+        assert await broker.committed() == before, "an undelivered dead letter must not commit"
         assert not await first.db.processed(fact_id)
+        assert len(attempts) >= 3, "the record was attempted to the maximum before the dead letter"
     # the first lifespan is stopped: its consumer is gone. Nothing may have been committed on exit.
     assert await broker.committed() == before
+    attempts_before_the_restart = len(attempts)
 
-    async with saga_harness(history="keep") as second:
+    recovered.set()  # the failure clears; the dead-letter broker is back (the real producer)
+    async with saga_harness(history="keep", topics=private_topics, **FAST_RETRY) as second:
 
         async def processed() -> bool:
             return bool(await second.db.processed(fact_id))
@@ -180,7 +213,9 @@ async def test_so9_a_handler_that_throws_leaves_the_committed_offset_unchanged_a
 
         await waits(committed_exactly, "the committed offset is exactly the fact's offset + 1")
 
-        assert len(attempts) == 2, "one failed delivery, one successful redelivery"
+        assert len(attempts) == attempts_before_the_restart + 1, (
+            "the redelivery is ONE more attempt, and it succeeds"
+        )
         assert (
             await second.db.fetchval(
                 "SELECT count(*) FROM processed_events WHERE event_id = $1", fact_id
@@ -191,8 +226,9 @@ async def test_so9_a_handler_that_throws_leaves_the_committed_offset_unchanged_a
         assert len(second.stand_in(SagaCommandKind.CREDIT_HOLD).requests_for(order.id.value)) == 1
 
 
-async def test_so9_a_failed_record_is_never_committed_past_by_a_later_record_of_the_same_partition(
+async def test_so9_a_failed_record_is_never_committed_past_while_its_dead_letter_is_not_durable(
     saga_harness: Any,
+    private_topics: Any,
     broker: Any,
     order_at: OrderAt,
     waits: Waits,
@@ -202,8 +238,11 @@ async def test_so9_a_failed_record_is_never_committed_past_by_a_later_record_of_
     first_id = uuid.uuid4()
     recovered = asyncio.Event()
     _, attempts = failing_once_for(monkeypatch, first_id, until=recovered)
+    refused: list[str] = []
 
-    async with saga_harness() as saga:
+    async with saga_harness(
+        topics=private_topics, dead_letter_producer_factory=unreachable(refused), **FAST_RETRY
+    ) as saga:
         # two facts of ONE order, so one key and one partition, in this order: reserved, then
         # rejected. In order, the rejection finds `stock_reserved` and is ignored; if the failed first
         # fact were skipped the rejection would meet `placed` and CANCEL the order.
@@ -223,11 +262,14 @@ async def test_so9_a_failed_record_is_never_committed_past_by_a_later_record_of_
         samples: list[int] = []
         loop = asyncio.get_running_loop()
         deadline = loop.time() + 60
-        while len(attempts) < 4:  # the first delivery and at least three paced retries
-            assert loop.time() < deadline, f"only {len(attempts)} attempts in 60 s"
+        while len(refused) < 3:  # the subscriber delivered the record and redelivered it twice more
+            assert loop.time() < deadline, (
+                f"only {len(refused)} refused dead letters in 60 s ({len(attempts)} attempts)"
+            )
             samples.append((await broker.committed()).get((topic, partition), -1))
             await asyncio.sleep(0.3)
         samples.append((await broker.committed()).get((topic, partition), -1))
+        assert len(attempts) >= 9, "three rounds of three attempts each"
         assert max(samples) <= first_offset, (
             f"the committed offset {max(samples)} passed the failed record at {first_offset}: "
             f"samples={samples}"

@@ -12,7 +12,9 @@ only thing `seq` depends on is PostgreSQL's identity counter, advanced in raise 
 The writer copies the five identity fields into columns verbatim (`correlation_id` and
 `causation_id` are the aggregate's, R12) and applies `wire_instant` to the instant, so the stored
 `occurred_at`, the envelope's and every payload instant are the same millisecond (OI19).
-`trace_parent` stays NULL until feature 27.
+`trace_parent` is the `traceparent` of the span active when the row is written
+(`current_traceparent()`, NULL when none is: `OR4`), so the relay can continue that trace across
+the broker (`R56`).
 """
 
 from collections.abc import Iterable
@@ -22,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from otc_contracts import FACT_MODELS, to_wire_json
 from otc_orders.application.ports.clock import Clock
+from otc_orders.infrastructure.observability.trace_context import current_traceparent
 from otc_orders.infrastructure.outbox.errors import UndeclaredFactError
 from otc_orders.infrastructure.outbox.payloads import build_fact, narrow
 from otc_orders.infrastructure.persistence.models import Outbox
@@ -66,7 +69,7 @@ class OutboxWriter:
                     occurred_at=built.occurred_at,
                     published_at=None,
                     created_at=self._clock.now(),
-                    trace_parent=None,
+                    trace_parent=current_traceparent(),
                 )
             )
             await session.flush()

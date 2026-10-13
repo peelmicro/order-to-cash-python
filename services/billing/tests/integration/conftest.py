@@ -21,6 +21,8 @@ from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from nats.aio.client import Client as NatsClient
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -806,3 +808,41 @@ def make_world(db: Db, rpc: RpcCall, decode: type[Decode], issue_body: IssueBody
         )
 
     return build
+
+
+# ------------------------------------------------ feature 27: the real runtime with spans captured
+
+
+@dataclass(frozen=True)
+class TracedHost:
+    """The REAL runtime (`start_runtime(load_settings())`, the lifespan's own call) built with an
+    in-memory span processor handed to ITS provider: what `exporter` holds is what a collector
+    would get. Read it after the `async with` ends (the runtime has then drained its requests)."""
+
+    runtime: BillingRuntime
+    client: NatsClient
+    exporter: InMemorySpanExporter
+
+
+TracedHostFactory = Callable[..., AbstractAsyncContextManager[TracedHost]]
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def traced_billing_factory(
+    host_environment: HostEnv, nats_client: NatsClient
+) -> TracedHostFactory:
+    """`async with traced_billing_factory(**env) as host:`; the runtime is stopped on exit."""
+
+    @asynccontextmanager
+    async def start(**overrides: str) -> AsyncIterator[TracedHost]:
+        host_environment(**overrides)
+        exporter = InMemorySpanExporter()
+        runtime = await start_runtime(
+            load_settings(), span_processors=[SimpleSpanProcessor(exporter)]
+        )
+        try:
+            yield TracedHost(runtime=runtime, client=nats_client, exporter=exporter)
+        finally:
+            await runtime.stop()
+
+    return start

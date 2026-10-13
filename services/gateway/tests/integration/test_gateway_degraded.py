@@ -17,10 +17,14 @@ loop that opened it.
 """
 
 import asyncio
+import importlib.util
+import sys
 import time
 import warnings
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
+from types import ModuleType
 from typing import Any, Protocol
 
 import httpx
@@ -34,6 +38,20 @@ from testcontainers.core.container import DockerContainer
 from otc_gateway.composition import load_settings, start_runtime
 from otc_gateway.main import create_app
 from otc_seed.domain.data.sagas import SAGAS
+
+HEALTH_SUPPORT_PATH = Path(__file__).resolve().parents[4] / "tests/observability/health_support.py"
+
+
+def health_support() -> ModuleType:
+    """`tests/observability/health_support.py`, loaded by path (importlib mode)."""
+    spec = importlib.util.spec_from_file_location("health_support", HEALTH_SUPPORT_PATH)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
 
 pytestmark = pytest.mark.integration
 
@@ -232,15 +250,12 @@ async def test_r60_a_paused_nats_is_down_within_the_probe_bound_not_instantly_an
         )
         async with gateway_client() as (client, _, _):
             assert (await client.get("/health/ready")).status_code == 200
-            container = nats.get_wrapped_container()
-            assert container is not None
-            container.pause()
-            try:
+            # `paused` pauses and unpauses in a `finally` (the only `.pause()` in the tests:
+            # `tests/architecture/test_pause_confinement.py`)
+            with health_support().paused(nats):
                 started = time.monotonic()
                 paused = await client.get("/health/ready")
                 elapsed = time.monotonic() - started
-            finally:
-                container.unpause()
 
             assert paused.status_code == 503
             assert paused.json()["checks"]["rpcTransport"] == {

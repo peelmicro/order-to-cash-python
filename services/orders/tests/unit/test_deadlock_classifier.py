@@ -54,6 +54,7 @@ class ScriptedRelay(OutboxRelay):
 
     def __init__(self, outcomes: list[BaseException | RelayResult]) -> None:
         self._outcomes = outcomes
+        self._lag = None  # the production __init__ is bypassed: no gauge
         self.cycles = 0
 
     async def _cycle(self) -> RelayResult:

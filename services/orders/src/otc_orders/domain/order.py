@@ -31,6 +31,7 @@ from otc_orders.domain.events import (
     OrderEvent,
     OrderPlaced,
     OrderPlacedLine,
+    OrderSagaFailed,
 )
 from otc_orders.domain.instants import require_utc
 from otc_orders.domain.order_line import OrderLine, OrderLineInput
@@ -469,6 +470,34 @@ class Order(AggregateRoot):
 
         self._transition_to(
             CANCELLED, occurred_at=occurred_at, build_event=build, cancellation_reason=reason
+        )
+
+    def record_saga_failure(
+        self,
+        *,
+        command: str,
+        attempts: int,
+        last_error: str,
+        occurred_at: datetime,
+        causation_id: UniqueId,
+    ) -> None:
+        """`R29`: a saga command was parked for the first time. Raises `order.saga_failed.v1` and
+        changes NOTHING else: not the status, the lines, the totals or `updated_at` (the order did
+        not change; an operator is being told something about it)."""
+        require_utc(occurred_at, field="occurred_at")
+        self._raise_event(
+            OrderSagaFailed(
+                event_id=UniqueId.new(),
+                aggregate_id=self.id,
+                correlation_id=self.id,
+                causation_id=causation_id,
+                occurred_at=occurred_at,
+                order_reference=self._order_reference,
+                command=command,
+                attempts=attempts,
+                last_error=last_error,
+                failed_at=occurred_at,
+            )
         )
 
     def _transition_to(

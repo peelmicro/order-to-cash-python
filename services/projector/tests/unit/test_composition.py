@@ -11,12 +11,19 @@ from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 import pytest
+from opentelemetry.trace import Tracer
 
 import otc_projector.composition as composition
 from otc_cqrs import DispatcherValidationError, HandlerRegistry
 from otc_projector.composition import Externals, ProjectorSettings, start_runtime
 from otc_projector.infrastructure.messaging.kafka_fact_subscriber import KafkaFactSubscriber
-from otc_projector.infrastructure.settings import KafkaSettings, MongoSettings, NatsSettings
+from otc_projector.infrastructure.settings import (
+    FactRetrySettings,
+    KafkaSettings,
+    MongoSettings,
+    NatsSettings,
+    TelemetrySettings,
+)
 
 EXPECTED_ORDER = [
     "dispatcher",
@@ -25,6 +32,7 @@ EXPECTED_ORDER = [
     "indexes.verify",
     "migration",
     "nats.connect",
+    "dead_letters.start",
     "consumer.start",
 ]
 
@@ -104,7 +112,22 @@ class World:
         return Connection()
 
     # -- Kafka
-    def subscriber(self, settings: KafkaSettings) -> Any:
+    def dead_letters(self, settings: KafkaSettings) -> Any:
+        world = self
+
+        class Publisher:
+            async def start(self) -> None:
+                world.hit("dead_letters.start")
+
+            async def stop(self) -> None:
+                world.calls.append("dead_letters.stop")
+
+            async def publish(self, letter: Any) -> None:
+                raise AssertionError("no fact is processed in these tests")
+
+        return Publisher()
+
+    def subscriber(self, settings: KafkaSettings, tracer: Tracer) -> Any:
         self.kafka_settings = settings
         world = self
 
@@ -137,7 +160,10 @@ class World:
                 return None
 
         return KafkaFactSubscriber(
-            settings, consumer_factory=cast("Callable[..., Any]", Consumer), poll_ms=1
+            settings,
+            consumer_factory=cast("Callable[..., Any]", Consumer),
+            poll_ms=1,
+            tracer=tracer,
         )
 
     def externals(self) -> Externals:
@@ -153,6 +179,7 @@ class World:
             migrate=cast("Callable[[Any], Awaitable[object]]", self.migrate),
             nats_connect=cast("Callable[[str], Awaitable[Any]]", self.nats_connect),
             subscriber=self.subscriber,
+            dead_letters=self.dead_letters,
         )
 
 
@@ -219,11 +246,19 @@ async def test_pr43_start_runtime_runs_its_steps_in_order(
     )
     try:
         assert world.calls == EXPECTED_ORDER, f"the boot ran {world.calls}"
-        assert runtime.unready_reasons() == []
+        # the fake externals have no broker to probe: what is asserted is the task-liveness half of
+        # readiness (no task of the boot is done), attributed to each check
+        assert [list(check.task_reasons()) for check in runtime.checks] == [[], [], []]
     finally:
         await runtime.stop()
-    # closed in reverse order of opening: the consumer first, then NATS, then MongoDB
-    assert world.calls[len(EXPECTED_ORDER) :] == ["consumer.stop", "nats.drain", "mongo.close"]
+    # closed in reverse order of opening: the consumer first, then the dead-letter producer it
+    # used, then NATS, then MongoDB
+    assert world.calls[len(EXPECTED_ORDER) :] == [
+        "consumer.stop",
+        "dead_letters.stop",
+        "nats.drain",
+        "mongo.close",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -243,6 +278,23 @@ async def test_pr43_a_raising_step_leaves_no_task_and_closes_what_was_opened_in_
     closes = [c for c in world.calls if c in ("mongo.close", "nats.drain")]
     assert closes == ["mongo.close"], f"closed {closes}, expected only what was opened"
     assert "consumer.start" not in world.calls, "the consumer started after a failed step"
+
+
+async def test_or8_a_dead_letter_producer_that_cannot_start_stops_the_boot_before_the_consumer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """A consumer that cannot dead-letter must not start (`design.md` 9.3)."""
+    world = World()
+    world.fail_at = "dead_letters.start"
+    before = leftover_tasks()
+    with pytest.raises(RuntimeError, match=r"dead_letters\.start failed"):
+        await start_runtime(default_settings(monkeypatch, tmp_path), externals=world.externals())
+    assert leftover_tasks() == before
+    assert "consumer.start" not in world.calls, (
+        "the consumer started without a dead-letter producer"
+    )
+    closes = [c for c in world.calls if c in ("mongo.close", "nats.drain")]
+    assert closes == ["nats.drain", "mongo.close"], f"closed {closes}"
 
 
 async def test_pr43_a_consumer_that_cannot_start_closes_everything_in_reverse_and_leaves_no_task(
@@ -276,6 +328,7 @@ async def test_pr45_a_nats_connection_that_never_answers_fails_the_boot_naming_n
         migrate=externals.migrate,
         nats_connect=never,
         subscriber=externals.subscriber,
+        dead_letters=externals.dead_letters,
     )
     before = leftover_tasks()
     with pytest.raises(RuntimeError, match="NATS_URL nats://localhost:4222"):
@@ -356,8 +409,14 @@ async def test_pr27_two_handlers_fail_the_boot(
     assert world.mongo_uri is None
 
 
-def test_the_settings_bundle_is_the_three_classes_load_settings_builds() -> None:
+def test_the_settings_bundle_is_the_five_classes_load_settings_builds() -> None:
     import dataclasses
 
     names = {f.name: f.type for f in dataclasses.fields(ProjectorSettings)}
-    assert names == {"mongo": MongoSettings, "kafka": KafkaSettings, "nats": NatsSettings}
+    assert names == {
+        "mongo": MongoSettings,
+        "kafka": KafkaSettings,
+        "nats": NatsSettings,
+        "telemetry": TelemetrySettings,
+        "fact_retry": FactRetrySettings,
+    }

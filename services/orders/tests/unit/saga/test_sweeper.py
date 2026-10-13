@@ -28,6 +28,7 @@ def make_row(n: int) -> ClaimedCommand:
         payload="{}",
         attempts=0,
         triggering_event_id=UniqueId(uuid.UUID(int=n + 200)),
+        trace_parent=None,
     )
 
 

@@ -23,6 +23,7 @@ from otc_orders.domain.events import (
     OrderConfirmed,
     OrderPlaced,
     OrderPlacedLine,
+    OrderSagaFailed,
 )
 from otc_orders.domain.value_objects.cancellation_reason import CancellationReason
 from otc_orders.domain.value_objects.compensation_step import (
@@ -325,3 +326,33 @@ def test_an_unknown_event_class_is_refused_by_name() -> None:
     with pytest.raises(UnmappedDomainEventError, match="OrderShipped") as raised:
         narrow(OrderShipped())
     assert raised.value.event_class == "OrderShipped"
+
+
+def test_order_saga_failed_maps_every_payload_field_from_its_own_source() -> None:
+    """R29: five payload fields, each from a value distinct from every other in the event."""
+    failed_at = datetime(2026, 10, 6, 9, 29, 58, 987000, tzinfo=UTC)
+    event = OrderSagaFailed(
+        **identity(),
+        order_reference=OrderNumber("ORD-000131"),
+        command="billing.credit.hold",
+        attempts=9,
+        last_error="no reply within 400 ms from billing.credit.hold",
+        failed_at=failed_at,
+    )
+    built = build_fact(event)
+
+    assert isinstance(built.payload, asyncapi.OrderSagaFailedPayload)
+    wire = json.loads(to_wire_json(built.envelope))
+    assert wire["eventType"] == "order.saga_failed.v1"
+    assert wire["payload"] == {
+        "orderReference": "ORD-000131",
+        "command": "billing.credit.hold",
+        "attempts": 9,
+        "lastError": "no reply within 400 ms from billing.credit.hold",
+        "failedAt": "2026-10-06T09:29:58.987Z",
+    }
+    assert wire["occurredAt"] == "2026-10-06T09:30:05.123Z"
+    assert wire["eventId"] == str(EVENT_ID)
+    assert wire["aggregateId"] == str(AGGREGATE_ID)
+    assert wire["correlationId"] == str(CORRELATION_ID)
+    assert wire["causationId"] == str(CAUSATION_ID)

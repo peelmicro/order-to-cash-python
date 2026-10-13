@@ -23,11 +23,16 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 import sqlalchemy.exc
+from opentelemetry.trace import SpanKind, Tracer
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from otc_billing.application.ports.clock import Clock
 from otc_billing.application.ports.credit_store import CreditTransaction, StoreUnavailableError
+from otc_billing.infrastructure.observability.trace_context import (
+    NO_TRACER,
+    TRANSACTION_SPAN,
+)
 from otc_billing.infrastructure.outbox.relay import sqlstate_of
 from otc_billing.infrastructure.outbox.writer import OutboxWriter
 from otc_billing.infrastructure.persistence.credit_repository import SqlAlchemyCreditRepository
@@ -99,6 +104,7 @@ class SqlAlchemyCreditTransactions:
         sessions: async_sessionmaker[AsyncSession],
         outbox: OutboxWriter,
         clock: Clock,
+        tracer: Tracer = NO_TRACER,
         repository_factory: RepositoryFactory = SqlAlchemyCreditRepository,
         invoice_repository_factory: InvoiceRepositoryFactory = SqlAlchemyInvoiceRepository,
         allocator_factory: AllocatorFactory = SqlAlchemyInvoiceNumberAllocator,
@@ -106,18 +112,22 @@ class SqlAlchemyCreditTransactions:
         self._sessions = sessions
         self._outbox = outbox
         self._clock = clock
+        self._tracer = tracer
         self._repository_factory = repository_factory
         self._invoice_repository_factory = invoice_repository_factory
         self._allocator_factory = allocator_factory
 
     async def run[T](self, work: Callable[[CreditTransaction], Awaitable[T]]) -> T:
         try:
-            async with self._sessions() as session, session.begin():
-                await session.connection(execution_options={"isolation_level": "READ COMMITTED"})
-                repository = self._repository_factory(session, self._outbox, self._clock)
-                invoices = self._invoice_repository_factory(session, self._outbox, self._clock)
-                numbers = self._allocator_factory(session)
-                result = await work(SqlAlchemyCreditTransaction(repository, invoices, numbers))
+            with self._tracer.start_as_current_span(TRANSACTION_SPAN, kind=SpanKind.INTERNAL):
+                async with self._sessions() as session, session.begin():
+                    await session.connection(
+                        execution_options={"isolation_level": "READ COMMITTED"}
+                    )
+                    repository = self._repository_factory(session, self._outbox, self._clock)
+                    invoices = self._invoice_repository_factory(session, self._outbox, self._clock)
+                    numbers = self._allocator_factory(session)
+                    result = await work(SqlAlchemyCreditTransaction(repository, invoices, numbers))
             # the commit has returned: only now may either aggregate forget its events
             repository.clear_saved_events()
             invoices.clear_saved_events()

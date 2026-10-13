@@ -39,7 +39,7 @@ EXPECTED_CONSTRUCTIONS: Counter[Site] = Counter(
 )
 EXPECTED_FACTORY_CALLS: Counter[tuple[str, str, str | None]] = Counter(
     {
-        ("place", "application/commands/place_order.py", "handle"): 1,
+        ("place", "application/commands/place_order.py", "_place"): 1,
         ("rehydrate", "infrastructure/persistence/order_mapper.py", "order_of"): 1,
     }
 )

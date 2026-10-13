@@ -16,15 +16,22 @@ confirm the order and request a despatch.
 `work`, so they cannot carry a value from an aborted attempt. There is NO deadlock retry here
 (outbox design 12.1, G2): a deadlock victim propagates, the offset is not committed, the redelivery
 re-runs the step.
+
+Completion metric (`R59`): when the step closes the saga (`completed` or `cancelled`), the elapsed
+time from `order.order_date` to the fact's instant is handed to `SagaMetrics` strictly AFTER the
+transaction committed. A deduplicated redelivery, an ignored fact, a step that leaves the order
+open and a transaction that raised record nothing.
 """
 
 import enum
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 
 from otc_contracts import to_wire_json
 from otc_orders.application.ports.saga_command_store import EnqueueOutcome, OwedCommand
 from otc_orders.application.ports.saga_ignored_facts import IgnoredFactMarker
+from otc_orders.application.ports.saga_metrics import NoSagaMetrics, SagaMetrics, SagaOutcome
 from otc_orders.application.ports.unit_of_work import OrdersTransaction
 from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.application.saga.command_payloads import build_command_payload
@@ -69,8 +76,9 @@ LATE_RESERVATION_EVENT_TYPE = "stock.reserved.v1"
 
 
 class SagaFactHandler:
-    def __init__(self, consumption: FactConsumption) -> None:
+    def __init__(self, consumption: FactConsumption, metrics: SagaMetrics | None = None) -> None:
         self._consumption = consumption
+        self._metrics = NoSagaMetrics() if metrics is None else metrics
 
     async def handle(self, fact: SagaFact) -> SagaFactResult:
         variants = variants_for(fact.event_type)
@@ -80,9 +88,10 @@ class SagaFactHandler:
         expected = variants[0].precondition if len(variants) == 1 else None
         enqueued: SagaCommandKind | None = None
         ignored = False
+        closed: tuple[SagaOutcome, float] | None = None
 
         async def work(tx: OrdersTransaction) -> None:
-            nonlocal enqueued, ignored
+            nonlocal enqueued, ignored, closed
             order = await tx.orders.get_by_id_for_update(fact.correlation_id)
             if order is None:
                 await self._ignore(tx, fact, None, expected, IgnoredFactMarker.UNKNOWN_ORDER)
@@ -115,6 +124,7 @@ class SagaFactHandler:
                         await tx.orders.save(order)
                     if step.command_after is not None:
                         enqueued = await self._enqueue(tx, order, step.command_after, fact)
+                    closed = self._closing(order, fact)
                 case Cancel():
                     reason = step.reason(fact)
                     note: str | None = None
@@ -129,13 +139,28 @@ class SagaFactHandler:
                         note=note,
                     )
                     await tx.orders.save(order)
+                    closed = self._closing(order, fact)
 
         consumed = await self._consumption.run_once(fact.event_id.value, work)
         if consumed is ConsumptionResult.DUPLICATE:
             return SagaFactResult(SagaFactOutcome.DUPLICATE, None)
         if ignored:
             return SagaFactResult(SagaFactOutcome.IGNORED, None)
+        if closed is not None:  # after commit: `run_once` returned
+            self._metrics.closed(*closed)
         return SagaFactResult(SagaFactOutcome.PROCESSED, enqueued)
+
+    @staticmethod
+    def _closing(order: Order, fact: SagaFact) -> tuple[SagaOutcome, float] | None:
+        """(outcome, milliseconds from `order_date` to the closing fact) when this step left the
+        order `completed` or `cancelled`, else None."""
+        if order.status is OrderStatus.COMPLETED:
+            outcome: SagaOutcome = "completed"
+        elif order.status is OrderStatus.CANCELLED:
+            outcome = "cancelled"
+        else:
+            return None
+        return outcome, (fact.occurred_at - order.order_date) / timedelta(milliseconds=1)
 
     @staticmethod
     async def _is_late_approval(tx: OrdersTransaction, order: Order) -> bool:
@@ -170,6 +195,8 @@ class SagaFactHandler:
                 kind=kind,
                 payload=to_wire_json(build_command_payload(kind, order, fact)),
                 triggering_event_id=fact.event_id,
+                triggering_event_envelope=fact.raw,
+                triggering_event_topic=fact.topic,
             )
         )
         if outcome is EnqueueOutcome.ALREADY_OWED:

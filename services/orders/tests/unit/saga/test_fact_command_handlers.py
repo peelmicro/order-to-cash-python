@@ -50,7 +50,7 @@ ORDER_ID = uuid.UUID("00000000-0000-4000-8000-0000000000d1")
 
 def command_for(event_type: str, raw: bytes, topic: str = "otc.fulfillment.facts.v1") -> Any:
     envelope = from_wire_json(Envelope[dict[str, Any]], raw)
-    return FACT_COMMANDS[event_type](envelope=envelope, topic=topic)
+    return FACT_COMMANDS[event_type](envelope=envelope, topic=topic, raw=raw)
 
 
 def test_an_offset_instant_with_microseconds_becomes_the_same_utc_millisecond(
@@ -115,6 +115,7 @@ def test_an_event_type_with_no_model_is_a_payload_error(
     forged = HandleStockReservedFactCommand(
         envelope=command.envelope.model_copy(update={"event_type": "no.such.v1"}),
         topic="t",
+        raw=b"{}",
     )
 
     with pytest.raises(FactPayloadError, match=r"no\.such\.v1"):

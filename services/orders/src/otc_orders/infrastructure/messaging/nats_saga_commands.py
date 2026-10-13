@@ -19,7 +19,7 @@ propagates as the builtin `TimeoutError`. `asyncio.CancelledError` is never caug
 
 The request body is the STORED payload text as bytes (L21), never a re-serialisation. A fresh header
 dict is built per call (L19): concurrent per-command tasks share this one adapter, so a shared,
-mutated dict would race across an `await`. `traceparent` is feature 27's.
+mutated dict would race across an `await`. `traceparent` is injected per call (`OR4`).
 
 Reply decode (SO15): the whole decode sits inside ONE `except ValueError` (`JSONDecodeError`,
 `UnicodeDecodeError` and pydantic's `ValidationError` are all ValueErrors), so no decoding exception
@@ -33,6 +33,7 @@ side as a plain transport error with no `code` (L18).
 from typing import Protocol
 
 import nats.errors
+from opentelemetry.trace import SpanKind, Tracer
 
 from otc_contracts import WireModel, from_wire_json
 from otc_contracts.generated.asyncapi import (
@@ -55,6 +56,7 @@ from otc_orders.application.ports.saga_commands import (
 from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.infrastructure.messaging.rpc_reply import parse_reply
 from otc_orders.infrastructure.messaging.saga_subjects import SAGA_SUBJECTS
+from otc_orders.infrastructure.observability.trace_context import NO_TRACER, inject_nats
 
 # `asyncapi.yaml` gives the twelve `RpcError.code` values no per-code description (only `TIMEOUT` is
 # described: caller-produced), so the split is #7's and #8's, member for member
@@ -94,9 +96,12 @@ class _Requester(Protocol):
 
 
 class NatsSagaCommandsAdapter:
-    def __init__(self, connection: _Requester, *, timeout_ms: int) -> None:
+    def __init__(
+        self, connection: _Requester, *, timeout_ms: int, tracer: Tracer = NO_TRACER
+    ) -> None:
         self._connection = connection
         self._timeout_ms = timeout_ms
+        self._tracer = tracer
 
     async def reserve_stock(
         self, request: bytes, meta: SagaCommandMeta
@@ -146,9 +151,15 @@ class NatsSagaCommandsAdapter:
             "x-request-id": str(meta.request_id),
         }
         try:
-            reply = await self._connection.request(
-                subject, request, timeout=self._timeout_ms / 1000, headers=headers
-            )
+            with self._tracer.start_as_current_span(
+                f"{subject} request",
+                kind=SpanKind.CLIENT,
+                attributes={"messaging.system": "nats", "messaging.destination.name": subject},
+            ):
+                inject_nats(headers)  # the CLIENT span's context, into THIS call's dict
+                reply = await self._connection.request(
+                    subject, request, timeout=self._timeout_ms / 1000, headers=headers
+                )
         except nats.errors.NoRespondersError:
             raise SagaCommandTransportError(
                 subject, f"no responder is subscribed to {subject}."

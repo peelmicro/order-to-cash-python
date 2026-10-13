@@ -260,3 +260,19 @@ def test_a_scope_without_a_dispatcher_refuses_the_handler_at_boot_not_on_the_fir
 
     with pytest.raises(Exception, match="dispatcher"):
         CancelOrderCommandHandler(scope)
+
+
+@pytest.mark.parametrize("status", list(PLANS))
+async def test_or12_the_operators_release_is_enqueued_with_no_triggering_envelope_and_no_topic(
+    status: OrderStatus, order_in: Callable[..., Order]
+) -> None:
+    """Gate G1: no fact owes the operator's release, so there is no envelope to dead-letter and no
+    topic to dead-letter it to. A synthetic `orders.cancel.requested` envelope would be a record no
+    producer ever wrote (and the traceparent is stored by the queue, not passed by the handler)."""
+    handler, calls = handler_over(order_in(status))
+
+    await handler.handle(CANCEL)
+
+    [owed] = calls.enqueued
+    assert owed.triggering_event_envelope is None
+    assert owed.triggering_event_topic is None

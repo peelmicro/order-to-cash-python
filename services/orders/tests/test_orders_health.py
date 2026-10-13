@@ -8,7 +8,7 @@ async def test_orders_health_live_returns_200() -> None:
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health/live")
     assert response.status_code == 200
-    assert response.json() == {"status": "live"}
+    assert response.json() == {"status": "up"}
 
 
 async def test_orders_health_ready_is_503_until_the_lifespan_has_started_the_runtime() -> None:
@@ -16,4 +16,4 @@ async def test_orders_health_ready_is_503_until_the_lifespan_has_started_the_run
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/health/ready")
     assert response.status_code == 503
-    assert response.json() == {"status": "unready", "reasons": ["the service has not started"]}
+    assert response.json() == {"status": "down", "checks": {}}

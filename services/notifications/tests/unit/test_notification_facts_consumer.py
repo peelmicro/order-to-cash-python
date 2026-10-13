@@ -8,13 +8,14 @@ the envelope's other ids are all different), a poisoned payload propagating, and
 irrelevant to routing.
 """
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
 
-from otc_notifications.application.ports.fact_stream import FactMessage
+from otc_notifications.application.ports.fact_stream import FactMessage, FactProcessor
 from otc_notifications.application.scope import NotificationsScope
 from otc_notifications.composition import build_dispatcher
 from otc_notifications.presentation.notification_facts_consumer import (
@@ -46,17 +47,42 @@ def record(value: bytes, topic: str = "otc.orders.facts.v1") -> FactMessage:
     return FactMessage(topic=topic, partition=0, offset=0, key=None, value=value, headers=())
 
 
-@pytest.fixture
-def consumer(ledger: Any, sender: Any) -> NotificationFactsConsumerTask:
-    class Unused:
-        async def run(self, handler: Any, stop: Any) -> None:
-            raise AssertionError("handle() is driven directly")
+class RecordingRetry:
+    """The `FactProcessor` the task is handed: it records every record that reaches the wrapper and
+    runs `work` `attempts` times, so a test can tell what is INSIDE the wrapper from what is
+    outside it."""
 
+    def __init__(self, attempts: int = 1) -> None:
+        self.calls: list[tuple[FactMessage, str]] = []
+        self._attempts = attempts
+
+    async def process(
+        self, message: FactMessage, event_type: str, work: Callable[[], Awaitable[None]]
+    ) -> None:
+        self.calls.append((message, event_type))
+        for _ in range(self._attempts):
+            await work()
+
+
+class Unused:
+    async def run(self, handler: Any, stop: Any) -> None:
+        raise AssertionError("handle() is driven directly")
+
+
+def consumer_with(
+    retry: FactProcessor, scope_factory: Callable[[], NotificationsScope]
+) -> NotificationFactsConsumerTask:
     return NotificationFactsConsumerTask(
         subscriber=Unused(),
         dispatcher=build_dispatcher(),
-        scope_factory=lambda: NotificationsScope(ledger=ledger, sender=sender),
+        scope_factory=scope_factory,
+        retry=retry,
     )
+
+
+@pytest.fixture
+def consumer(ledger: Any, sender: Any) -> NotificationFactsConsumerTask:
+    return consumer_with(RecordingRetry(), lambda: NotificationsScope(ledger=ledger, sender=sender))
 
 
 @pytest.mark.parametrize("event_type", NOTIFIED)
@@ -206,3 +232,49 @@ async def test_a_send_failure_propagates_to_the_subscriber_and_the_row_is_forgot
 
     await consumer.handle(record(wire))  # the redelivery
     assert len(sender.sent) == 1
+
+
+async def test_or1_a_notified_fact_runs_through_the_retry_wrapper_with_a_fresh_scope_per_attempt(
+    ledger: Any, sender: Any, facts: Any
+) -> None:
+    built: list[NotificationsScope] = []
+
+    def scope_factory() -> NotificationsScope:
+        built.append(NotificationsScope(ledger=ledger, sender=sender))
+        return built[-1]
+
+    retry = RecordingRetry(attempts=2)
+    value = facts.wire("order.placed.v1")
+
+    await consumer_with(retry, scope_factory).handle(record(value))
+
+    [(wrapped, event_type)] = retry.calls
+    assert (wrapped.value, event_type) == (value, "order.placed.v1")
+    assert len(built) == 2, "a fresh scope per attempt, never one scope reused across attempts"
+    assert len(sender.sent) == 1, "the second attempt hit the ledger's duplicate, not a second send"
+
+
+@pytest.mark.parametrize("event_type", NOT_NOTIFIED)
+async def test_or1_a_type_that_is_not_notified_never_invokes_the_retry_wrapper(
+    ledger: Any, sender: Any, facts: Any, event_type: str
+) -> None:
+    retry = RecordingRetry()
+
+    await consumer_with(retry, lambda: NotificationsScope(ledger=ledger, sender=sender)).handle(
+        record(facts.wire(event_type))
+    )
+
+    assert retry.calls == [], f"{event_type} reached the retry wrapper: it would be retried"
+
+
+@pytest.mark.parametrize("garbage", [b"", b"not json", b"[]", b'{"eventId":"x"}'])
+async def test_or1_a_malformed_envelope_never_invokes_the_retry_wrapper(
+    ledger: Any, sender: Any, garbage: bytes
+) -> None:
+    retry = RecordingRetry()
+
+    await consumer_with(retry, lambda: NotificationsScope(ledger=ledger, sender=sender)).handle(
+        record(garbage)
+    )
+
+    assert retry.calls == []

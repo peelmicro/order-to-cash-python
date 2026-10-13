@@ -19,10 +19,14 @@ no transaction, no dedup row and no load (SO2).
    return means the transaction committed. Whatever it raises propagates to the subscriber: no
    commit, paced redelivery (SO9). The per-fact payload validation and the `UniqueId` construction
    happen INSIDE that command's handler, so a well-formed envelope with a poisoned payload is a
-   processing failure here (and dead-lettered by feature 27), not a log-and-acknowledge.
+   processing failure here (retried, then dead-lettered), not a log-and-acknowledge.
 
-Feature 27 wraps the `dispatcher.send` call (`design.md` 9.8, item 1) and must re-run the SO9 arms
-after adding the wrapper.
+The `dispatcher.send` call (step 4) runs inside `FactRetry.process` (`R16`): up to
+`FACT_RETRY_MAX_ATTEMPTS` attempts with doubling back-off, each with a FRESH scope, then the
+original bytes go to `<topic>.dlq` and the call RETURNS, so the offset commits and the partition
+moves on. If the dead-letter publication itself fails, the exception propagates and the
+subscriber's no-commit-and-redeliver path (SO9) takes over. Steps 1 - 3 are outside the wrapper:
+they log and acknowledge, as before.
 """
 
 import asyncio
@@ -30,9 +34,15 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from structlog.contextvars import bound_contextvars
+
 from otc_contracts import Envelope, from_wire_json
 from otc_cqrs import Dispatcher
-from otc_orders.application.ports.fact_stream import FactMessage, FactStreamSubscriber
+from otc_orders.application.ports.fact_stream import (
+    FactMessage,
+    FactProcessor,
+    FactStreamSubscriber,
+)
 from otc_orders.application.saga.fact_commands import FACT_COMMANDS
 from otc_orders.application.saga.step_table import Skip, variants_for
 from otc_orders.application.scope import OrdersScope
@@ -47,10 +57,12 @@ class SagaFactsConsumerTask:
         subscriber: FactStreamSubscriber,
         dispatcher: Dispatcher[OrdersScope],
         scope_factory: Callable[[], OrdersScope],
+        retry: FactProcessor,
     ) -> None:
         self._subscriber = subscriber
         self._dispatcher = dispatcher
         self._scope_factory = scope_factory
+        self._retry = retry
 
     async def run(self, stop: asyncio.Event) -> None:
         await self._subscriber.run(self.handle, stop)
@@ -69,6 +81,10 @@ class SagaFactsConsumerTask:
                 },
             )
             return
+        with bound_contextvars(correlationId=str(envelope.correlation_id)):
+            await self._process(message, envelope)
+
+    async def _process(self, message: FactMessage, envelope: Envelope[dict[str, Any]]) -> None:
         if isinstance(variants_for(envelope.event_type), Skip):
             return
         command_type = FACT_COMMANDS.get(envelope.event_type)
@@ -83,6 +99,12 @@ class SagaFactsConsumerTask:
                 },
             )
             return
-        await self._dispatcher.send(
-            command_type(envelope=envelope, topic=message.topic), self._scope_factory()
-        )
+
+        async def work() -> None:
+            # A fresh scope per attempt: nothing a failed attempt left behind is reused.
+            await self._dispatcher.send(
+                command_type(envelope=envelope, topic=message.topic, raw=message.value),
+                self._scope_factory(),
+            )
+
+        await self._retry.process(message, envelope.event_type, work)

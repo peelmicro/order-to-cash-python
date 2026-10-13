@@ -13,7 +13,7 @@
   awaited on shutdown. This service has NO outbox relay and NO RPC responder: it consumes facts and
   emits none (`tests/unit/test_notifications_consumes_only.py`). A task that ends while the runtime
   is running, or a consumer that has not (yet) joined its group, takes readiness down
-  (`NotificationsRuntime.unready_reasons`, served by `/health/ready`).
+  (`NotificationsRuntime.readiness`, served by `/health/ready`).
 * `start_runtime` returns only once the consumer has joined its group and resolved its positions
   (or raises what stopped it, or a `TimeoutError`): with `auto_offset_reset=latest`, a fact
   published after the boot returns is guaranteed to be read.
@@ -24,10 +24,12 @@
 import asyncio
 import functools
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
+from opentelemetry.sdk.metrics.export import MetricReader
+from opentelemetry.sdk.trace import SpanProcessor
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 import otc_notifications.application
@@ -53,18 +55,45 @@ from otc_notifications.application.messages import (
 from otc_notifications.application.ports.notification_sender import NotificationSender
 from otc_notifications.application.scope import NotificationsScope
 from otc_notifications.infrastructure.clock import SystemClock
+from otc_notifications.infrastructure.health.checks import (
+    CheckResult,
+    HealthCheck,
+    Probe,
+    dead_tasks,
+    run_checks,
+)
+from otc_notifications.infrastructure.health.kafka_probe import KafkaAdminProbe
+from otc_notifications.infrastructure.health.postgres_probe import PostgresProbe
+from otc_notifications.infrastructure.messaging.consumer_name import ConsumerName
+from otc_notifications.infrastructure.messaging.dead_letter_publisher import (
+    KafkaDeadLetterPublisher,
+    ProducerFactory,
+)
+from otc_notifications.infrastructure.messaging.fact_retry import (
+    FactRetry,
+    FactRetryPolicy,
+    stop_aware_sleep,
+)
+from otc_notifications.infrastructure.messaging.fact_topics import NOTIFICATION_FACT_TOPICS
 from otc_notifications.infrastructure.messaging.kafka_fact_subscriber import KafkaFactSubscriber
 from otc_notifications.infrastructure.notification.console_sender import ConsoleNotificationSender
 from otc_notifications.infrastructure.notification.degrading_sender import (
     DegradingNotificationSender,
 )
 from otc_notifications.infrastructure.notification.smtp_sender import SmtpNotificationSender
+from otc_notifications.infrastructure.observability.metrics import (
+    FactLatencyHistogram,
+    fact_processing_latency,
+)
+from otc_notifications.infrastructure.observability.telemetry import build_telemetry
 from otc_notifications.infrastructure.persistence.delivery_ledger import SqlAlchemyDeliveryLedger
 from otc_notifications.infrastructure.settings import (
+    FactRetrySettings,
     KafkaSettings,
     NotificationsDatabaseSettings,
     SenderKind,
     SmtpSettings,
+    TelemetrySettings,
 )
 from otc_notifications.presentation.notification_facts_consumer import (
     NotificationFactsConsumerTask,
@@ -74,6 +103,11 @@ log = logging.getLogger("otc_notifications.composition")
 
 CONSUMER_STARTUP_SECONDS = 60.0
 STOP_GRACE_SECONDS = 30.0
+# The dead-letter producer's own client id (`test_kafka_client_ids.py`), distinct from the
+# consumer's `otc-notifications`.
+DEAD_LETTER_CLIENT_ID = "otc-notifications-dlq"
+# The readiness probe's own Kafka admin client (`test_kafka_client_ids.py`).
+HEALTH_CLIENT_ID = "otc-notifications-health"
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +117,8 @@ class NotificationsSettings:
     database: NotificationsDatabaseSettings
     kafka: KafkaSettings
     smtp: SmtpSettings
+    telemetry: TelemetrySettings
+    fact_retry: FactRetrySettings
 
 
 def load_settings() -> NotificationsSettings:
@@ -90,6 +126,8 @@ def load_settings() -> NotificationsSettings:
         database=NotificationsDatabaseSettings(),
         kafka=KafkaSettings(),
         smtp=SmtpSettings(),
+        telemetry=TelemetrySettings(),
+        fact_retry=FactRetrySettings(),
     )
 
 
@@ -134,6 +172,33 @@ def build_sender(settings: SmtpSettings) -> NotificationSender:
     return ConsoleNotificationSender()
 
 
+# ------------------------------------------------------------------------------------ readiness
+
+
+def build_health_checks(
+    *,
+    tasks: Mapping[str, asyncio.Task[None]],
+    write_model: Probe,
+    fact_stream: Probe,
+    consumer_joined: Callable[[], bool],
+) -> list[HealthCheck]:
+    """The runtime's checks (`R60`): the write model (the delivery ledger) and the fact stream. A
+    consumer task that is done, or a consumer that has not joined its group, makes `factStream`
+    `down` (read live from the task and the subscriber)."""
+    dead_consumer = dead_tasks(tasks, ("fact-consumer",))
+
+    def consumer_reasons() -> list[str]:
+        reasons = list(dead_consumer())
+        if not consumer_joined():
+            reasons.append("the Kafka fact consumer has not joined its group")
+        return reasons
+
+    return [
+        HealthCheck("writeModel", write_model),
+        HealthCheck("factStream", fact_stream, task_reasons=consumer_reasons),
+    ]
+
+
 # ------------------------------------------------------------------------------------ the runtime
 
 
@@ -152,8 +217,10 @@ class NotificationsRuntime:
         stop_event: asyncio.Event,
         stack: AsyncExitStack,
         stop_grace_seconds: float = STOP_GRACE_SECONDS,
+        checks: Sequence[HealthCheck] = (),
     ) -> None:
         self.settings = settings
+        self.checks = checks
         self.dispatcher = dispatcher
         self.tasks = tasks
         self.engine = engine
@@ -176,18 +243,12 @@ class NotificationsRuntime:
         else:
             log.error("transport task %s ended while the service was running", name)
 
-    def unready_reasons(self) -> list[str]:
-        """Empty when ready. A transport task that is done while running is a reason (read live
-        from the task, not from a callback that may not have run yet), and so is a consumer that
-        has not joined its group."""
-        if self._stopping:
-            return ["the service is shutting down"]
-        reasons = [
-            f"transport task {name} is not running" for name, t in self.tasks.items() if t.done()
-        ]
-        if not self.subscriber.ready:
-            reasons.append("the Kafka fact consumer has not joined its group")
-        return reasons
+    async def readiness(self) -> list[CheckResult]:
+        """One bounded check per dependency (`R60`, served by `/health/ready`). A task that is done
+        while running, or a consumer that has not joined its group, makes `factStream` `down`, read
+        live from the task and the subscriber; a runtime that is stopping answers `down` for every
+        check without probing."""
+        return await run_checks(self.checks, shutting_down=self._stopping)
 
     async def stop(self) -> None:
         """Stop the task (after its in-flight record), then close what `start_runtime` opened."""
@@ -244,8 +305,29 @@ async def start_runtime(
     sender: NotificationSender | None = None,
     consumer_startup_seconds: float = CONSUMER_STARTUP_SECONDS,
     stop_grace_seconds: float = STOP_GRACE_SECONDS,
+    span_processors: Sequence[SpanProcessor] = (),
+    metric_readers: Sequence[MetricReader] = (),
+    fact_topics: Sequence[str] | None = None,
+    dead_letter_producer_factory: ProducerFactory | None = None,
 ) -> NotificationsRuntime:
+    """`sender`, `span_processors`, `metric_readers`, `fact_topics` and
+    `dead_letter_producer_factory` are the test seams: the lifespan passes none of them.
+    `fact_topics` points the consumer at topics a test created (its dead letters go to
+    `<topic>.dlq`), so a test that publishes a poison fact never leaves it on the real topics;
+    `dead_letter_producer_factory` replaces the aiokafka producer the dead-letter publisher builds
+    (a test that makes the publication fail)."""
     async with AsyncExitStack() as stack:
+        # This runtime's own tracer and meter providers (`R56`), first so that everything below can
+        # make spans, and closed LAST (the stack unwinds in reverse, so the flush follows every
+        # adapter's close). Never the process-global provider (`telemetry.py`).
+        telemetry = build_telemetry(
+            "notifications",
+            settings.telemetry.otlp_endpoint,
+            span_processors=span_processors,
+            metric_readers=metric_readers,
+        )
+        stack.push_async_callback(telemetry.aclose)
+
         # The dispatcher is validated before anything is opened: a missing or duplicate handler is
         # a boot failure that cost no connection.
         dispatcher, registered_factories = _wire()
@@ -259,7 +341,7 @@ async def start_runtime(
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         clock = SystemClock()
 
-        ledger = SqlAlchemyDeliveryLedger(sessions, clock)
+        ledger = SqlAlchemyDeliveryLedger(sessions, clock, tracer=telemetry.tracer)
         chosen_sender = sender if sender is not None else build_sender(settings.smtp)
 
         def scope_factory() -> NotificationsScope:
@@ -270,11 +352,38 @@ async def start_runtime(
         for factory in registered_factories:
             factory(scope_factory())
 
-        subscriber = KafkaFactSubscriber(settings.kafka)
-        consumer = NotificationFactsConsumerTask(
-            subscriber=subscriber, dispatcher=dispatcher, scope_factory=scope_factory
+        # The dead-letter producer starts BEFORE the consumer task exists: a consumer that cannot
+        # dead-letter must not start. It belongs to the stack, which closes after the task stops.
+        dead_letters = KafkaDeadLetterPublisher(
+            settings.kafka,
+            client_id=DEAD_LETTER_CLIENT_ID,
+            producer_factory=dead_letter_producer_factory,
         )
-        stop_event = asyncio.Event()
+        await dead_letters.start()
+        stack.push_async_callback(dead_letters.stop)
+
+        stop_event = asyncio.Event()  # the consumer's stop signal: it also ends a retry back-off
+        subscriber = KafkaFactSubscriber(
+            settings.kafka,
+            tracer=telemetry.tracer,
+            topics=NOTIFICATION_FACT_TOPICS if fact_topics is None else fact_topics,
+        )
+        consumer = NotificationFactsConsumerTask(
+            subscriber=subscriber,
+            dispatcher=dispatcher,
+            scope_factory=scope_factory,
+            retry=FactRetry(
+                consumer=ConsumerName.NOTIFICATIONS.value,
+                policy=FactRetryPolicy(
+                    max_attempts=settings.fact_retry.max_attempts,
+                    backoff_ms=settings.fact_retry.backoff_ms,
+                ),
+                clock=clock,
+                sleep=stop_aware_sleep(stop_event),
+                dead_letters=dead_letters,
+                latency=FactLatencyHistogram(fact_processing_latency(telemetry.meter)),
+            ),
+        )
         tasks: dict[str, asyncio.Task[None]] = {}
         # Every step from here on can fail (Kafka down at boot) and a task may already exist: a
         # failure stops and awaits the task FIRST, then the stack closes what it used.
@@ -284,6 +393,17 @@ async def start_runtime(
             )
             await _await_consumer_ready(
                 subscriber, tasks["fact-consumer"], consumer_startup_seconds
+            )
+            # Readiness (`R60`): the write model (the delivery ledger) and the fact stream.
+            postgres_probe = PostgresProbe(settings.database.url)
+            stack.push_async_callback(postgres_probe.aclose)
+            kafka_probe = KafkaAdminProbe(settings.kafka.brokers, client_id=HEALTH_CLIENT_ID)
+            stack.push_async_callback(kafka_probe.aclose)
+            checks = build_health_checks(
+                tasks=tasks,
+                write_model=postgres_probe,
+                fact_stream=kafka_probe,
+                consumer_joined=lambda: subscriber.ready,
             )
             # The runtime is built BEFORE the stack is handed over: a constructor that raises
             # still finds everything owned by `stack`. `pop_all()` is the last statement.
@@ -298,6 +418,7 @@ async def start_runtime(
                 stop_event=stop_event,
                 stack=owned,
                 stop_grace_seconds=stop_grace_seconds,
+                checks=checks,
             )
             owned.push_async_callback(stack.pop_all().aclose)
         except BaseException:

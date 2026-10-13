@@ -6,6 +6,11 @@ every binding proven, the NATS responder task and the outbox relay task started.
 raises HERE, so the server does not come up. On exit the runtime stops its tasks (their in-flight
 work first) and closes what it opened. Importing this module reads no configuration and opens
 nothing: the lifespan does, when the server starts.
+
+Importing this module also installs the JSON log handler (`install_json_logging`, `R58`) BEFORE
+`create_app()`: uvicorn logs `Started server process` after importing the app and before the
+lifespan runs, so the lifespan is too late for that line. The install reads no configuration and
+opens no resource, so the sentence above stays true.
 """
 
 from collections.abc import AsyncIterator
@@ -14,6 +19,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from otc_fulfillment.composition import load_settings, start_runtime
+from otc_fulfillment.infrastructure.observability.logging import install_json_logging
 from otc_fulfillment.presentation.app import create_app as create_routes
 
 
@@ -32,4 +38,5 @@ def create_app() -> FastAPI:
     return create_routes(lifespan=lifespan)
 
 
+install_json_logging("fulfillment")
 app = create_app()

@@ -13,6 +13,9 @@ dependencies = [
     "aiokafka>=0.14.0",
     "nats-py>=2.16.0",
     "pydantic-settings",
+    "structlog>=26.1.0",
+    "opentelemetry-sdk==1.45.0",
+    "opentelemetry-exporter-otlp-proto-http==1.45.0",
 ]
 
 [build-system]

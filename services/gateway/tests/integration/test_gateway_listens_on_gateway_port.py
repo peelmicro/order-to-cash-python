@@ -147,7 +147,8 @@ async def test_the_process_listens_on_gateway_port_and_nowhere_else(
 
 def test_without_gateway_port_the_process_listens_on_3001_the_documented_default() -> None:
     """Not a bind (3001 is often taken on this machine): the default is the settings' value, which
-    `test_gateway_settings_env.py` pins, and the entry point passes exactly that to uvicorn."""
+    `test_gateway_settings_env.py` pins, and the entry point passes exactly that to
+    `uvicorn.Config`."""
     import ast
 
     from otc_gateway import __main__ as entry
@@ -158,7 +159,7 @@ def test_without_gateway_port_the_process_listens_on_3001_the_documented_default
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "run"
+        and node.func.attr == "Config"
     )
     keywords = {k.arg: ast.unparse(k.value) for k in run.keywords}
 
@@ -167,4 +168,5 @@ def test_without_gateway_port_the_process_listens_on_3001_the_documented_default
         "host": "server.host",
         "port": "server.port",
         "timeout_graceful_shutdown": "GRACEFUL_SHUTDOWN_SECONDS",
+        "log_config": "None",  # OR13: uvicorn's LOGGING_CONFIG must not replace the JSON handler
     }

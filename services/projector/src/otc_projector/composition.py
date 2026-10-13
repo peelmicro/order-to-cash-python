@@ -15,7 +15,7 @@
   writes the read model and publishes the update signal
   (`tests/unit/test_projector_consumes_only.py`). A task that ends while the runtime is running, a
   consumer that has not joined its group, or a NATS connection that is closed or reconnecting
-  takes readiness down (`unready_reasons`, served by `/health/ready`).
+  takes readiness down (`ProjectorRuntime.readiness`, served by `/health/ready`).
 * The external collaborators are the fields of `Externals`, real by default and replaceable by a
   test that wants to observe the ORDER of the steps with recording fakes (`PR43`). The Mongo
   client, the NATS connection and the aiokafka consumer are created inside the running loop, here,
@@ -25,13 +25,16 @@
 import asyncio
 import functools
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import nats.errors
 from nats.aio.client import Client as NatsClient
+from opentelemetry.sdk.metrics.export import MetricReader
+from opentelemetry.sdk.trace import SpanProcessor
+from opentelemetry.trace import Tracer
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.collection import AsyncCollection
 
@@ -40,8 +43,32 @@ from otc_cqrs import Dispatcher, HandlerRegistry
 from otc_projector.application.handlers import ProjectFactHandler
 from otc_projector.application.messages import ProjectFactCommand
 from otc_projector.application.scope import ProjectorScope
+from otc_projector.infrastructure.clock import SystemClock
+from otc_projector.infrastructure.health.checks import (
+    CheckResult,
+    HealthCheck,
+    Probe,
+    dead_tasks,
+    run_checks,
+)
+from otc_projector.infrastructure.health.kafka_probe import KafkaAdminProbe
+from otc_projector.infrastructure.health.mongo_probe import MongoProbe
+from otc_projector.infrastructure.health.nats_probe import NatsProbe
+from otc_projector.infrastructure.messaging.consumer_name import ConsumerName
+from otc_projector.infrastructure.messaging.dead_letter_publisher import KafkaDeadLetterPublisher
+from otc_projector.infrastructure.messaging.fact_retry import (
+    DeadLetter,
+    FactRetry,
+    FactRetryPolicy,
+    stop_aware_sleep,
+)
 from otc_projector.infrastructure.messaging.idempotent_consumer import IdempotentConsumer
 from otc_projector.infrastructure.messaging.kafka_fact_subscriber import KafkaFactSubscriber
+from otc_projector.infrastructure.observability.metrics import (
+    FactLatencyHistogram,
+    fact_processing_latency,
+)
+from otc_projector.infrastructure.observability.telemetry import build_telemetry
 from otc_projector.infrastructure.persistence.mongo_read_model_writer import MongoReadModelWriter
 from otc_projector.infrastructure.persistence.read_model_document import COLLECTION
 from otc_projector.infrastructure.persistence.read_model_indexes import (
@@ -51,7 +78,13 @@ from otc_projector.infrastructure.persistence.read_model_indexes import (
 from otc_projector.infrastructure.persistence.timeline_order_migration import (
     migrate_timeline_order,
 )
-from otc_projector.infrastructure.settings import KafkaSettings, MongoSettings, NatsSettings
+from otc_projector.infrastructure.settings import (
+    FactRetrySettings,
+    KafkaSettings,
+    MongoSettings,
+    NatsSettings,
+    TelemetrySettings,
+)
 from otc_projector.infrastructure.signal.nats_update_signal_publisher import (
     NatsPublisher,
     NatsUpdateSignalPublisher,
@@ -65,6 +98,11 @@ STOP_GRACE_SECONDS = 30.0
 # `nats.connect` with its defaults keeps retrying 60 x 2 s before raising (measured: still
 # connecting after 60 s), so the bound on the boot's connection is the projector's own (`PR45`).
 NATS_CONNECT_SECONDS = 10.0
+# The dead-letter producer's own client id (`test_kafka_client_ids.py`), distinct from the
+# consumer's `otc-projector`.
+DEAD_LETTER_CLIENT_ID = "otc-projector-dlq"
+# The readiness probe's own Kafka admin client (`test_kafka_client_ids.py`).
+HEALTH_CLIENT_ID = "otc-projector-health"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,10 +112,18 @@ class ProjectorSettings:
     mongo: MongoSettings
     kafka: KafkaSettings
     nats: NatsSettings
+    telemetry: TelemetrySettings
+    fact_retry: FactRetrySettings
 
 
 def load_settings() -> ProjectorSettings:
-    return ProjectorSettings(mongo=MongoSettings(), kafka=KafkaSettings(), nats=NatsSettings())
+    return ProjectorSettings(
+        mongo=MongoSettings(),
+        kafka=KafkaSettings(),
+        nats=NatsSettings(),
+        telemetry=TelemetrySettings(),
+        fact_retry=FactRetrySettings(),
+    )
 
 
 # ------------------------------------------------------------------------------ the dispatcher
@@ -111,10 +157,13 @@ class NatsConnection(NatsPublisher, Protocol):
     """What the runtime asks of the NATS client besides publishing."""
 
     @property
+    def is_connected(self) -> bool: ...
+    @property
     def is_closed(self) -> bool: ...
     @property
     def is_reconnecting(self) -> bool: ...
     async def drain(self) -> None: ...
+    async def flush(self, timeout: int = ...) -> None: ...  # noqa: ASYNC109 - nats-py's own name
 
 
 class FactSubscriber(Protocol):
@@ -128,6 +177,14 @@ class FactSubscriber(Protocol):
         handler: Callable[..., Awaitable[None]],
         stop: asyncio.Event,
     ) -> None: ...
+
+
+class DeadLetterProducer(Protocol):
+    """What the runtime asks of the dead-letter publisher: started and stopped by the lifespan."""
+
+    async def start(self) -> None: ...
+    async def stop(self) -> None: ...
+    async def publish(self, letter: DeadLetter) -> None: ...
 
 
 type MongoCollection = AsyncCollection[dict[str, Any]]
@@ -164,8 +221,12 @@ def _mongo_client(uri: str) -> AsyncMongoClient[dict[str, Any]]:
     return AsyncMongoClient(uri)
 
 
-def _kafka_subscriber(settings: KafkaSettings) -> FactSubscriber:
-    return KafkaFactSubscriber(settings)
+def _kafka_subscriber(settings: KafkaSettings, tracer: Tracer) -> FactSubscriber:
+    return KafkaFactSubscriber(settings, tracer=tracer)
+
+
+def _dead_letters(settings: KafkaSettings) -> DeadLetterProducer:
+    return KafkaDeadLetterPublisher(settings, client_id=DEAD_LETTER_CLIENT_ID)
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +237,38 @@ class Externals:
     verify_indexes: Callable[[MongoCollection], Awaitable[None]] = verify_indexes
     migrate: Callable[[MongoCollection], Awaitable[object]] = migrate_timeline_order
     nats_connect: Callable[[str], Awaitable[NatsConnection]] = connect_nats
-    subscriber: Callable[[KafkaSettings], FactSubscriber] = field(default=_kafka_subscriber)
+    subscriber: Callable[[KafkaSettings, Tracer], FactSubscriber] = field(default=_kafka_subscriber)
+    dead_letters: Callable[[KafkaSettings], DeadLetterProducer] = field(default=_dead_letters)
+
+
+# ------------------------------------------------------------------------------------ readiness
+
+
+def build_health_checks(
+    *,
+    tasks: Mapping[str, asyncio.Task[None]],
+    read_model: Probe,
+    fact_stream: Probe,
+    rpc_transport: Probe,
+    consumer_joined: Callable[[], bool],
+) -> list[HealthCheck]:
+    """The runtime's checks (`R60`): the read model, the fact stream and the RPC transport (the
+    update signal). A consumer task that is done, or a consumer that has not joined its group,
+    makes `factStream` `down`; a closed or reconnecting NATS connection makes `rpcTransport` `down`
+    (the NATS probe names it)."""
+    dead_consumer = dead_tasks(tasks, ("fact-consumer",))
+
+    def consumer_reasons() -> list[str]:
+        reasons = list(dead_consumer())
+        if not consumer_joined():
+            reasons.append("the Kafka fact consumer has not joined its group")
+        return reasons
+
+    return [
+        HealthCheck("readModel", read_model),
+        HealthCheck("factStream", fact_stream, task_reasons=consumer_reasons),
+        HealthCheck("rpcTransport", rpc_transport),
+    ]
 
 
 # ------------------------------------------------------------------------------------ the runtime
@@ -196,8 +288,10 @@ class ProjectorRuntime:
         stop_event: asyncio.Event,
         stack: AsyncExitStack,
         stop_grace_seconds: float = STOP_GRACE_SECONDS,
+        checks: Sequence[HealthCheck] = (),
     ) -> None:
         self.settings = settings
+        self.checks = checks
         self.dispatcher = dispatcher
         self.tasks = tasks
         self.subscriber = subscriber
@@ -219,22 +313,13 @@ class ProjectorRuntime:
         else:
             log.error("transport task %s ended while the service was running", name)
 
-    def unready_reasons(self) -> list[str]:
-        """Empty when ready. A transport task that is done while running is a reason (read live
-        from the task, not from a callback that may not have run yet), and so are a consumer that
-        has not joined its group and a NATS connection that is closed or reconnecting."""
-        if self._stopping:
-            return ["the service is shutting down"]
-        reasons = [
-            f"transport task {name} is not running" for name, t in self.tasks.items() if t.done()
-        ]
-        if not self.subscriber.ready:
-            reasons.append("the Kafka fact consumer has not joined its group")
-        if self.connection.is_closed:
-            reasons.append("the NATS connection is closed")
-        elif self.connection.is_reconnecting:
-            reasons.append("the NATS connection is reconnecting")
-        return reasons
+    async def readiness(self) -> list[CheckResult]:
+        """One bounded check per dependency (`R60`, served by `/health/ready`). A task that is done
+        while running, or a consumer that has not joined its group, makes `factStream` `down`; a
+        NATS connection that is closed or reconnecting makes `rpcTransport` `down` (the probe
+        names it first); a runtime that is stopping answers `down` for every check without
+        probing."""
+        return await run_checks(self.checks, shutting_down=self._stopping)
 
     async def stop(self) -> None:
         """Stop the task (after its in-flight record), then close what `start_runtime` opened."""
@@ -296,9 +381,22 @@ async def start_runtime(
     consumer_startup_seconds: float = CONSUMER_STARTUP_SECONDS,
     stop_grace_seconds: float = STOP_GRACE_SECONDS,
     nats_connect_seconds: float = NATS_CONNECT_SECONDS,
+    span_processors: Sequence[SpanProcessor] = (),
+    metric_readers: Sequence[MetricReader] = (),
 ) -> ProjectorRuntime:
     outside = externals if externals is not None else Externals()
     async with AsyncExitStack() as stack:
+        # 0. This runtime's own tracer and meter providers (`R56`), first so that everything below
+        #    can make spans, and closed LAST (the stack unwinds in reverse, so the flush follows
+        #    every adapter's close). Never the process-global provider (`telemetry.py`).
+        telemetry = build_telemetry(
+            "projector",
+            settings.telemetry.otlp_endpoint,
+            span_processors=span_processors,
+            metric_readers=metric_readers,
+        )
+        stack.push_async_callback(telemetry.aclose)
+
         # 1. The dispatcher is validated before anything is opened: a missing or duplicate handler
         #    is a boot failure that cost no connection.
         dispatcher, registered_factories = outside.wire()
@@ -341,11 +439,30 @@ async def start_runtime(
         for factory in registered_factories:
             factory(scope_factory())
 
-        subscriber = outside.subscriber(settings.kafka)
+        # The dead-letter producer starts BEFORE the consumer task exists: a consumer that cannot
+        # dead-letter must not start. It belongs to the stack, which closes after the task stops.
+        dead_letters = outside.dead_letters(settings.kafka)
+        await dead_letters.start()
+        stack.push_async_callback(dead_letters.stop)
+
+        stop_event = asyncio.Event()  # the consumer's stop signal: it also ends a retry back-off
+        subscriber = outside.subscriber(settings.kafka, telemetry.tracer)
         consumer = ProjectorFactsConsumerTask(
-            subscriber=subscriber, dispatcher=dispatcher, scope_factory=scope_factory
+            subscriber=subscriber,
+            dispatcher=dispatcher,
+            scope_factory=scope_factory,
+            retry=FactRetry(
+                consumer=ConsumerName.PROJECTOR.value,
+                policy=FactRetryPolicy(
+                    max_attempts=settings.fact_retry.max_attempts,
+                    backoff_ms=settings.fact_retry.backoff_ms,
+                ),
+                clock=SystemClock(),
+                sleep=stop_aware_sleep(stop_event),
+                dead_letters=dead_letters,
+                latency=FactLatencyHistogram(fact_processing_latency(telemetry.meter)),
+            ),
         )
-        stop_event = asyncio.Event()
         tasks: dict[str, asyncio.Task[None]] = {}
         # 7. Every step from here on can fail (Kafka down at boot) and a task may already exist: a
         #    failure stops and awaits the task FIRST, then the stack closes what it used.
@@ -355,6 +472,17 @@ async def start_runtime(
             )
             await _await_consumer_ready(
                 subscriber, tasks["fact-consumer"], consumer_startup_seconds
+            )
+            # Readiness (`R60`): the read model, the fact stream and the RPC transport (the update
+            # signal), each bounded. The Kafka admin client starts on its first probe, in this loop.
+            kafka_probe = KafkaAdminProbe(settings.kafka.brokers, client_id=HEALTH_CLIENT_ID)
+            stack.push_async_callback(kafka_probe.aclose)
+            checks = build_health_checks(
+                tasks=tasks,
+                read_model=MongoProbe(database),
+                fact_stream=kafka_probe,
+                rpc_transport=NatsProbe(connection),
+                consumer_joined=lambda: subscriber.ready,
             )
             # 8. The runtime is built BEFORE the stack is handed over: a constructor that raises
             #    still finds everything owned by `stack`. `pop_all()` is the last statement.
@@ -368,6 +496,7 @@ async def start_runtime(
                 stop_event=stop_event,
                 stack=owned,
                 stop_grace_seconds=stop_grace_seconds,
+                checks=checks,
             )
             owned.push_async_callback(stack.pop_all().aclose)
         except BaseException:

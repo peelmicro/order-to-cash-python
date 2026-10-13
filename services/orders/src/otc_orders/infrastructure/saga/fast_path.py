@@ -10,7 +10,7 @@ ended, it is dropped the same way.
 
 * The caller's `contextvars` context is copied into the task at creation (`TaskGroup.create_task`
   copies the context of the code that calls it, which is the fact handling that owed the command),
-  so feature 27's span context and `correlationId` log binding reach the dispatch with no capture
+  so the trace context and the `correlationId` log binding reach the dispatch with no capture
   field (L7). A queue drained by worker tasks would lose it.
 * A child's `Exception` is logged and contained: a `TaskGroup` would otherwise cancel every sibling
   (L8). `asyncio.CancelledError` is a `BaseException` and is never caught here (L9): on stop the

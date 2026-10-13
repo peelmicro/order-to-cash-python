@@ -12,7 +12,7 @@
 * One asyncio task per transport (the NATS responder, the outbox relay) and the saga's three (the
   fast path, the sweeper, the Kafka fact consumer), created here, owned by the runtime and awaited
   on shutdown. A task that ends while the runtime is running takes readiness down
-  (`OrdersRuntime.unready_reasons`, served by `/health/ready`). The saga's tasks are stopped in
+  (`OrdersRuntime.readiness`, served by `/health/ready`). The saga's tasks are stopped in
   REVERSE start order, each awaited before the next is asked to stop: the consumer finishes its
   in-flight record (handler and commit), the sweeper its batch, the fast path cancels its in-flight
   dispatches, and only then do the responder and the relay stop and the stack closes NATS and the
@@ -25,14 +25,16 @@ import asyncio
 import functools
 import logging
 import multiprocessing
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass
 
 import nats
 import nats.errors
 from nats.aio.client import Client
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from opentelemetry.sdk.metrics.export import MetricReader
+from opentelemetry.sdk.trace import SpanProcessor
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 import otc_orders.application
 import otc_orders.application.saga.fact_commands as fact_commands_module
@@ -79,9 +81,45 @@ from otc_orders.application.saga.order_sagas import (
 )
 from otc_orders.application.scope import OrdersScope
 from otc_orders.infrastructure.clock import SystemClock
+from otc_orders.infrastructure.health.checks import (
+    CheckResult,
+    HealthCheck,
+    Probe,
+    dead_tasks,
+    run_checks,
+)
+from otc_orders.infrastructure.health.kafka_probe import KafkaAdminProbe
+from otc_orders.infrastructure.health.nats_probe import NatsProbe
+from otc_orders.infrastructure.health.postgres_probe import PostgresProbe
+from otc_orders.infrastructure.messaging.consumer_name import ConsumerName
+from otc_orders.infrastructure.messaging.dead_letter_publisher import (
+    KafkaDeadLetterPublisher,
+    ProducerFactory,
+)
+from otc_orders.infrastructure.messaging.dlq_depth import (
+    DEAD_LETTER_SUFFIX,
+    ConsumerFactory,
+    DlqDepthTask,
+    KafkaDlqDepth,
+)
+from otc_orders.infrastructure.messaging.fact_retry import (
+    FactRetry,
+    FactRetryPolicy,
+    stop_aware_sleep,
+)
+from otc_orders.infrastructure.messaging.fact_topics import SAGA_FACT_TOPICS
 from otc_orders.infrastructure.messaging.kafka_fact_subscriber import KafkaFactSubscriber
 from otc_orders.infrastructure.messaging.nats_saga_commands import NatsSagaCommandsAdapter
 from otc_orders.infrastructure.messaging.nats_stock_availability import NatsStockAvailability
+from otc_orders.infrastructure.observability.metrics import (
+    FactLatencyHistogram,
+    SagaCompletionHistogram,
+    dlq_depth,
+    fact_processing_latency,
+    outbox_lag,
+    saga_completion,
+)
+from otc_orders.infrastructure.observability.telemetry import build_telemetry
 from otc_orders.infrastructure.outbox.kafka_publisher import KafkaFactPublisher
 from otc_orders.infrastructure.outbox.relay import OutboxRelay
 from otc_orders.infrastructure.outbox.relay_task import OutboxRelayTask
@@ -92,20 +130,30 @@ from otc_orders.infrastructure.saga.command_dispatcher import SagaCommandDispatc
 from otc_orders.infrastructure.saga.command_ledger import SqlAlchemySagaCommandLedger
 from otc_orders.infrastructure.saga.fact_consumption import SqlAlchemyFactConsumption
 from otc_orders.infrastructure.saga.fast_path import SagaFastPath
+from otc_orders.infrastructure.saga.first_park import SqlAlchemySagaFirstPark
 from otc_orders.infrastructure.saga.sweeper import SagaCommandSweeper
 from otc_orders.infrastructure.saga.sweeper_task import SagaCommandSweeperTask
 from otc_orders.infrastructure.settings import (
+    FactRetrySettings,
     KafkaSettings,
     NatsSettings,
     OrdersDatabaseSettings,
     OutboxRelaySettings,
     SagaSettings,
     ServerSettings,
+    TelemetrySettings,
 )
 from otc_orders.presentation.orders_create_responder import OrdersCreateResponder
 from otc_orders.presentation.saga_facts_consumer import SagaFactsConsumerTask
 
 log = logging.getLogger("otc_orders.composition")
+
+# The dead-letter producer's own client id (`test_kafka_client_ids.py`): distinct from the relay's
+# `otc-orders` and the saga consumer's `otc-orders-saga`.
+DEAD_LETTER_CLIENT_ID = "otc-orders-dlq"
+DLQ_DEPTH_CLIENT_ID = "otc-orders-dlq-depth"
+# The readiness probe's own Kafka admin client (`test_kafka_client_ids.py`).
+HEALTH_CLIENT_ID = "otc-orders-health"
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +166,8 @@ class OrdersSettings:
     nats: NatsSettings
     saga: SagaSettings
     server: ServerSettings
+    telemetry: TelemetrySettings
+    fact_retry: FactRetrySettings
 
 
 def load_settings() -> OrdersSettings:
@@ -128,6 +178,8 @@ def load_settings() -> OrdersSettings:
         nats=NatsSettings(),
         saga=SagaSettings(),
         server=ServerSettings(),
+        telemetry=TelemetrySettings(),
+        fact_retry=FactRetrySettings(),
     )
 
 
@@ -192,6 +244,40 @@ def build_dispatcher() -> Dispatcher[OrdersScope]:
     Pure (no I/O): `tests/architecture/test_registration_behaviour.py` runs it without a database.
     """
     return _wire()[0]
+
+
+# ------------------------------------------------------------------------------------ readiness
+
+
+def build_health_checks(
+    *,
+    tasks: Mapping[str, asyncio.Task[None]],
+    write_model: Probe,
+    rpc_transport: Probe,
+    fact_stream: Probe | None,
+) -> list[HealthCheck]:
+    """The runtime's checks (`R60`), each task attributed to the dependency it serves: the
+    responder and the saga's fast path and sweeper to `rpcTransport` (they issue and answer RPC),
+    the saga consumer, the outbox relay and the dead-letter depth reader to `factStream`. A runtime
+    with neither a relay nor a consumer has no Kafka role, so it has no `factStream` check
+    (`fact_stream=None`): it must not be unready for a broker it never contacts."""
+    checks = [
+        HealthCheck("writeModel", write_model),
+        HealthCheck(
+            "rpcTransport",
+            rpc_transport,
+            task_reasons=dead_tasks(tasks, ("nats-responder", "saga-fast-path", "saga-sweeper")),
+        ),
+    ]
+    if fact_stream is not None:
+        checks.append(
+            HealthCheck(
+                "factStream",
+                fact_stream,
+                task_reasons=dead_tasks(tasks, ("saga-consumer", "outbox-relay", "dlq-depth")),
+            )
+        )
+    return checks
 
 
 # --------------------------------------------------------------------- one relay per deployment
@@ -262,8 +348,12 @@ class OrdersRuntime:
         connection: Client,
         stages: list[StopStage],
         stack: AsyncExitStack,
+        checks: Sequence[HealthCheck] = (),
+        engine: AsyncEngine | None = None,
     ) -> None:
         self.settings = settings
+        self.checks = checks
+        self.engine = engine
         self.dispatcher = dispatcher
         self.tasks = tasks
         self.connection = connection
@@ -283,21 +373,12 @@ class OrdersRuntime:
         else:
             log.error("transport task %s ended while the service was running", name)
 
-    def unready_reasons(self) -> list[str]:
-        """Empty when ready. A transport task that is done while running is a reason (read live
-        from the task, not from a callback that may not have run yet)."""
-        if self._stopping:
-            return ["the service is shutting down"]
-        reasons = [
-            f"transport task {name} is not running" for name, t in self.tasks.items() if t.done()
-        ]
-        # The responder's loop waits on an inbox: a closed or reconnecting NATS client would not
-        # end it, so the connection itself is a reason (a request could not be answered).
-        if self.connection.is_closed:
-            reasons.append("the NATS connection is closed")
-        elif self.connection.is_reconnecting:
-            reasons.append("the NATS connection is reconnecting")
-        return reasons
+    async def readiness(self) -> list[CheckResult]:
+        """One bounded check per dependency (`R60`, served by `/health/ready`). A task that is done
+        while running makes the check of the dependency it serves `down`, read live from the task
+        (not from a callback that may not have run yet); a runtime that is stopping answers `down`
+        for every check without probing."""
+        return await run_checks(self.checks, shutting_down=self._stopping)
 
     async def stop(self) -> None:
         """Stop the tasks (after their in-flight work), then close what `start_runtime` opened."""
@@ -339,9 +420,33 @@ async def _stop_stages(stages: list[StopStage], tasks: dict[str, asyncio.Task[No
 
 
 async def start_runtime(
-    settings: OrdersSettings, *, nats_connect_seconds: float = NATS_CONNECT_SECONDS
+    settings: OrdersSettings,
+    *,
+    nats_connect_seconds: float = NATS_CONNECT_SECONDS,
+    span_processors: Sequence[SpanProcessor] = (),
+    metric_readers: Sequence[MetricReader] = (),
+    fact_topics: Sequence[str] | None = None,
+    dead_letter_producer_factory: ProducerFactory | None = None,
+    dlq_depth_consumer_factory: ConsumerFactory | None = None,
 ) -> OrdersRuntime:
+    """`span_processors`, `metric_readers`, `fact_topics` and `dead_letter_producer_factory` are the
+    test seams: the lifespan passes none of them. `fact_topics` points the saga's consumer at topics
+    a test created (its dead letters go to `<topic>.dlq`), so a test that publishes a poison fact
+    never leaves it on the real topics; `dead_letter_producer_factory` replaces the aiokafka
+    producer the dead-letter publisher builds (a test that makes the publication fail);
+    `dlq_depth_consumer_factory` does the same for the depth reader's consumer."""
     async with AsyncExitStack() as stack:
+        # This runtime's own tracer and meter providers (`R56`), first so that everything below can
+        # make spans, and closed LAST (the stack unwinds in reverse, so the flush follows every
+        # adapter's close). Never the process-global provider (`telemetry.py`).
+        telemetry = build_telemetry(
+            "orders",
+            settings.telemetry.otlp_endpoint,
+            span_processors=span_processors,
+            metric_readers=metric_readers,
+        )
+        stack.push_async_callback(telemetry.aclose)
+
         relay_enabled = settings.outbox.enabled
         assert_single_outbox_relay(
             relay_enabled=relay_enabled,
@@ -370,10 +475,22 @@ async def start_runtime(
         stack.push_async_callback(_close_nats, connection)
 
         unit_of_work = SqlAlchemyUnitOfWork(
-            sessions=sessions, outbox=OutboxWriter(clock=clock), clock=clock
+            sessions=sessions,
+            outbox=OutboxWriter(clock=clock),
+            clock=clock,
+            tracer=telemetry.tracer,
+        )
+        # The dead-letter publisher serves the consumer's exhausted facts AND the saga's first
+        # park (`R29`); built here, started below before any task exists, stopped by the stack.
+        dead_letters = KafkaDeadLetterPublisher(
+            settings.kafka,
+            client_id=DEAD_LETTER_CLIENT_ID,
+            producer_factory=dead_letter_producer_factory,
         )
         catalog = SqlAlchemyReferenceCatalog(sessions)
-        stock = NatsStockAvailability(connection, timeout_ms=settings.nats.stock_check_timeout_ms)
+        stock = NatsStockAvailability(
+            connection, timeout_ms=settings.nats.stock_check_timeout_ms, tracer=telemetry.tracer
+        )
 
         # The saga (feature 16): ONE adapter over the one NATS connection (no second connection),
         # one dispatcher, one fast path, one sweeper, over the lifespan's own session factory.
@@ -383,16 +500,23 @@ async def start_runtime(
         )
         saga_dispatcher = SagaCommandDispatcher(
             ledger=ledger,
-            commands=NatsSagaCommandsAdapter(connection, timeout_ms=saga.command_timeout_ms),
+            commands=NatsSagaCommandsAdapter(
+                connection, timeout_ms=saga.command_timeout_ms, tracer=telemetry.tracer
+            ),
             clock=clock,
             max_attempts=saga.command_max_attempts,
             backoff_ms=saga.command_backoff_ms,
             park_cap_ms=saga.park_retry_cap_ms,
+            first_park=SqlAlchemySagaFirstPark(
+                unit_of_work=unit_of_work, dead_letters=dead_letters, clock=clock
+            ),
+            tracer=telemetry.tracer,
         )
         fast_path = SagaFastPath(
             dispatcher=saga_dispatcher, max_in_flight=saga.fast_path_max_in_flight
         )
         fact_consumption = SqlAlchemyFactConsumption(unit_of_work, clock)
+        saga_metrics = SagaCompletionHistogram(saga_completion(telemetry.meter))
 
         def scope_factory() -> OrdersScope:
             return OrdersScope(
@@ -403,6 +527,7 @@ async def start_runtime(
                 dispatcher=dispatcher,
                 fact_consumption=fact_consumption,
                 saga_signal=fast_path,
+                saga_metrics=saga_metrics,
             )
 
         # Every binding is proven at boot, never on the first message: the scope refuses a port
@@ -411,7 +536,11 @@ async def start_runtime(
             factory(scope_factory())
 
         responder = OrdersCreateResponder(
-            connection=connection, dispatcher=dispatcher, scope_factory=scope_factory, clock=clock
+            connection=connection,
+            dispatcher=dispatcher,
+            scope_factory=scope_factory,
+            clock=clock,
+            tracer=telemetry.tracer,
         )
         await responder.start()
 
@@ -435,6 +564,8 @@ async def start_runtime(
                     clock=clock,
                     batch_size=settings.outbox.batch_size,
                     publish_timeout=settings.outbox.publish_timeout_seconds,
+                    tracer=telemetry.tracer,
+                    lag=outbox_lag(telemetry.meter),
                 )
                 relay_task = OutboxRelayTask(
                     relay, poll_interval=settings.outbox.poll_interval_seconds, enabled=True
@@ -443,6 +574,34 @@ async def start_runtime(
                     relay_task.run(stop_event), name="outbox-relay"
                 )
                 stages[0] = StopStage(stop_event, ("nats-responder", "outbox-relay"))
+            if relay_enabled or saga.consumer_enabled:
+                # Started BEFORE the saga's tasks: a consumer that cannot dead-letter must not
+                # start (`design.md` 9.3), and the first park can only happen once the fast path
+                # (below) runs; a signal that reaches the fast path before then is dropped to the
+                # durable path. A runtime with neither role has no Kafka (the host tests that boot
+                # against a closed port): its first park logs that the dead letter could not be
+                # published.
+                await dead_letters.start()
+                stack.push_async_callback(dead_letters.stop)
+                # `otc_dlq_depth` (`R59`): started after the relay, so stopped before it (stages
+                # stop in reverse). The reader is started and stopped inside the task, in this loop.
+                consumed_topics = SAGA_FACT_TOPICS if fact_topics is None else fact_topics
+                dlq_depth_stop = asyncio.Event()
+                tasks["dlq-depth"] = asyncio.create_task(
+                    DlqDepthTask(
+                        KafkaDlqDepth(
+                            settings.kafka,
+                            [f"{topic}{DEAD_LETTER_SUFFIX}" for topic in consumed_topics],
+                            client_id=DLQ_DEPTH_CLIENT_ID,
+                            consumer_factory=dlq_depth_consumer_factory,
+                        ),
+                        dlq_depth(telemetry.meter),
+                        poll_interval=settings.outbox.poll_interval_seconds,
+                        enabled=True,
+                    ).run(dlq_depth_stop),
+                    name="dlq-depth",
+                )
+                stages.append(StopStage(dlq_depth_stop, ("dlq-depth",)))
             # The saga's three tasks, in start order: the fast path, the sweeper, then the consumer
             # (last, so its first signal finds the fast path running). Each has its own stop signal.
             fast_path_stop = asyncio.Event()
@@ -472,9 +631,24 @@ async def start_runtime(
             if saga.consumer_enabled:
                 consumer_stop = asyncio.Event()
                 consumer_task = SagaFactsConsumerTask(
-                    subscriber=KafkaFactSubscriber(settings.kafka),
+                    subscriber=KafkaFactSubscriber(
+                        settings.kafka,
+                        tracer=telemetry.tracer,
+                        topics=SAGA_FACT_TOPICS if fact_topics is None else fact_topics,
+                    ),
                     dispatcher=dispatcher,
                     scope_factory=scope_factory,
+                    retry=FactRetry(
+                        consumer=ConsumerName.ORDERS_SAGA.value,
+                        policy=FactRetryPolicy(
+                            max_attempts=settings.fact_retry.max_attempts,
+                            backoff_ms=settings.fact_retry.backoff_ms,
+                        ),
+                        clock=clock,
+                        sleep=stop_aware_sleep(consumer_stop),
+                        dead_letters=dead_letters,
+                        latency=FactLatencyHistogram(fact_processing_latency(telemetry.meter)),
+                    ),
                 )
                 tasks["saga-consumer"] = asyncio.create_task(
                     consumer_task.run(consumer_stop), name="saga-consumer"
@@ -482,6 +656,22 @@ async def start_runtime(
                 stages.append(StopStage(consumer_stop, ("saga-consumer",)))
             else:
                 log.warning("SAGA_CONSUMER_ENABLED=false: this process consumes no facts")
+            # Readiness (`R60`): one bounded check per dependency this runtime has. The Kafka check
+            # exists only when the runtime has a Kafka role (a host with neither relay nor consumer
+            # never contacts the broker, so it must not be unready for one). Each task is attributed
+            # to the dependency it serves.
+            postgres_probe = PostgresProbe(settings.database.url)
+            stack.push_async_callback(postgres_probe.aclose)
+            kafka_probe: KafkaAdminProbe | None = None
+            if relay_enabled or saga.consumer_enabled:
+                kafka_probe = KafkaAdminProbe(settings.kafka.brokers, client_id=HEALTH_CLIENT_ID)
+                stack.push_async_callback(kafka_probe.aclose)
+            checks = build_health_checks(
+                tasks=tasks,
+                write_model=postgres_probe,
+                rpc_transport=NatsProbe(connection),
+                fact_stream=kafka_probe,
+            )
             # The runtime is built BEFORE the stack is handed over: a constructor that raises
             # still finds everything owned by `stack`. `pop_all()` is the last statement.
             owned = AsyncExitStack()
@@ -492,6 +682,8 @@ async def start_runtime(
                 connection=connection,
                 stages=stages,
                 stack=owned,
+                checks=checks,
+                engine=engine,
             )
             owned.push_async_callback(stack.pop_all().aclose)
         except BaseException:

@@ -23,6 +23,7 @@ from otc_orders.application.ports.saga_command_store import (
     OwedCommand,
 )
 from otc_orders.application.ports.saga_ignored_facts import IgnoredFactMarker
+from otc_orders.application.ports.saga_metrics import SagaMetrics, SagaOutcome
 from otc_orders.application.ports.unit_of_work import OrdersTransaction
 from otc_orders.application.saga.command_kind import SagaCommandKind
 from otc_orders.application.saga.fact import SagaFact
@@ -131,12 +132,13 @@ def handler_over(
     duplicate: bool = False,
     outcome: EnqueueOutcome = EnqueueOutcome.ENQUEUED,
     accepted: AcceptedOperatorCancel | None = None,
+    metrics: SagaMetrics | None = None,
 ) -> tuple[SagaFactHandler, Recorder, FakeConsumption]:
     recorder = Recorder()
     consumption = FakeConsumption(
         FakeTransaction(recorder, order, outcome, accepted), duplicate=duplicate
     )
-    return SagaFactHandler(consumption), recorder, consumption
+    return SagaFactHandler(consumption, metrics), recorder, consumption
 
 
 async def test_a_duplicate_does_nothing_at_all(
@@ -526,3 +528,129 @@ async def test_a_saga_decided_cancellation_never_reads_an_operator_note(
     assert "find_accepted_operator_cancel" not in recorder.calls
     [cancelled] = order.domain_events
     assert cancelled.note is None  # type: ignore[attr-defined]
+
+
+# --------------------------------------------------------------------------- R59 / OR9 (S5.5)
+# 90 minutes and 123 ms separate the order's date from every fact the conftest builds.
+CLOSE_MS = 90 * 60 * 1000 + 123.0
+
+
+class RecordingMetrics:
+    def __init__(self) -> None:
+        self.closed_calls: list[tuple[SagaOutcome, float]] = []
+
+    def closed(self, outcome: SagaOutcome, milliseconds: float) -> None:
+        self.closed_calls.append((outcome, milliseconds))
+
+
+async def test_r59_a_completing_transition_records_exactly_one_completed_with_the_exact_elapsed_ms(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    metrics = RecordingMetrics()
+    handler, _, _ = handler_over(order_in(OrderStatus.PAID), metrics=metrics)
+
+    await handler.handle(make_fact("credit.released.v1"))
+
+    assert metrics.closed_calls == [("completed", CLOSE_MS)]
+
+
+async def test_r59_a_direct_cancel_stock_rejected_records_exactly_one_cancelled(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    metrics = RecordingMetrics()
+    handler, _, _ = handler_over(order_in(OrderStatus.PLACED), metrics=metrics)
+
+    await handler.handle(make_fact("stock.rejected.v1"))
+
+    assert metrics.closed_calls == [("cancelled", CLOSE_MS)]
+
+
+async def test_r59_the_compensation_completing_cancel_records_one_cancelled_not_two(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    """The operator cancellation of a confirmed order takes two facts: `stock.released.v1` (an
+    Advance that owes `credit.release`: the saga is still open) and then `credit.released.v1` (the
+    Cancel that closes it). Only the second records."""
+    metrics = RecordingMetrics()
+    first, _, _ = handler_over(order_in(OrderStatus.CONFIRMED), metrics=metrics)
+    await first.handle(make_fact("stock.released.v1", release_reason=Reason1.order_cancelled))
+    assert metrics.closed_calls == [], "the first compensation step must not close the saga"
+
+    second, _, _ = handler_over(order_in(OrderStatus.CONFIRMED), metrics=metrics)
+    await second.handle(
+        make_fact("credit.released.v1", credit_release_reason=Reason3.order_cancelled)
+    )
+
+    assert metrics.closed_calls == [("cancelled", CLOSE_MS)]
+
+
+@pytest.mark.parametrize(
+    ("event_type", "status"),
+    [
+        ("stock.reserved.v1", OrderStatus.PLACED),
+        ("credit.approved.v1", OrderStatus.STOCK_RESERVED),
+        ("order.despatched.v1", OrderStatus.CONFIRMED),
+        ("payment.received.v1", OrderStatus.INVOICED),
+    ],
+)
+async def test_r59_a_step_that_leaves_the_order_open_records_nothing(
+    event_type: str,
+    status: OrderStatus,
+    order_in: Callable[..., Order],
+    make_fact: Callable[..., SagaFact],
+) -> None:
+    metrics = RecordingMetrics()
+    handler, _, _ = handler_over(order_in(status), metrics=metrics)
+
+    result = await handler.handle(make_fact(event_type))
+
+    assert result.outcome is SagaFactOutcome.PROCESSED
+    assert metrics.closed_calls == []
+
+
+async def test_r59_an_ignored_fact_records_nothing(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    metrics = RecordingMetrics()
+    # `credit.released.v1` for a `placed` order matches no variant: ignored, never a closing
+    handler, _, _ = handler_over(order_in(OrderStatus.PLACED), metrics=metrics)
+
+    result = await handler.handle(make_fact("credit.released.v1"))
+
+    assert result.outcome is SagaFactOutcome.IGNORED
+    assert metrics.closed_calls == []
+
+
+async def test_r59_a_deduplicated_redelivery_of_a_closing_fact_records_nothing(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    metrics = RecordingMetrics()
+    handler, _, _ = handler_over(order_in(OrderStatus.PAID), duplicate=True, metrics=metrics)
+
+    result = await handler.handle(make_fact("credit.released.v1"))
+
+    assert result.outcome is SagaFactOutcome.DUPLICATE
+    assert metrics.closed_calls == []
+
+
+async def test_r59_a_closing_step_whose_transaction_fails_records_nothing(
+    order_in: Callable[..., Order], make_fact: Callable[..., SagaFact]
+) -> None:
+    """Recorded strictly AFTER commit: `work` ran and applied the closing transition, then the
+    unit of work failed, so the order is NOT closed and the metric must not say it is."""
+    metrics = RecordingMetrics()
+    handler, _, consumption = handler_over(order_in(OrderStatus.PAID), metrics=metrics)
+
+    class FailsAfterWork:
+        async def run_once(
+            self, event_id: uuid.UUID, work: Callable[[OrdersTransaction], Awaitable[None]]
+        ) -> ConsumptionResult:
+            await consumption.run_once(event_id, work)
+            raise RuntimeError("commit failed")
+
+    handler._consumption = FailsAfterWork()
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await handler.handle(make_fact("credit.released.v1"))
+
+    assert metrics.closed_calls == []

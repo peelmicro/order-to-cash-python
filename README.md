@@ -143,21 +143,21 @@ Orders accepts an order over NATS (`orders.create`), checks stock synchronously 
 
 ```bash
 uv run uvicorn otc_orders.main:app --port 8101      # reads .env; one worker only while OUTBOX_RELAY_ENABLED=true
-curl -s localhost:8101/health/ready                  # {"status":"ready"} once NATS, the relay and the saga tasks run
+curl -s localhost:8101/health/ready                  # 200 {"status":"up","checks":{…}} once NATS, the relay and the saga tasks run
 ```
 
 Fulfillment owns stock and despatch. It answers `fulfillment.stock.check`, `.reserve`, `.release`, `.list` and `.replenish` and `fulfillment.despatch.create` over NATS, decides every reservation under row locks taken in a fixed order, and publishes `stock.reserved.v1`, `stock.rejected.v1`, `stock.released.v1` and `order.despatched.v1` from its own outbox:
 
 ```bash
 uv run uvicorn otc_fulfillment.main:app --port 8102 # reads .env; the same one-worker rule for its relay
-curl -s localhost:8102/health/ready                  # {"status":"ready"} once NATS and the relay run
+curl -s localhost:8102/health/ready                  # 200 {"status":"up","checks":{…}} once NATS and the relay run
 ```
 
 Billing owns buyer credit, invoices and remittances. It answers `billing.credit.hold`, `.release` and `.list`, `billing.invoice.issue` and `.list`, and `billing.payment.register` over NATS, decides every credit and payment under a lock on the buyer's credit line, and publishes `credit.approved.v1`, `credit.rejected.v1`, `credit.released.v1`, `invoice.issued.v1` and `payment.received.v1` from its own outbox. Credit decisions go through the `.99` simulator by default; `CREDIT_FAILURE_RATE` (default `0`) adds a seeded proportion of simulated refusals, and an out-of-range value stops the boot naming it:
 
 ```bash
 uv run uvicorn otc_billing.main:app --port 8103     # reads .env; the same one-worker rule for its relay
-curl -s localhost:8103/health/ready                  # {"status":"ready"} once NATS and the relay run
+curl -s localhost:8103/health/ready                  # 200 {"status":"up","checks":{…}} once NATS and the relay run
 ```
 
 With the three running, an order placed through `orders.create` runs the whole saga on its own — `stock_reserved`, `credit_approved`, `confirmed`, `despatched`, `invoiced` — and then waits for the outside world, as the specification requires: there is no internal payment timer. A remittance registered over `billing.payment.register` (the Gateway's `POST /invoices/{id}/payments` arrives in phase 13) pays the invoice, releases the credit exposure, and the order reaches `completed`. The live walkthroughs, with the rows they leave behind, are in `progress/impl_billing_credit.md` §8, `progress/impl_billing_invoicing.md` and `progress/impl_billing_remittance_intake.md` §9.
@@ -166,7 +166,7 @@ Notifications consumes the seven facts a counterparty is told about (`order.plac
 
 ```bash
 NOTIFICATIONS_SENDER=smtp uv run uvicorn otc_notifications.main:app --port 8104   # reads .env
-curl -s localhost:8104/health/ready                       # {"status":"ready"} once the consumer has joined its group
+curl -s localhost:8104/health/ready                       # 200 {"status":"up","checks":{…}} once the consumer has joined its group
 curl -s localhost:8025/api/v1/messages | jq '.messages[].Subject'   # the emails, through Mailpit's HTTP API
 ```
 
@@ -176,7 +176,7 @@ The Projector consumes all fourteen facts from the three fact topics and is the 
 
 ```bash
 uv run uvicorn otc_projector.main:app --port 8105   # reads .env (MONGO_*, KAFKA_BROKERS, NATS_URL, PROJECTOR_*)
-curl -s localhost:8105/health/ready                  # {"status":"ready"} once the consumer has joined its group
+curl -s localhost:8105/health/ready                  # 200 {"status":"up","checks":{…}} once the consumer has joined its group
 docker exec otcpy-mongodb mongosh -u otc_mongo_root -p otc_mongo_dev_password --quiet \
   --eval 'db.getSiblingDB("otc_read_model").order_timeline.find({}, {orderReference: 1, status: 1}).toArray()'
 ```
@@ -203,6 +203,22 @@ curl -s localhost:3001/orders/$ORDER_ID -H "Authorization: Bearer $TOKEN" | jq '
 
 `uv run uvicorn otc_gateway.main:app --port N` also serves, but ignores `GATEWAY_PORT`. With Billing stopped the order holds at `stock_reserved`, so the cancel always has a reservation to release; the operator's note then reaches the timeline on `order.cancelled.v1`.
 
+Every service writes one JSON log line per record (structlog renders, the standard library stays the call API, uvicorn's own lines included), with `correlationId` and the trace id on every line of a request, command or fact it handles. Traces and metrics go over OTLP to the collector when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (empty: nothing is exported, which is how the test suites run). `/health/live` answers while the process runs; `/health/ready` checks each dependency with a bounded probe and answers `503` naming the one that is down. A fact a consumer cannot process is retried `FACT_RETRY_MAX_ATTEMPTS` times with a doubling back-off from `FACT_RETRY_BACKOFF_MS`, then copied unchanged to `<topic>.dlq` with the `x-*` headers of `asyncapi.yaml` and committed. A repeated `POST /orders` with the same `Idempotency-Key` (a UUID) returns the original order.
+
+```bash
+docker compose -p otcpy -f docker-compose.infra.yml start otel-collector jaeger prometheus mailpit   # with the four above
+KEY=$(python3 -c 'import uuid; print(uuid.uuid4())')
+BODY='{"retailerCode":"CarrefourEs","companyCode":"IBERFOODS","currency":"EUR","lines":[{"productCode":"PRD-0001","quantity":2}]}'
+for i in 1 2; do curl -s -X POST localhost:3001/orders -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -H "Idempotency-Key: $KEY" -d "$BODY" | jq -c '{orderId, orderReference}'; done            # the same order twice
+curl -s "localhost:16686/api/traces?service=gateway&operation=POST%20/orders&limit=2&lookback=10m" \
+  | jq '[.data[] | {spans: (.spans|length), services: ([.processes[].serviceName]|unique)}] | max_by(.spans)'   # one trace, six services
+curl -s localhost:9090/api/v1/query --data-urlencode 'query=count by (exported_job) (otc_request_latency_ms_bucket)' | jq -c '.data.result'
+docker pause otcpy-postgres; sleep 4; curl -s -w ' %{http_code}\n' localhost:8103/health/ready; docker unpause otcpy-postgres   # 503 naming writeModel
+```
+
+The five series the Grafana dashboard reads are `otc_request_latency_ms`, `otc_fact_processing_latency_ms`, `otc_saga_completion_ms` (once an order completes or is cancelled), `otc_outbox_lag_ms` and `otc_dlq_depth`; the repeated request's own trace is a four-span replay, hence the larger of the two.
+
 ## How this is being built
 
 The development **process is a deliverable**, not a footnote: Spec-Driven Development plus an agent harness with a backlog state machine (`feature_list.json`, max one feature in progress), external memory (`progress/`), a specification that precedes the code, and separate leader / spec-author / implementer / reviewer subagents each with an explicitly declared model. Every large feature passes a human approval gate at its specification, and every phase is tested by a human before its commit. `docs/PROCESS.md` explains all of it; the git history is the evidence, and for this repository it reads **harness first, specification copy second, code after**.
@@ -224,7 +240,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 11 | Notifications service | ✅ the seven notified facts consumed from Kafka and filtered by event type, the filter guarded in both directions (deleting any of the seven, or adding any `stock.*` / `credit.*` sibling, fails a test: #8's guards ran past the filter and never crossed it); seven templates whose 109 payload sites are enumerated and mutated by a committed sweep (`scripts/notification-template-sweep.py`, 198 of 198 mutations caught; #8 counted the same population by hand as 14, 89 and 95); aiosmtplib into Mailpit behind one port with the console adapter, degrading to the console on a permanent refusal (#8 id 73); the durable `processed_events` ledger through a byte-identical copy of Orders' idempotent consumer, recorded before the send and forgotten on a transient failure, and the parity guard's every-consumer-carries-a-copy case live for the first time. **Approved first pass, the first of the three builds to pass this feature in round one** (#7 and #8 were each rejected once) |
 | 12 | Projector service + MongoDB read model | ✅ all fourteen facts projected into `order_timeline` by the only writer of the read model, in causal timeline order, with placeholders, a status that never regresses and idempotent replay (the dedup key written in the same atomic update); indexes checked against the server's stored specification at boot; the update signal on NATS for the Gateway's SSE; the read-model constants pinned to the same fixture the seed is pinned to. Backlog 201 ruled at the gate: R12 kept, and **`SA-6`**, the first amendment raised in #9, corrects the `causationId` description in all three repositories. Every fact value placed in a MongoDB update is `$literal`-wrapped: an operator note beginning with `$` is evaluated by the server in #7's and #8's projectors (measured, recorded as a predecessor finding). Rejected twice, every time on what the tests could see and never on production behaviour; approved in a scoped third round (#8: three rejections; #7: one). Also: Orders, Fulfillment and Billing now fail their boot within a bound on an unreachable NATS (backlog 214) |
 | 13 | Gateway / BFF | ✅ the Gateway, the system's only HTTP edge: every route of the contract, PyJWT bearer auth (the public set a literal, the protected set derived from the served routes), a login rate limit, list and detail from the read model only, every RPC subject and payload asserted against `asyncapi.yaml`, and server-sent events with a heartbeat, a replay buffer and `Last-Event-ID` reconnection (a client that falls behind is disconnected and resumes, never silently skipped); Orders' catalog and operator-cancel responders, with `SA-4`'s release order, the late credit approval, the race against forward progress proved both ways under a held lock, and the operator's note on the timeline. Three amendments raised and applied to all three repositories: **`SA-7`** (the missing `credit.release` row), **`SA-8`** (a stock reservation stranded by an operator cancel at `placed`, in all three builds, now released) and **`SA-9`** (every Gateway status declared; a timeout no longer promises "not applied"). Four units rejected once, two approved first time, none on production behaviour |
-| 14 | Health checks, OTel propagation, retry + DLQ | ⬜ |
+| 14 | Health checks, OTel propagation, retry + DLQ | ✅ structlog JSON logs with `correlationId` and the trace id on every line of a unit of work; one OpenTelemetry trace from the Gateway through NATS, the write transaction, the outbox and Kafka to every consumer; the five dashboard series; retry then `<topic>.dlq` with `SA-3`'s headers in the three consumers, a stop-aware back-off and a boot-time retry budget; the saga's first park writes `order.saga_failed.v1` and a dead letter (none for an operator cancel or a terminal refusal); bounded readiness proven against paused real containers; `requestId` idempotent replay in Orders; the Gateway ends its event streams on shutdown |
 | 15 | End-to-end saga verification | ⬜ |
 | 16 | Angular (Analog) web app | ⬜ |
 | 17 | Web component tests | ⬜ |

@@ -21,6 +21,7 @@ from otc_orders.domain.events import (
     OrderConfirmed,
     OrderEvent,
     OrderPlaced,
+    OrderSagaFailed,
 )
 from otc_orders.domain.order import Order
 from otc_orders.domain.value_objects.cancellation_reason import CancellationReason
@@ -39,7 +40,9 @@ OPERATOR = CancellationReason.OPERATOR_CANCELLED
 def _events(order: Order) -> list[OrderEvent]:
     narrowed: list[OrderEvent] = []
     for event in order.domain_events:
-        assert isinstance(event, OrderPlaced | OrderConfirmed | OrderCompleted | OrderCancelled)
+        assert isinstance(
+            event, OrderPlaced | OrderConfirmed | OrderCompleted | OrderCancelled | OrderSagaFailed
+        )
         narrowed.append(event)
     return narrowed
 
@@ -160,6 +163,7 @@ DOMAIN_DATACLASSES = {
     "OrderConfirmed",
     "OrderCompleted",
     "OrderCancelled",
+    "OrderSagaFailed",
     "CompensationStep",
     "OrderSnapshot",
     "OrderLineSnapshot",
@@ -197,14 +201,15 @@ def test_no_domain_dataclass_has_a_list_field_and_the_population_is_the_literal_
     assert not offenders, f"a frozen dataclass holding a list is still mutable: {offenders}"
 
 
-def test_order_event_is_the_union_of_exactly_the_four_event_classes() -> None:
+def test_order_event_is_the_union_of_exactly_the_five_event_classes() -> None:
     assert set(typing.get_args(OrderEvent.__value__)) == {
         OrderPlaced,
         OrderConfirmed,
         OrderCompleted,
         OrderCancelled,
+        OrderSagaFailed,
     }
-    assert len(typing.get_args(OrderEvent.__value__)) == 4
+    assert len(typing.get_args(OrderEvent.__value__)) == 5
 
 
 def test_r12_order_stamps_every_domain_event_with_a_fresh_event_id_the_order_id_as_correlation_id_and_the_supplied_causation_id(  # noqa: E501

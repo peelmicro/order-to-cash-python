@@ -55,6 +55,12 @@ async def readiness(app: Any) -> httpx.Response:
         return await client.get("/health/ready")
 
 
+def down_checks(response: httpx.Response) -> dict[str, str]:
+    """Check name -> detail, for the checks the readiness body reports `down`."""
+    checks: dict[str, dict[str, str]] = response.json()["checks"]
+    return {name: check["detail"] for name, check in checks.items() if check["status"] == "down"}
+
+
 # ------------------------------------------------------------- the tasks the lifespan owns
 
 
@@ -65,10 +71,17 @@ async def test_the_lifespan_starts_the_responder_and_the_relay_and_awaits_both_o
         tasks = dict(host.runtime.tasks)
         # Feature 16 adds the saga's fast path and sweeper (the consumer stays off in this host:
         # `host_environment` sets SAGA_CONSUMER_ENABLED=false; `integration/saga` turns it on).
-        assert set(tasks) == {"nats-responder", "outbox-relay", "saga-fast-path", "saga-sweeper"}
+        # Feature 27 adds the dead-letter depth reader's task (`dlq-depth`, `R59`).
+        assert set(tasks) == {
+            "nats-responder",
+            "outbox-relay",
+            "dlq-depth",
+            "saga-fast-path",
+            "saga-sweeper",
+        }
         assert all(not task.done() for task in tasks.values())
         response = await readiness(host.app)
-        assert (response.status_code, response.json()) == (200, {"status": "ready"})
+        assert (response.status_code, response.json()["status"]) == (200, "up")
 
     # the lifespan has exited: every task it created has been awaited to completion, none cancelled
     assert all(task.done() and not task.cancelled() for task in tasks.values())
@@ -134,9 +147,29 @@ async def test_with_the_relay_disabled_no_relay_task_exists_and_kafka_is_never_c
         assert (await readiness(host.app)).status_code == 200
 
 
-@pytest.mark.parametrize("task_name", ["outbox-relay", "nats-responder"])
+async def test_r59_the_dlq_depth_task_starts_after_the_relay_so_it_is_stopped_before_it(
+    orders_host_factory: HostFactory,
+) -> None:
+    """Stages are listed in START order and stopped in REVERSE: the stage holding `dlq-depth` must
+    come after the one holding `outbox-relay`, so the depth reader stops first."""
+    async with orders_host_factory() as host:
+        names = [stage.names for stage in host.runtime._stages]
+        relay_at = next(i for i, group in enumerate(names) if "outbox-relay" in group)
+        depth_at = next(i for i, group in enumerate(names) if "dlq-depth" in group)
+        assert depth_at > relay_at, f"stop order would be wrong: stages {names}"
+
+
+# Each task is attributed to the check of the dependency it serves (`R60`, design 7.2).
+@pytest.mark.parametrize(
+    ("task_name", "check_name"),
+    [
+        ("outbox-relay", "factStream"),
+        ("nats-responder", "rpcTransport"),
+        ("dlq-depth", "factStream"),
+    ],
+)
 async def test_a_transport_task_that_dies_takes_readiness_down_and_names_it(
-    orders_host_factory: HostFactory, task_name: str
+    orders_host_factory: HostFactory, task_name: str, check_name: str
 ) -> None:
     async with orders_host_factory() as host:
         assert (await readiness(host.app)).status_code == 200
@@ -148,10 +181,10 @@ async def test_a_transport_task_that_dies_takes_readiness_down_and_names_it(
 
         response = await readiness(host.app)
         assert response.status_code == 503
-        assert response.json() == {
-            "status": "unready",
-            "reasons": [f"transport task {task_name} is not running"],
-        }
+        assert response.json()["status"] == "down"
+        assert down_checks(response) == {
+            check_name: f"transport task {task_name} is not running"
+        }, "only the check of the dead task's dependency is down, with the task named"
         assert all(not t.done() for t in survivors), "only the dead task is named"
     # shutdown still completes with a task already dead
 
@@ -166,13 +199,13 @@ async def test_a_closed_nats_connection_takes_readiness_down_even_though_no_task
 
         response = await readiness(host.app)
         assert response.status_code == 503
-        assert "the NATS connection is closed" in response.json()["reasons"]
+        assert down_checks(response) == {"rpcTransport": "NatsNotConnectedError"}
 
 
 async def test_readiness_is_503_before_the_lifespan_has_started() -> None:
     response = await readiness(composition_less_app())
     assert response.status_code == 503
-    assert response.json()["reasons"] == ["the service has not started"]
+    assert response.json() == {"status": "down", "checks": {}}
 
 
 def composition_less_app() -> Any:
@@ -630,7 +663,9 @@ async def test_every_setting_the_composition_root_reads_reaches_its_adapter(
         assert host.runtime.settings.nats.stock_check_timeout_ms == 1777
 
     [stock] = recorded.stock
-    assert stock == {"timeout_ms": 1777}, "STOCK_CHECK_TIMEOUT_MS must reach the stock adapter"
+    # feature 27: the adapter also receives the runtime's own tracer (nothing else)
+    assert set(stock) == {"timeout_ms", "tracer"}
+    assert stock["timeout_ms"] == 1777, "STOCK_CHECK_TIMEOUT_MS must reach the stock adapter"
     [kafka] = recorded.kafka
     assert kafka.client_id == "otc-orders-sentinel"
     assert kafka.brokers != "localhost:9092", "KAFKA_BROKERS must come from the environment"
@@ -730,7 +765,9 @@ async def test_every_saga_setting_the_composition_root_reads_reaches_the_object_
     assert dispatcher["backoff_ms"] == 130, "SAGA_COMMAND_BACKOFF_MS must reach the dispatcher"
     assert dispatcher["park_cap_ms"] == 777_000, "SAGA_PARK_RETRY_CAP_MS must reach the dispatcher"
     [adapter] = recorded.adapter
-    assert adapter == {"timeout_ms": 1900}, "SAGA_COMMAND_TIMEOUT_MS must reach the NATS adapter"
+    # feature 27: the adapter also receives the runtime's own tracer (nothing else)
+    assert set(adapter) == {"timeout_ms", "tracer"}
+    assert adapter["timeout_ms"] == 1900, "SAGA_COMMAND_TIMEOUT_MS must reach the NATS adapter"
     [ledger] = recorded.ledger
     assert ledger["lease_ms"] == 91_000, "SAGA_COMMAND_LEASE_MS must reach the ledger"
     assert ledger["pending_grace_ms"] == 13_300, "SAGA_PENDING_GRACE_MS must reach the ledger"

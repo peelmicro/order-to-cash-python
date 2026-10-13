@@ -11,7 +11,7 @@
   loop that runs the lifespan and closed in it.
 * One asyncio task per transport (the NATS responder, the outbox relay), created here, owned by the
   runtime and awaited on shutdown. A task that ends while the runtime is running takes readiness
-  down (`FulfillmentRuntime.unready_reasons`, served by `/health/ready`).
+  down (`FulfillmentRuntime.readiness`, served by `/health/ready`).
 * The engine's pool is sized from the responder's bound: `pool_size = bound + 1` (the relay's
   session), `max_overflow = 0`, so an admitted request never waits for a connection (`design.md`
   8.2).
@@ -24,13 +24,15 @@ import asyncio
 import functools
 import logging
 import multiprocessing
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AsyncExitStack, suppress
 from dataclasses import dataclass
 
 import nats
 import nats.errors
 from nats.aio.client import Client
+from opentelemetry.sdk.metrics.export import MetricReader
+from opentelemetry.sdk.trace import SpanProcessor
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 import otc_fulfillment.application
@@ -53,7 +55,18 @@ from otc_fulfillment.application.messages import (
 )
 from otc_fulfillment.application.scope import FulfillmentScope
 from otc_fulfillment.infrastructure.clock import SystemClock
+from otc_fulfillment.infrastructure.health.checks import (
+    CheckResult,
+    HealthCheck,
+    Probe,
+    dead_tasks,
+    run_checks,
+)
+from otc_fulfillment.infrastructure.health.nats_probe import NatsProbe
+from otc_fulfillment.infrastructure.health.postgres_probe import PostgresProbe
 from otc_fulfillment.infrastructure.ids import UuidIdSource
+from otc_fulfillment.infrastructure.observability.metrics import outbox_lag
+from otc_fulfillment.infrastructure.observability.telemetry import build_telemetry
 from otc_fulfillment.infrastructure.outbox.kafka_publisher import KafkaFactPublisher
 from otc_fulfillment.infrastructure.outbox.relay import OutboxRelay
 from otc_fulfillment.infrastructure.outbox.relay_task import OutboxRelayTask
@@ -69,6 +82,7 @@ from otc_fulfillment.infrastructure.settings import (
     OutboxRelaySettings,
     ResponderSettings,
     ServerSettings,
+    TelemetrySettings,
 )
 from otc_fulfillment.presentation.stock_responder import StockResponder
 
@@ -85,6 +99,7 @@ class FulfillmentSettings:
     nats: NatsSettings
     server: ServerSettings
     responder: ResponderSettings
+    telemetry: TelemetrySettings
 
 
 def load_settings() -> FulfillmentSettings:
@@ -95,6 +110,7 @@ def load_settings() -> FulfillmentSettings:
         nats=NatsSettings(),
         server=ServerSettings(),
         responder=ResponderSettings(),
+        telemetry=TelemetrySettings(),
     )
 
 
@@ -123,6 +139,28 @@ def build_dispatcher() -> Dispatcher[FulfillmentScope]:
     Pure (no I/O): `tests/architecture/test_registration_behaviour.py` runs it without a database.
     """
     return _wire()[0]
+
+
+# ------------------------------------------------------------------------------------ readiness
+
+
+def build_health_checks(
+    *,
+    tasks: Mapping[str, asyncio.Task[None]],
+    write_model: Probe,
+    rpc_transport: Probe,
+) -> list[HealthCheck]:
+    """The runtime's checks (`R60`), each task attributed to the dependency it serves: the relay
+    drains the write model's outbox (`writeModel`), the responder serves `rpcTransport`. No
+    fact-stream check: with Kafka down this service still accepts commands and commits its facts
+    durably, and withdrawing it would stop the saga for nothing (the outbox lag is the signal,
+    `R59`)."""
+    return [
+        HealthCheck("writeModel", write_model, task_reasons=dead_tasks(tasks, ("outbox-relay",))),
+        HealthCheck(
+            "rpcTransport", rpc_transport, task_reasons=dead_tasks(tasks, ("nats-responder",))
+        ),
+    ]
 
 
 # --------------------------------------------------------------------- one relay per deployment
@@ -195,8 +233,10 @@ class FulfillmentRuntime:
         responder: StockResponder,
         stop_event: asyncio.Event,
         stack: AsyncExitStack,
+        checks: Sequence[HealthCheck] = (),
     ) -> None:
         self.settings = settings
+        self.checks = checks
         self.dispatcher = dispatcher
         self.tasks = tasks
         self.connection = connection
@@ -218,21 +258,15 @@ class FulfillmentRuntime:
         else:
             log.error("transport task %s ended while the service was running", name)
 
-    def unready_reasons(self) -> list[str]:
-        """Empty when ready. A transport task that is done while running is a reason (read live
-        from the task, not from a callback that may not have run yet)."""
-        if self._stopping:
-            return ["the service is shutting down"]
-        reasons = [
-            f"transport task {name} is not running" for name, t in self.tasks.items() if t.done()
-        ]
-        # The responder's loop waits on an inbox: a closed or reconnecting NATS client would not
-        # end it, so the connection itself is a reason (a request could not be answered).
-        if self.connection.is_closed:
-            reasons.append("the NATS connection is closed")
-        elif self.connection.is_reconnecting:
-            reasons.append("the NATS connection is reconnecting")
-        return reasons
+    async def readiness(self) -> list[CheckResult]:
+        """One bounded check per dependency (`R60`, served by `/health/ready`). A task that is done
+        while running makes the check of the dependency it serves `down`, read live from the task
+        (not from a callback that may not have run yet); a runtime that is stopping answers `down`
+        for every check without probing. No fact-stream check: with Kafka down this service still
+        accepts commands and commits its facts durably, and withdrawing it would stop the saga for
+        nothing; the outbox lag is the signal (`R59`). The relay task serves the write model's
+        outbox, so its death is attributed to `writeModel`."""
+        return await run_checks(self.checks, shutting_down=self._stopping)
 
     async def stop(self) -> None:
         """Stop the tasks (after their in-flight work), then close what `start_runtime` opened."""
@@ -262,9 +296,24 @@ async def _stop_tasks(stop_event: asyncio.Event, tasks: dict[str, asyncio.Task[N
 
 
 async def start_runtime(
-    settings: FulfillmentSettings, *, nats_connect_seconds: float = NATS_CONNECT_SECONDS
+    settings: FulfillmentSettings,
+    *,
+    nats_connect_seconds: float = NATS_CONNECT_SECONDS,
+    span_processors: Sequence[SpanProcessor] = (),
+    metric_readers: Sequence[MetricReader] = (),
 ) -> FulfillmentRuntime:
     async with AsyncExitStack() as stack:
+        # This runtime's own tracer and meter providers (`R56`), first so that everything below can
+        # make spans, and closed LAST (the stack unwinds in reverse, so the flush follows every
+        # adapter's close). Never the process-global provider (`telemetry.py`).
+        telemetry = build_telemetry(
+            "fulfillment",
+            settings.telemetry.otlp_endpoint,
+            span_processors=span_processors,
+            metric_readers=metric_readers,
+        )
+        stack.push_async_callback(telemetry.aclose)
+
         relay_enabled = settings.outbox.enabled
         assert_single_outbox_relay(
             relay_enabled=relay_enabled,
@@ -298,7 +347,10 @@ async def start_runtime(
         stack.push_async_callback(_close_nats, connection)
 
         transactions = SqlAlchemyStockTransactions(
-            sessions=sessions, outbox=OutboxWriter(clock=clock), clock=clock
+            sessions=sessions,
+            outbox=OutboxWriter(clock=clock),
+            clock=clock,
+            tracer=telemetry.tracer,
         )
         reads = SqlAlchemyStockReads(sessions)
         ids = UuidIdSource()
@@ -317,6 +369,7 @@ async def start_runtime(
             scope_factory=scope_factory,
             clock=clock,
             max_concurrent_requests=bound,
+            tracer=telemetry.tracer,
         )
         await responder.start()
 
@@ -338,6 +391,8 @@ async def start_runtime(
                     clock=clock,
                     batch_size=settings.outbox.batch_size,
                     publish_timeout=settings.outbox.publish_timeout_seconds,
+                    tracer=telemetry.tracer,
+                    lag=outbox_lag(telemetry.meter),
                 )
                 relay_task = OutboxRelayTask(
                     relay, poll_interval=settings.outbox.poll_interval_seconds, enabled=True
@@ -345,6 +400,12 @@ async def start_runtime(
                 tasks["outbox-relay"] = asyncio.create_task(
                     relay_task.run(stop_event), name="outbox-relay"
                 )
+            # Readiness (`R60`): the write model and the RPC transport, each bounded.
+            postgres_probe = PostgresProbe(settings.database.url)
+            stack.push_async_callback(postgres_probe.aclose)
+            checks = build_health_checks(
+                tasks=tasks, write_model=postgres_probe, rpc_transport=NatsProbe(connection)
+            )
             # The runtime is built BEFORE the stack is handed over: a constructor that raises
             # still finds everything owned by `stack`. `pop_all()` is the last statement.
             owned = AsyncExitStack()
@@ -357,6 +418,7 @@ async def start_runtime(
                 responder=responder,
                 stop_event=stop_event,
                 stack=owned,
+                checks=checks,
             )
             owned.push_async_callback(stack.pop_all().aclose)
         except BaseException:

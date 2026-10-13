@@ -75,11 +75,15 @@ async def test_a_transient_451_is_retried_and_the_email_is_sent_exactly_once_aft
     await inbox.set_chaos(Sender=(451, 100))
 
     with caplog.at_level(logging.INFO):
-        async with notifications_host_factory():
+        # The consumer retries a failing record ITSELF (`FactRetry`, `R16`): three attempts with a
+        # back-off that doubles from `FACT_RETRY_BACKOFF_MS`. A wide first back-off (4 s) is the
+        # window in which the test observes the failed attempt and lets the server recover, so the
+        # SECOND attempt delivers; the third and the dead letter are never reached.
+        async with notifications_host_factory(FACT_RETRY_BACKOFF_MS="4000"):
             await publisher.publish(
                 "otc.orders.facts.v1", event.correlation_id, facts.wire_from(event)
             )
-            await _wait_for_log(caplog, "fact handler failed")
+            await _wait_for_log(caplog, "fact processing attempt failed")
             assert await inbox.count() == 0, "nothing was delivered while the server answered 451"
             assert await ledger_rows() == [], "and the ledger row was forgotten: the retry is fresh"
             await inbox.clear_chaos()

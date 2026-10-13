@@ -30,6 +30,7 @@ class FakeMessage:
     def __init__(self, data: bytes, *, reply: str = "_INBOX.x", fail_reply: bool = False) -> None:
         self.data = data
         self.reply = reply
+        self.headers: dict[str, str] | None = None  # nats-py's `Msg.headers` is always an attribute
         self._fail_reply = fail_reply
         self.replies: list[bytes] = []
 

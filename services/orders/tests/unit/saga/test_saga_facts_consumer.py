@@ -9,13 +9,13 @@ unit of work).
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 import pytest
 
 from otc_cqrs import Dispatcher
-from otc_orders.application.ports.fact_stream import FactMessage
+from otc_orders.application.ports.fact_stream import FactMessage, FactProcessor
 from otc_orders.application.saga.fact_commands import (
     FACT_COMMANDS,
     HandleCreditApprovedFactCommand,
@@ -65,6 +65,23 @@ class RecordingDispatcher:
             raise self._failure
 
 
+class RecordingRetry:
+    """The `FactProcessor` the task is handed: it records every record that reaches the wrapper and
+    runs `work` `attempts` times (a real `FactRetry` runs it once on success, up to N on failure),
+    so a test can tell what is INSIDE the wrapper from what is outside it."""
+
+    def __init__(self, attempts: int = 1) -> None:
+        self.calls: list[tuple[FactMessage, str]] = []
+        self._attempts = attempts
+
+    async def process(
+        self, message: FactMessage, event_type: str, work: Callable[[], Awaitable[None]]
+    ) -> None:
+        self.calls.append((message, event_type))
+        for _ in range(self._attempts):
+            await work()
+
+
 class ScopeSpy:
     def __init__(self) -> None:
         self.built = 0
@@ -75,11 +92,14 @@ class ScopeSpy:
         return self.scope
 
 
-def task_over(dispatcher: RecordingDispatcher, scope: ScopeSpy) -> SagaFactsConsumerTask:
+def task_over(
+    dispatcher: RecordingDispatcher, scope: ScopeSpy, retry: FactProcessor | None = None
+) -> SagaFactsConsumerTask:
     return SagaFactsConsumerTask(
         subscriber=cast("Any", None),
         dispatcher=cast("Dispatcher[OrdersScope]", dispatcher),
         scope_factory=scope,
+        retry=RecordingRetry() if retry is None else retry,
     )
 
 
@@ -207,9 +227,70 @@ async def test_run_hands_the_subscriber_the_handler_and_the_stop_event() -> None
         subscriber=Subscriber(),
         dispatcher=cast("Dispatcher[OrdersScope]", RecordingDispatcher()),
         scope_factory=ScopeSpy(),
+        retry=RecordingRetry(),
     )
     stop = asyncio.Event()
 
     await task.run(stop)
 
     assert received == [(task.handle, stop)]
+
+
+async def test_or1_the_dispatch_runs_through_the_retry_wrapper_and_each_attempt_builds_a_fresh_scope(
+    envelope_bytes: Callable[..., bytes],
+) -> None:
+    dispatcher, scope, retry = RecordingDispatcher(), ScopeSpy(), RecordingRetry(attempts=2)
+    value = envelope_bytes("stock.reserved.v1")
+
+    await task_over(dispatcher, scope, retry).handle(message(value))
+
+    [(wrapped, event_type)] = retry.calls
+    assert (wrapped.value, event_type) == (value, "stock.reserved.v1")
+    assert len(dispatcher.sent) == 2, "the wrapper ran the work twice, so two dispatches"
+    assert scope.built == 2, "a fresh scope per attempt, never one scope reused across attempts"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        "not json",
+        "a json array",
+        "an empty value",
+        "a self-produced fact",
+        "an unknown event type",
+    ],
+)
+async def test_or1_the_branches_that_log_and_acknowledge_never_invoke_the_retry_wrapper(
+    shape: str, envelope_bytes: Callable[..., bytes]
+) -> None:
+    value = {
+        "not json": b"{ this is not json",
+        "a json array": b'[{"eventId":"x"}]',
+        "an empty value": b"",
+        "a self-produced fact": envelope_bytes("order.confirmed.v1"),
+        "an unknown event type": envelope_bytes(
+            "stock.reserved.v1", eventType="warehouse.moved.v7"
+        ),
+    }[shape]
+    dispatcher, scope, retry = RecordingDispatcher(), ScopeSpy(), RecordingRetry()
+
+    await task_over(dispatcher, scope, retry).handle(message(value))
+
+    assert retry.calls == [], f"{shape} reached the retry wrapper: it would be retried"
+    assert dispatcher.sent == []
+
+
+async def test_or1_a_failing_dispatch_is_the_wrappers_to_retry_not_the_tasks_to_swallow(
+    envelope_bytes: Callable[..., bytes],
+) -> None:
+    """The task adds no `except`: what the dispatcher raises reaches the wrapper's `work` call."""
+    dispatcher = RecordingDispatcher(failure=RuntimeError("the unit of work failed"))
+    retry = RecordingRetry(attempts=3)
+
+    with pytest.raises(RuntimeError, match="the unit of work failed"):
+        await task_over(dispatcher, ScopeSpy(), retry).handle(
+            message(envelope_bytes("stock.reserved.v1"))
+        )
+
+    assert len(retry.calls) == 1
+    assert len(dispatcher.sent) == 1, "the recorder stops at the first raise, as a real wrapper"

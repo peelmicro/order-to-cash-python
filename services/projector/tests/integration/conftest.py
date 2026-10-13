@@ -225,6 +225,46 @@ class Frames:
 
 
 @pytest.fixture
+def trace_support() -> Any:
+    """`tests/observability/trace_support.py` (typed span readers), loaded by path."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    name = "trace_support"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).resolve().parents[4] / "tests/observability/trace_support.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def dl_support() -> Any:
+    """`tests/observability/dead_letter_support.py` (broker readers, a producer), loaded by path."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    name = "dead_letter_support"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).resolve().parents[4] / "tests/observability/dead_letter_support.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
 def frames_factory(nats_connection: Any) -> Callable[[str], Any]:
     async def make(subject: str) -> Frames:
         return await Frames(nats_connection, subject).start()
@@ -258,6 +298,17 @@ class Topics:
     @property
     def all(self) -> tuple[str, str, str]:
         return (self.orders, self.fulfillment, self.billing)
+
+    @property
+    def dead_letters(self) -> tuple[str, str, str]:
+        """The private `<topic>.dlq` companions (feature 27, item 10): the dead-letter publisher
+        derives the name from the record's own topic, so a poison fact on a private topic is
+        dead-lettered to a private companion, never to a real one."""
+        return (f"{self.orders}.dlq", f"{self.fulfillment}.dlq", f"{self.billing}.dlq")
+
+    def dead_letter_of(self, topic: str) -> str:
+        assert topic in self.all, f"{topic} is not one of this test's private topics"
+        return f"{topic}.dlq"
 
     def for_event(self, event_type: str) -> str:
         """The topic a fact is published on: one per producing service (`asyncapi.yaml`)."""
@@ -296,9 +347,15 @@ class RuntimeEnv:
     topics: Topics
     started: list[Any] = field(default_factory=list)
 
-    def settings(self, group: str, *, nats: str | None = None) -> Any:
+    def settings(self, group: str, *, nats: str | None = None, backoff_ms: int = 10) -> Any:
         from otc_projector.composition import ProjectorSettings
-        from otc_projector.infrastructure.settings import KafkaSettings, MongoSettings, NatsSettings
+        from otc_projector.infrastructure.settings import (
+            FactRetrySettings,
+            KafkaSettings,
+            MongoSettings,
+            NatsSettings,
+            TelemetrySettings,
+        )
 
         return ProjectorSettings(
             mongo=MongoSettings.model_validate(
@@ -312,6 +369,9 @@ class RuntimeEnv:
                 }
             ),
             nats=NatsSettings.model_validate({"NATS_URL": nats or self.nats}),
+            telemetry=TelemetrySettings(),
+            # a short back-off keeps a poison fact's three attempts inside a test's budget
+            fact_retry=FactRetrySettings.model_validate({"FACT_RETRY_BACKOFF_MS": backoff_ms}),
         )
 
     def read_model(self) -> ReadModel:
@@ -325,16 +385,20 @@ class RuntimeEnv:
 
         topics = self.topics.all
 
-        def subscriber(settings: Any) -> Any:
-            return KafkaFactSubscriber(settings, topics=topics)
+        def subscriber(settings: Any, tracer: Any) -> Any:
+            return KafkaFactSubscriber(settings, topics=topics, tracer=tracer)
 
         return dataclasses.replace(base if base is not None else Externals(), subscriber=subscriber)
 
-    async def start(self, group: str, *, externals: Any = None, **kwargs: Any) -> Any:
+    async def start(
+        self, group: str, *, externals: Any = None, backoff_ms: int = 10, **kwargs: Any
+    ) -> Any:
         from otc_projector.composition import start_runtime
 
         runtime = await start_runtime(
-            self.settings(group), externals=self.externals(externals), **kwargs
+            self.settings(group, backoff_ms=backoff_ms),
+            externals=self.externals(externals),
+            **kwargs,
         )
         self.started.append(runtime)
         return runtime
@@ -371,7 +435,10 @@ def endpoints(mongo_server: Any, kafka_server: Any, nats_server: Any) -> Iterato
         await admin.start()
         try:
             await admin.create_topics(
-                [NewTopic(name=n, num_partitions=3, replication_factor=1) for n in topics.all]
+                [
+                    NewTopic(name=n, num_partitions=3, replication_factor=1)
+                    for n in (*topics.all, *topics.dead_letters)
+                ]
             )
         finally:
             await admin.close()

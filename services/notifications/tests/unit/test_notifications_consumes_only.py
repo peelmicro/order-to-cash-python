@@ -8,6 +8,11 @@ operations only), so #9 guards it here, on the AST so a comment or a string cann
 
 The Kafka PRODUCER half is also `tests/architecture/test_kafka_client_confinement.py` (the
 subscriber names no producer-side name); this adds NATS, the outbox, and the table census.
+
+ONE producer exists since feature 27 (`R16`): the dead-letter publisher, which writes the ORIGINAL
+bytes of a record this service failed to process to `<topic>.dlq`. That is not a fact (no outbox, no
+new envelope, no `eventType` of its own), so the claim "emits no fact" stands; the producer name is
+allowed in exactly that module (`ALLOWED_PRODUCER_MODULE`) and nowhere else.
 """
 
 import ast
@@ -21,6 +26,7 @@ from otc_notifications.infrastructure.persistence.models import Base
 SRC = Path(otc_notifications.__file__).resolve().parent
 FORBIDDEN_ROOTS = {"nats"}
 FORBIDDEN_NAMES = {"AIOKafkaProducer"}
+ALLOWED_PRODUCER_MODULE = "infrastructure/messaging/dead_letter_publisher.py"
 
 
 def python_files(root: Path) -> list[Path]:
@@ -43,6 +49,8 @@ def violations(files: dict[str, str]) -> list[str]:
                     found.append(f"{name}: imports {module}")
                 if "outbox" in module.lower():
                     found.append(f"{name}: imports an outbox module ({module})")
+            if name == ALLOWED_PRODUCER_MODULE:
+                continue
             if isinstance(node, ast.ImportFrom):
                 found.extend(
                     f"{name}: imports {alias.name}"
@@ -58,6 +66,15 @@ def test_no_module_of_the_service_imports_nats_an_outbox_or_a_kafka_producer() -
     files = {str(p.relative_to(SRC)): p.read_text(encoding="utf-8") for p in python_files(SRC)}
     assert len(files) > 25, f"the scan covered {len(files)} files"
     assert violations(files) == []
+
+
+def test_the_dead_letter_publisher_is_the_one_module_that_holds_the_producer() -> None:
+    holders = [
+        name
+        for p in python_files(SRC)
+        if "AIOKafkaProducer" in p.read_text(encoding="utf-8") and (name := str(p.relative_to(SRC)))
+    ]
+    assert holders == [ALLOWED_PRODUCER_MODULE]
 
 
 def test_no_file_of_the_service_is_named_for_an_outbox_a_relay_or_a_responder() -> None:
@@ -86,6 +103,13 @@ def test_the_only_table_is_the_processed_events_ledger() -> None:
 )
 def test_sentinel_each_forbidden_form_is_seen(source: str) -> None:
     assert violations({"x.py": source}), source
+
+
+def test_sentinel_the_allow_list_is_one_path_not_a_pattern() -> None:
+    producer = "from aiokafka import AIOKafkaProducer\n"
+    assert violations({ALLOWED_PRODUCER_MODULE: producer}) == []
+    assert violations({"infrastructure/messaging/kafka_fact_subscriber.py": producer}) != []
+    assert violations({"x/" + ALLOWED_PRODUCER_MODULE: producer}) != []
 
 
 def test_sentinel_text_that_only_names_them_is_not_a_violation() -> None:

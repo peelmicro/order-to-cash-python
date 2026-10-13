@@ -50,7 +50,9 @@ EXPECTED_COMMAND_CALLS = {
 }
 # claim 3: every hit classified. All are pacing of a RETRY (an outbox deadlock back-off in the four
 # relay copies' three sites, Fulfillment's stock-transaction deadlock re-run, Orders' saga command
-# dispatcher back-off); none is a clock that decides a payment.
+# dispatcher back-off); none is a clock that decides a payment. (Feature 27's fact-retry back-off,
+# `stop_aware_sleep` in `fact_retry.py`, waits on the consumer's stop signal with a timeout; it is
+# not a scheduling construct this pattern matches, and it paces a retry, not a payment.)
 EXPECTED_TIMER_HITS = {
     "services/billing/src/otc_billing/infrastructure/outbox/relay.py": 1,
     "services/fulfillment/src/otc_fulfillment/infrastructure/outbox/relay.py": 1,

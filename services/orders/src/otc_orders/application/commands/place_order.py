@@ -12,8 +12,15 @@ values (`SCREAMING_CASE`) are internal discriminators that never reach the wire 
 maps by TYPE); the domain's `<subject>.<snake_case>` codes reach the wire only as
 `RpcError.details.code`; the wire's own `code` is the closed `RpcError` enum of `asyncapi.yaml`.
 
-Clock and causation are supplied here, never read by the domain. `request_id` is carried but has no
-effect in this feature (R62 is `observability_reliability`'s).
+Clock and causation are supplied here, never read by the domain.
+
+`request_id` makes the command idempotent (R62, `observability_reliability` design 3). A known one
+is answered from the stored order before any reference data or stock is touched (RI2); a first one
+is stored under `uq_orders_request_id` (RI1) and becomes the `causationId` of `order.placed.v1`
+(RI5); a concurrent first request that loses the race meets the unit of work's
+`RequestIdAlreadyPlacedError` AFTER its rollback (PostgreSQL aborts the whole transaction on any
+error, so the collision cannot be caught inside it) and is resolved here, outside the block, to the
+winner's reply (RI3). With no `request_id` nothing is looked up (RI4).
 """
 
 from dataclasses import dataclass
@@ -25,6 +32,7 @@ from otc_orders.application.ports.stock_availability import (
     StockAvailabilityLine,
     StockAvailabilityLineResult,
 )
+from otc_orders.application.ports.unit_of_work import RequestIdAlreadyPlacedError
 from otc_orders.application.scope import OrdersScope
 from otc_orders.domain.order import Order
 from otc_orders.domain.order_line import OrderLineInput
@@ -100,14 +108,49 @@ class OrderDiscountNotSupportedError(PlaceOrderError):
         self.order_discount = order_discount
 
 
+def _result_of(order: Order) -> PlaceOrderResult:
+    """The reply, built from the aggregate by the one projection both paths use (no second one)."""
+    return PlaceOrderResult(
+        order_id=order.id,
+        order_reference=order.order_reference,
+        currency=order.currency,
+        initial_amount=order.initial_amount,
+        initial_discount=order.initial_discount,
+        total_amount=order.total_amount,
+        order_date=order.order_date,
+    )
+
+
 class PlaceOrderCommandHandler:
     def __init__(self, scope: OrdersScope) -> None:
         self._scope = scope
 
     async def handle(self, command: PlaceOrderCommand, /) -> PlaceOrderResult:
-        scope = self._scope
         if command.order_discount is not None and command.order_discount != 0:
             raise OrderDiscountNotSupportedError(command.order_discount, command.currency)
+        if command.request_id is not None:
+            replay = await self._original_reply(command.request_id)
+            if replay is not None:
+                return replay
+        try:
+            return await self._place(command)
+        except RequestIdAlreadyPlacedError as collision:
+            # outside the rolled-back block (RI3): re-read the winner in a NEW transaction
+            winner = None
+            if command.request_id is not None:
+                winner = await self._original_reply(command.request_id)
+            if winner is None:
+                # no readable winner: never a silent None, never a second order
+                raise collision.__cause__ or collision from None
+            return winner
+
+    async def _original_reply(self, request_id: UUID) -> PlaceOrderResult | None:
+        async with self._scope.unit_of_work.begin() as transaction:
+            stored = await transaction.orders.find_by_request_id(request_id)
+        return None if stored is None else _result_of(stored)
+
+    async def _place(self, command: PlaceOrderCommand) -> PlaceOrderResult:
+        scope = self._scope
 
         retailer = await scope.catalog.find_retailer(command.retailer_code)
         if retailer is None:
@@ -163,15 +206,11 @@ class PlaceOrderCommandHandler:
                 lines=inputs,
                 notes=command.notes,
                 occurred_at=now,
-                causation_id=UniqueId.new(),
+                causation_id=(
+                    UniqueId(command.request_id)
+                    if command.request_id is not None
+                    else UniqueId.new()
+                ),
             )
-            await transaction.orders.save(order)
-            return PlaceOrderResult(
-                order_id=order.id,
-                order_reference=order.order_reference,
-                currency=order.currency,
-                initial_amount=order.initial_amount,
-                initial_discount=order.initial_discount,
-                total_amount=order.total_amount,
-                order_date=order.order_date,
-            )
+            await transaction.orders.save(order, request_id=command.request_id)
+            return _result_of(order)

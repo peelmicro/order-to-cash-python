@@ -11,13 +11,23 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import timedelta
 from uuid import UUID
 
-from sqlalchemy import select, update
+from opentelemetry import trace
+from opentelemetry.trace import Span, SpanKind, Status, StatusCode, Tracer
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from structlog.contextvars import bound_contextvars
 
 from otc_fulfillment.application.ports.clock import Clock
+from otc_fulfillment.infrastructure.observability.metrics import Gauge
+from otc_fulfillment.infrastructure.observability.trace_context import (
+    NO_TRACER,
+    context_from_traceparent,
+    kafka_trace_headers,
+)
 from otc_fulfillment.infrastructure.outbox.publisher import (
     FactPublicationError,
     FactPublisher,
@@ -78,9 +88,13 @@ class _Prefix:
     facts: list[PublishableFact]
     row_ids: list[UUID]
     poisoned: PoisonedRow | None
+    spans: list[Span]
 
 
-def build_prefix(rows: Sequence[Outbox]) -> _Prefix:
+PUBLISH_SPAN = "outbox.publish"
+
+
+def build_prefix(rows: Sequence[Outbox], tracer: Tracer = NO_TRACER) -> _Prefix:
     """Convert rows in `seq` order; stop at the first one that cannot become a valid envelope.
 
     `json.JSONDecodeError`, `pydantic.ValidationError` and `UnicodeEncodeError` are all `ValueError`
@@ -88,19 +102,38 @@ def build_prefix(rows: Sequence[Outbox]) -> _Prefix:
     """
     facts: list[PublishableFact] = []
     row_ids: list[UUID] = []
+    spans: list[Span] = []
     for row in rows:
+        restored = context_from_traceparent(row.trace_parent)
+        span: Span | None = None
+        headers: tuple[tuple[str, bytes], ...] = ()
+        if restored is not None:
+            span = tracer.start_span(PUBLISH_SPAN, context=restored, kind=SpanKind.PRODUCER)
+            headers = kafka_trace_headers(trace.set_span_in_context(span, restored))
         try:
-            facts.append(to_publishable_fact(row))
+            facts.append(to_publishable_fact(row, headers))
         except (ValueError, TypeError) as error:
+            if span is not None:
+                span.end()
             poisoned = PoisonedRow(
                 event_id=row.event_id,
                 correlation_id=row.correlation_id,
                 seq=row.seq,
                 reason=f"{type(error).__name__}: {error}",
             )
-            return _Prefix(facts, row_ids, poisoned)
+            return _Prefix(facts, row_ids, poisoned, spans)
+        if span is not None:
+            spans.append(span)
         row_ids.append(row.id)
-    return _Prefix(facts, row_ids, None)
+    return _Prefix(facts, row_ids, None, spans)
+
+
+def end_spans(spans: Sequence[Span], error: BaseException | None) -> None:
+    """End the batch's producer spans: with an error status when the batch was not acknowledged."""
+    for span in spans:
+        if error is not None:
+            span.set_status(Status(StatusCode.ERROR, repr(error)))
+        span.end()
 
 
 class OutboxRelay:
@@ -112,14 +145,30 @@ class OutboxRelay:
         clock: Clock,
         batch_size: int,
         publish_timeout: float,
+        tracer: Tracer = NO_TRACER,
+        lag: Gauge | None = None,
     ) -> None:
         self._sessions = sessions
         self._publisher = publisher
         self._clock = clock
         self._batch_size = batch_size
         self._publish_timeout = publish_timeout
+        self._tracer = tracer
+        self._lag = lag
+
+    async def _record_lag(self) -> None:
+        """Set the outbox-lag gauge: the oldest unpublished row's age in ms, `0` when none."""
+        if self._lag is None:
+            return
+        async with self._sessions() as session:
+            oldest = await session.scalar(
+                select(func.min(Outbox.occurred_at)).where(Outbox.published_at.is_(None))
+            )
+        age = 0.0 if oldest is None else (self._clock.now() - oldest) / timedelta(milliseconds=1)
+        self._lag.set(age)
 
     async def run_once(self) -> RelayResult:
+        await self._record_lag()
         attempt = 1
         while True:
             try:
@@ -151,13 +200,15 @@ class OutboxRelay:
                         )
                     ).all()
                     claimed = [_Claimed(row.event_id, row.correlation_id, row.seq) for row in rows]
-                    prefix = build_prefix(rows)
+                    prefix = build_prefix(rows, self._tracer)
                     if prefix.facts:
                         try:
                             async with asyncio.timeout(self._publish_timeout):
                                 await self._publisher.publish(prefix.facts)
                         except (FactPublicationError, TimeoutError) as error:
+                            end_spans(prefix.spans, error)
                             raise _CycleAborted(claimed, error) from error  # rolls back
+                        end_spans(prefix.spans, None)
                         await session.execute(
                             update(Outbox)
                             .where(Outbox.id.in_(prefix.row_ids))
@@ -166,26 +217,29 @@ class OutboxRelay:
                         )
             except _CycleAborted as aborted:
                 for item in aborted.claimed:
-                    log.error(
-                        "outbox record not published; its claim was rolled back",
-                        extra={
-                            "correlationId": str(item.correlation_id),
-                            "eventId": str(item.event_id),
-                            "seq": item.seq,
-                            "error": repr(aborted.error),
-                        },
-                    )
+                    with bound_contextvars(correlationId=str(item.correlation_id)):
+                        log.error(
+                            "outbox record not published; its claim was rolled back",
+                            extra={
+                                "correlationId": str(item.correlation_id),
+                                "eventId": str(item.event_id),
+                                "seq": item.seq,
+                                "error": repr(aborted.error),
+                            },
+                        )
                 return RelayResult(claimed=len(aborted.claimed), published=0, poisoned=None)
         if prefix.poisoned is not None:
-            log.error(
-                "outbox record cannot become a valid envelope; it blocks its write model's outbox",
-                extra={
-                    "correlationId": str(prefix.poisoned.correlation_id),
-                    "eventId": str(prefix.poisoned.event_id),
-                    "seq": prefix.poisoned.seq,
-                    "error": prefix.poisoned.reason,
-                },
-            )
+            with bound_contextvars(correlationId=str(prefix.poisoned.correlation_id)):
+                log.error(
+                    "outbox record cannot become a valid envelope; it blocks its write model's "
+                    "outbox",
+                    extra={
+                        "correlationId": str(prefix.poisoned.correlation_id),
+                        "eventId": str(prefix.poisoned.event_id),
+                        "seq": prefix.poisoned.seq,
+                        "error": prefix.poisoned.reason,
+                    },
+                )
         return RelayResult(
             claimed=len(claimed), published=len(prefix.facts), poisoned=prefix.poisoned
         )

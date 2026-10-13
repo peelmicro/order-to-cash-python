@@ -16,16 +16,17 @@ def test_r55_the_entry_point_hands_uvicorn_a_graceful_shutdown_bound(
 ) -> None:
     seen: dict[str, Any] = {}
 
-    def fake_run(app: str, **kwargs: Any) -> None:
-        seen.update(kwargs, app=app)
+    def fake_run(self: uvicorn.Server, sockets: Any = None) -> None:
+        seen.update(vars(self.config), server=self)
 
-    monkeypatch.setattr(uvicorn, "run", fake_run)
+    monkeypatch.setattr(uvicorn.Server, "run", fake_run)
     required_environment.setenv("GATEWAY_PORT", "38123")
 
     entry.main()
 
     assert seen["port"] == 38123
-    assert "timeout_graceful_shutdown" in seen, "uvicorn.run was given no graceful-shutdown bound"
+    assert isinstance(seen["server"], entry.GatewayServer), "OR13: the server must end the streams"
+    assert "timeout_graceful_shutdown" in seen, "uvicorn was given no graceful-shutdown bound"
     assert seen["timeout_graceful_shutdown"] == entry.GRACEFUL_SHUTDOWN_SECONDS
     assert isinstance(seen["timeout_graceful_shutdown"], int)
     assert 0 < seen["timeout_graceful_shutdown"] <= 30

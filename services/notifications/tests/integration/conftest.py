@@ -4,12 +4,15 @@ The shared container and `fresh_database` live in the repository-root `conftest.
 """
 
 import asyncio
+import importlib.util
+import sys
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Protocol
 
 import asyncpg
@@ -42,6 +45,48 @@ class FreshDatabase(Protocol):
 
 
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
+DEAD_LETTER_SUPPORT = (
+    Path(__file__).resolve().parents[4] / "tests/observability/dead_letter_support.py"
+)
+
+
+def dead_letter_support() -> ModuleType:
+    """`tests/observability/dead_letter_support.py`, loaded by path (importlib mode)."""
+    name = "dead_letter_support"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, DEAD_LETTER_SUPPORT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+TRACE_SUPPORT = Path(__file__).resolve().parents[4] / "tests/observability/trace_support.py"
+
+
+@pytest.fixture
+def dl_support() -> ModuleType:
+    """`tests/observability/dead_letter_support.py` (broker readers, a producer)."""
+    return dead_letter_support()
+
+
+@pytest.fixture
+def trace_support() -> ModuleType:
+    """`tests/observability/trace_support.py` (typed span readers), loaded by path."""
+    name = "trace_support"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, TRACE_SUPPORT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
 
 AlembicRunner = Callable[[str, str, str], Awaitable[None]]
 
@@ -238,6 +283,16 @@ class Publisher:
             await producer.stop()
 
 
+@pytest_asyncio.fixture(loop_scope="function")
+async def private_topics(kafka_server: Any) -> Any:
+    """THREE private source topics and their THREE private `.dlq` companions (item 10): a test that
+    publishes a poison fact passes them to `notifications_host_factory(topics=...)`, so the poison
+    is never on a topic any other test reads. Created under a name unique to the test."""
+    return await dead_letter_support().create_private_topics(
+        kafka_server.bootstrap_servers, "notifications-dlq"
+    )
+
+
 @pytest.fixture
 def publisher(kafka_server: Any) -> Publisher:
     return Publisher(kafka_server.bootstrap_servers)
@@ -314,17 +369,46 @@ async def notifications_host_factory(host_environment: HostEnv) -> HostFactory:
 
     @asynccontextmanager
     async def start(
-        *, sender: Any = None, stop_grace_seconds: float | None = None, **overrides: str
+        *,
+        sender: Any = None,
+        stop_grace_seconds: float | None = None,
+        topics: Any = None,
+        dead_letter_producer_factory: Callable[..., Any] | None = None,
+        span_processors: Sequence[Any] = (),
+        metric_readers: Sequence[Any] = (),
+        **overrides: str,
     ) -> AsyncIterator[NotificationsHost]:
+        """`topics` (a `private_topics` fixture value) points the consumer at THAT test's private
+        source topics instead of the real ones, and `dead_letter_producer_factory` replaces the
+        dead-letter publisher's producer (a test that makes the publication fail): both through the
+        composition root's test seam (`start_runtime(...)`, never an environment variable
+        production could set), so the real `start_runtime` runs with one binding different."""
         host_environment(**overrides)
-        if sender is None:
+        if (
+            sender is None
+            and topics is None
+            and dead_letter_producer_factory is None
+            and len(span_processors) == 0
+            and len(metric_readers) == 0
+        ):
             app = create_real_app()
             async with app.router.lifespan_context(app):
                 runtime = app.state.runtime
                 yield NotificationsHost(app, runtime, runtime.settings.kafka.group_id)
             return
-        grace = {} if stop_grace_seconds is None else {"stop_grace_seconds": stop_grace_seconds}
-        runtime = await start_runtime(load_settings(), sender=sender, **grace)
+        grace: dict[str, Any] = (
+            {} if stop_grace_seconds is None else {"stop_grace_seconds": stop_grace_seconds}
+        )
+        fact_topics: Sequence[str] | None = None if topics is None else topics.all
+        runtime = await start_runtime(
+            load_settings(),
+            sender=sender,
+            fact_topics=fact_topics,
+            dead_letter_producer_factory=dead_letter_producer_factory,
+            span_processors=span_processors,
+            metric_readers=metric_readers,
+            **grace,
+        )
         app = create_routes()
         app.state.runtime = runtime
         try:

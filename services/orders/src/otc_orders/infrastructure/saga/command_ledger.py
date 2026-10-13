@@ -16,6 +16,10 @@ claimable again after it, with no new column.
   (#7 `drizzle-saga-command-store.ts:189-191`).
   `sent` means "a reply was delivered", never "the saga advanced"; `rejected` means "the responder
   gave a terminal business no" and is final (no claim, no sweep, no redrive).
+* `park` and `reject` record the instant of the dispatch's first failed attempt with
+  `COALESCE(first_failed_at, :first_failed_at)`: the first failure of the row's life is kept, never
+  overwritten (SA-3 `x-first-failed-at`; the other writers of a failure do not exist: `try_claim`,
+  `claim_due` and `mark_sent` record no attempt).
 * `park` stores `attempts` as the caller's total (the row's earlier attempts plus this cycle's), so
   the count accumulates across cycles; it is range-checked before the statement runs because an
   ORM-enabled statement bypasses the attribute guard (`range_guards.py`).
@@ -29,7 +33,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Text, and_, cast, or_, select, update
+from sqlalchemy import Text, and_, cast, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from otc_orders.application.ports.clock import Clock
@@ -50,6 +54,7 @@ _RETURNING = (
     cast(SagaCommand.payload, Text).label("payload"),
     SagaCommand.attempts,
     SagaCommand.triggering_event_id,
+    SagaCommand.trace_parent,
 )
 
 
@@ -68,6 +73,7 @@ def _claimed(row: Any) -> ClaimedCommand:
         payload=row.payload,
         attempts=row.attempts,
         triggering_event_id=UniqueId(_plain(row.triggering_event_id)),
+        trace_parent=row.trace_parent,
     )
 
 
@@ -149,7 +155,9 @@ class SqlAlchemySagaCommandLedger:
             .execution_options(synchronize_session=False)
         )
 
-    async def reject(self, row_id: UUID, *, total_attempts: int, last_error: str) -> None:
+    async def reject(
+        self, row_id: UUID, *, total_attempts: int, last_error: str, first_failed_at: datetime
+    ) -> None:
         ensure_in_range(total_attempts, INT32_MIN, INT32_MAX, "saga_commands.attempts")
         now = self._clock.now()
         await self._execute(
@@ -157,6 +165,7 @@ class SqlAlchemySagaCommandLedger:
             .where(SagaCommand.id == row_id, SagaCommand.status.in_(CLAIMABLE))
             .values(
                 status="rejected",
+                first_failed_at=func.coalesce(SagaCommand.first_failed_at, first_failed_at),
                 attempts=total_attempts,
                 last_error=last_error[:LAST_ERROR_LIMIT],
                 next_attempt_at=None,
@@ -166,7 +175,13 @@ class SqlAlchemySagaCommandLedger:
         )
 
     async def park(
-        self, row_id: UUID, *, total_attempts: int, last_error: str, retry_after_ms: int
+        self,
+        row_id: UUID,
+        *,
+        total_attempts: int,
+        last_error: str,
+        retry_after_ms: int,
+        first_failed_at: datetime,
     ) -> datetime:
         ensure_in_range(total_attempts, INT32_MIN, INT32_MAX, "saga_commands.attempts")
         now = self._clock.now()
@@ -176,6 +191,7 @@ class SqlAlchemySagaCommandLedger:
             .where(SagaCommand.id == row_id, SagaCommand.status.in_(CLAIMABLE))
             .values(
                 status="parked",
+                first_failed_at=func.coalesce(SagaCommand.first_failed_at, first_failed_at),
                 attempts=total_attempts,
                 last_error=last_error[:LAST_ERROR_LIMIT],
                 next_attempt_at=next_attempt_at,

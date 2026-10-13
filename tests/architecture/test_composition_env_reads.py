@@ -56,6 +56,7 @@ EXPECTED_SETTINGS = {
         "OutboxRelaySettings",
         "ResponderSettings",
         "ServerSettings",
+        "TelemetrySettings",
     },
     "fulfillment": {
         "FulfillmentDatabaseSettings",
@@ -64,10 +65,12 @@ EXPECTED_SETTINGS = {
         "OutboxRelaySettings",
         "ResponderSettings",
         "ServerSettings",
+        "TelemetrySettings",
     },
     "gateway": {
         "DocsSettings",
         "SseSettings",
+        "TelemetrySettings",
         "IssuedOrderWindowSettings",
         "JwtSettings",
         "LoginThrottleSettings",
@@ -77,19 +80,29 @@ EXPECTED_SETTINGS = {
         "ServerSettings",
     },
     "notifications": {
+        "FactRetrySettings",
         "KafkaSettings",
         "NotificationsDatabaseSettings",
         "SmtpSettings",
+        "TelemetrySettings",
     },
     "orders": {
+        "FactRetrySettings",
         "KafkaSettings",
         "NatsSettings",
         "OrdersDatabaseSettings",
         "OutboxRelaySettings",
         "SagaSettings",
         "ServerSettings",
+        "TelemetrySettings",
     },
-    "projector": {"KafkaSettings", "MongoSettings", "NatsSettings"},
+    "projector": {
+        "FactRetrySettings",
+        "KafkaSettings",
+        "MongoSettings",
+        "NatsSettings",
+        "TelemetrySettings",
+    },
     "seed": {"SeedSettings"},
 }
 ENV_ATTRIBUTES = {"environ", "environb", "getenv", "getenvb", "putenv"}

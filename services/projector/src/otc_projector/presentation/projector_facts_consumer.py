@@ -21,7 +21,11 @@ fourteen facts, so `FACT_MODELS` (through `parse_fact`) is the only table (`PR36
 3. Otherwise parse the WHOLE envelope with the fact's own generated model (no field is copied by
    hand: #8 id 58) and `await dispatcher.send(ProjectFactCommand(event=...))`. A registered type
    whose payload fails its model, or whatever the dispatcher raises, PROPAGATES to the subscriber:
-   no commit, paced redelivery (dead-lettered by feature 27, `R16`).
+   a failed attempt is retried and, after `FACT_RETRY_MAX_ATTEMPTS`, the original bytes go to
+   `<topic>.dlq` and the offset commits (`R16`, `FactRetry`). Steps 1 and 2 are outside the wrapper
+   (log and acknowledge); the unregistered-type branch of step 2 sits INSIDE the wrapped callable
+   and returns normally, so it is never retried and never dead-lettered (`PR4`). A failing
+   dead-letter publication propagates to the subscriber, which does not commit and redelivers.
 """
 
 import asyncio
@@ -29,10 +33,16 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from structlog.contextvars import bound_contextvars
+
 from otc_contracts import Envelope, UnknownFactTypeError, from_wire_json, parse_fact
 from otc_cqrs import Dispatcher
 from otc_projector.application.messages import ProjectFactCommand
-from otc_projector.application.ports.fact_stream import FactMessage, FactStreamSubscriber
+from otc_projector.application.ports.fact_stream import (
+    FactMessage,
+    FactProcessor,
+    FactStreamSubscriber,
+)
 from otc_projector.application.scope import ProjectorScope
 
 log = logging.getLogger("otc_projector.presentation.projector_facts_consumer")
@@ -45,17 +55,19 @@ class ProjectorFactsConsumerTask:
         subscriber: FactStreamSubscriber,
         dispatcher: Dispatcher[ProjectorScope],
         scope_factory: Callable[[], ProjectorScope],
+        retry: FactProcessor,
     ) -> None:
         self._subscriber = subscriber
         self._dispatcher = dispatcher
         self._scope_factory = scope_factory
+        self._retry = retry
 
     async def run(self, stop: asyncio.Event) -> None:
         await self._subscriber.run(self.handle, stop)
 
     async def handle(self, message: FactMessage) -> None:
         try:
-            from_wire_json(Envelope[dict[str, Any]], message.value)
+            envelope = from_wire_json(Envelope[dict[str, Any]], message.value)
         except ValueError:
             log.exception(
                 "malformed fact envelope acknowledged without processing",
@@ -67,17 +79,25 @@ class ProjectorFactsConsumerTask:
                 },
             )
             return
-        try:
-            event = parse_fact(message.value)
-        except UnknownFactTypeError as error:
-            log.error(
-                "unregistered fact type acknowledged without processing: %s",
-                error,
-                extra={
-                    "topic": message.topic,
-                    "partition": message.partition,
-                    "offset": message.offset,
-                },
-            )
-            return
-        await self._dispatcher.send(ProjectFactCommand(event=event), self._scope_factory())
+        with bound_contextvars(correlationId=str(envelope.correlation_id)):
+            await self._process(message, envelope.event_type)
+
+    async def _process(self, message: FactMessage, event_type: str) -> None:
+        async def work() -> None:
+            try:
+                event = parse_fact(message.value)
+            except UnknownFactTypeError as error:
+                log.error(
+                    "unregistered fact type acknowledged without processing: %s",
+                    error,
+                    extra={
+                        "topic": message.topic,
+                        "partition": message.partition,
+                        "offset": message.offset,
+                    },
+                )
+                return
+            # A fresh scope per attempt: nothing a failed attempt left behind is reused.
+            await self._dispatcher.send(ProjectFactCommand(event=event), self._scope_factory())
+
+        await self._retry.process(message, event_type, work)

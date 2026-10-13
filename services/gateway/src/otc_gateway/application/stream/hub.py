@@ -55,6 +55,13 @@ class Subscription:
         self._frames: deque[StreamFrame] = deque()
         self._wake = asyncio.Event()
         self.overflowed = False
+        self.ended = False
+
+    def end(self) -> None:
+        """End this subscription (the server is shutting down): `get` returns None once the frames
+        already queued are drained, exactly as for an overflow."""
+        self.ended = True
+        self._wake.set()
 
     def offer(self, frame: StreamFrame) -> None:
         if self.overflowed:
@@ -67,10 +74,10 @@ class Subscription:
         self._wake.set()
 
     async def get(self) -> StreamFrame | None:
-        """The next frame, or None when the subscription overflowed (the caller ends the stream).
-        Cancel-safe: nothing is removed before the call returns."""
+        """The next frame, or None when the subscription overflowed or was ended (the caller ends
+        the stream). Cancel-safe: nothing is removed before the call returns."""
         while not self._frames:
-            if self.overflowed:
+            if self.overflowed or self.ended:
                 return None
             self._wake.clear()
             await self._wake.wait()
@@ -93,6 +100,7 @@ class StreamHub:
         self._buffer: ReplayBuffer[StreamFrame] = ReplayBuffer(replay_capacity)
         self._subscribers: set[Subscription] = set()
         self._subscriber_capacity = subscriber_capacity
+        self._ended = False
 
     def publish(self, event_type: str, order_id: UUID, data_json: str) -> StreamFrame:
         frame = StreamFrame(self._cursor.next(), event_type, order_id, data_json)
@@ -111,8 +119,17 @@ class StreamHub:
 
     def subscribe(self) -> Subscription:
         subscription = Subscription(self._subscriber_capacity)
+        if self._ended:
+            subscription.end()  # a connection accepted after the exit signal ends at once
         self._subscribers.add(subscription)
         return subscription
+
+    def end_all(self) -> None:
+        """`OR13`: end every open subscription so each `GET /orders/stream` finishes its body and
+        returns normally; called on the exit signal, before uvicorn waits for open responses."""
+        self._ended = True
+        for subscription in tuple(self._subscribers):
+            subscription.end()
 
     def unsubscribe(self, subscription: Subscription) -> None:
         self._subscribers.discard(subscription)

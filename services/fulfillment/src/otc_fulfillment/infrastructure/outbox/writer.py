@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from otc_contracts import FACT_MODELS, to_wire_json
 from otc_fulfillment.application.ports.clock import Clock
+from otc_fulfillment.infrastructure.observability.trace_context import current_traceparent
 from otc_fulfillment.infrastructure.outbox.errors import UndeclaredFactError
 from otc_fulfillment.infrastructure.outbox.payloads import build_fact, narrow
 from otc_fulfillment.infrastructure.persistence.models import Outbox
@@ -58,7 +59,7 @@ class OutboxWriter:
                     occurred_at=built.occurred_at,
                     published_at=None,
                     created_at=self._clock.now(),
-                    trace_parent=None,
+                    trace_parent=current_traceparent(),
                 )
             )
             await session.flush()

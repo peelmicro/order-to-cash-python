@@ -115,7 +115,7 @@ class World:
                 world.calls.append(f"nats.subscribe:{subject}")
                 return Subscription(subject)
 
-            async def flush(self) -> None:
+            async def flush(self, timeout: int = 10) -> None:  # noqa: ASYNC109 - nats-py's name
                 world.calls.append("nats.flush")
 
             async def drain(self) -> None:
@@ -398,7 +398,7 @@ async def test_a_nats_connection_that_is_not_connected_is_down_even_if_flush_wou
     }
 
     assert results["rpcTransport"].up is False
-    assert results["rpcTransport"].detail == "ConnectionError"
+    assert results["rpcTransport"].detail == "NatsNotConnectedError"
     assert results["readModel"].up is True
     await running.stop()
 

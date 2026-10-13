@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 import pytest
+from aiokafka import AIOKafkaProducer
 from testcontainers.core.container import DockerContainer
 
 import otc_projector.application
@@ -20,7 +21,8 @@ from otc_projector.application.handlers import ProjectFactHandler
 from otc_projector.application.messages import ProjectFactCommand
 from otc_projector.application.outcome import ProjectionOutcome
 from otc_projector.application.scope import ProjectorScope
-from otc_projector.composition import Externals, Wiring
+from otc_projector.composition import DEAD_LETTER_CLIENT_ID, Externals, Wiring
+from otc_projector.infrastructure.messaging import dead_letter_publisher
 from otc_projector.presentation.app import create_app
 
 pytestmark = pytest.mark.integration
@@ -39,13 +41,42 @@ def test_the_runtime_starts_and_stops_in_two_successive_event_loops(endpoints: A
     async def once(group: str) -> list[str]:
         runtime = await endpoints.start(group)
         try:
-            reasons: list[str] = runtime.unready_reasons()
+            reasons = [r.name for r in await runtime.readiness() if not r.up]
             return reasons
         finally:
             await runtime.stop()
 
     assert asyncio.run(once("two-loops-a")) == []
     assert asyncio.run(once("two-loops-b")) == []
+
+
+async def test_or8_the_dead_letter_producer_uses_the_configured_brokers_and_its_own_client_id(
+    runtime_env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The REAL composition (`start_runtime` with the default `Externals.dead_letters`) builds the
+    dead-letter producer over the service's own `KAFKA_BROKERS`: it has no bootstrap setting of its
+    own that could default to `localhost:9092` (#8 id 104: a second default hid behind a developer's
+    Kafka on 9092). The recording subclass fails inside the constructor, so a wrong address names
+    the claim instead of failing as a connection error."""
+    captured: list[dict[str, Any]] = []
+
+    class Recording(AIOKafkaProducer):  # type: ignore[misc]
+        def __init__(self, **kwargs: Any) -> None:
+            captured.append(kwargs)
+            assert kwargs["bootstrap_servers"] == runtime_env.kafka, (
+                "the dead-letter producer must connect to the configured KAFKA_BROKERS, "
+                f"not {kwargs['bootstrap_servers']!r}"
+            )
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr(dead_letter_publisher, "AIOKafkaProducer", Recording)
+
+    runtime = await runtime_env.start("dead-letter-bootstrap")
+    await runtime.stop()
+
+    [options] = captured
+    assert options["client_id"] == DEAD_LETTER_CLIENT_ID == "otc-projector-dlq"
+    assert (options["acks"], options["enable_idempotence"]) == ("all", True)
 
 
 async def test_pr45_an_unreachable_nats_fails_the_boot_within_the_bound(runtime_env: Any) -> None:
@@ -96,7 +127,9 @@ async def test_pr50_readiness_drops_when_the_consumer_task_dies(runtime_env: Any
             pytest.fail("PR50: the cancelled consumer task did not end within 10 s")
         after = await client.get("/health/ready")
     assert after.status_code == 503
-    assert "transport task fact-consumer is not running" in after.json()["reasons"]
+    down = {n: c["detail"] for n, c in after.json()["checks"].items() if c["status"] == "down"}
+    assert list(down) == ["factStream"], "only the fact stream is named"
+    assert "transport task fact-consumer is not running" in down["factStream"]
     await runtime.stop()
 
 

@@ -22,6 +22,7 @@ from collections.abc import Sequence
 
 import nats.errors
 from nats.aio.client import Client
+from opentelemetry.trace import SpanKind, Tracer
 from pydantic import ValidationError
 
 from otc_contracts import from_wire_json, to_wire_json
@@ -36,12 +37,14 @@ from otc_orders.application.ports.stock_availability import (
 )
 from otc_orders.infrastructure.messaging.rpc_reply import ReplyNotJsonError, parse_reply
 from otc_orders.infrastructure.messaging.subjects import STOCK_CHECK_SUBJECT
+from otc_orders.infrastructure.observability.trace_context import NO_TRACER, inject_nats
 
 
 class NatsStockAvailability:
-    def __init__(self, connection: Client, *, timeout_ms: int) -> None:
+    def __init__(self, connection: Client, *, timeout_ms: int, tracer: Tracer = NO_TRACER) -> None:
         self._connection = connection
         self._timeout_ms = timeout_ms
+        self._tracer = tracer
 
     async def check(
         self, company_code: str, lines: Sequence[StockAvailabilityLine]
@@ -53,12 +56,25 @@ class NatsStockAvailability:
                 for line in lines
             ],
         )
+        # A new dict per call (concurrent requests share this adapter), carrying the `CLIENT`
+        # span's `traceparent` so the responder's span is its child (`R56`).
+        headers: dict[str, str] = {}
         try:
-            reply = await self._connection.request(
-                STOCK_CHECK_SUBJECT,
-                to_wire_json(request).encode("utf-8"),
-                timeout=self._timeout_ms / 1000,
-            )
+            with self._tracer.start_as_current_span(
+                f"{STOCK_CHECK_SUBJECT} request",
+                kind=SpanKind.CLIENT,
+                attributes={
+                    "messaging.system": "nats",
+                    "messaging.destination.name": STOCK_CHECK_SUBJECT,
+                },
+            ):
+                inject_nats(headers)
+                reply = await self._connection.request(
+                    STOCK_CHECK_SUBJECT,
+                    to_wire_json(request).encode("utf-8"),
+                    timeout=self._timeout_ms / 1000,
+                    headers=headers,
+                )
         except nats.errors.NoRespondersError:
             raise StockCheckTransportError(
                 STOCK_CHECK_SUBJECT, f"no responder is subscribed to {STOCK_CHECK_SUBJECT}."

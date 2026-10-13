@@ -13,6 +13,15 @@ from otc_orders.application.ports.saga_command_store import SagaCommandQueue
 from otc_orders.application.ports.saga_ignored_facts import SagaIgnoredFactRecorder
 
 
+class RequestIdAlreadyPlacedError(Exception):
+    """`begin()` rolled back because the insert violated `uq_orders_request_id` (R62, RI3).
+
+    Raised by the unit of work AFTER the rollback and only for that one unique index; every other
+    integrity error (an `order_reference` collision, say) propagates unchanged. `__cause__` is the
+    original database error, so a caller that finds no winner re-raises it, never swallows it.
+    """
+
+
 class OrdersTransaction(Protocol):
     @property
     def orders(self) -> OrderRepository: ...

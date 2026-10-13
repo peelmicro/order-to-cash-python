@@ -17,8 +17,16 @@ import pytest
 
 from otc_billing.infrastructure.settings import KafkaSettings as BillingKafka
 from otc_fulfillment.infrastructure.settings import KafkaSettings as FulfillmentKafka
+from otc_notifications.composition import DEAD_LETTER_CLIENT_ID as NOTIFICATIONS_DLQ
+from otc_notifications.composition import HEALTH_CLIENT_ID as NOTIFICATIONS_HEALTH
 from otc_notifications.infrastructure.settings import KafkaSettings as NotificationsKafka
+from otc_orders.composition import DEAD_LETTER_CLIENT_ID as ORDERS_DLQ
+from otc_orders.composition import DLQ_DEPTH_CLIENT_ID as ORDERS_DLQ_DEPTH
+from otc_orders.composition import HEALTH_CLIENT_ID as ORDERS_HEALTH
+from otc_orders.infrastructure.messaging.kafka_fact_subscriber import CLIENT_ID as ORDERS_SAGA
 from otc_orders.infrastructure.settings import KafkaSettings as OrdersKafka
+from otc_projector.composition import DEAD_LETTER_CLIENT_ID as PROJECTOR_DLQ
+from otc_projector.composition import HEALTH_CLIENT_ID as PROJECTOR_HEALTH
 from otc_projector.infrastructure.settings import KafkaSettings as ProjectorKafka
 
 CLIENT_ID_VARIABLES = (
@@ -55,3 +63,43 @@ def test_bc34_the_five_default_client_ids_are_non_empty_and_pairwise_distinct(
         "notifications": "otc-notifications",
         "projector": "otc-projector",
     }
+
+
+def test_or8_the_dead_letter_client_ids_are_distinct_from_every_other_client_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Feature 27 S4.9: each fact consumer's dead-letter producer has its own id, so the broker
+    tells it apart from the service's relay or consumer connection. `otc-orders-dlq-depth` (S5.6)
+    and the three readiness-probe admin clients (`otc-<svc>-health`, S6.2) are in the table."""
+    monkeypatch.chdir(tmp_path)
+    for variable in CLIENT_ID_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+    ids = {
+        "orders relay": OrdersKafka().client_id,
+        "fulfillment relay": FulfillmentKafka().client_id,
+        "billing relay": BillingKafka().client_id,
+        "notifications consumer": NotificationsKafka().client_id,
+        "projector consumer": ProjectorKafka().client_id,
+        "orders saga consumer": ORDERS_SAGA,
+        "orders dead letters": ORDERS_DLQ,
+        "projector dead letters": PROJECTOR_DLQ,
+        "notifications dead letters": NOTIFICATIONS_DLQ,
+        "orders dead-letter depth": ORDERS_DLQ_DEPTH,
+        "orders health probe": ORDERS_HEALTH,
+        "notifications health probe": NOTIFICATIONS_HEALTH,
+        "projector health probe": PROJECTOR_HEALTH,
+    }
+
+    assert all(client_id.strip() for client_id in ids.values()), ids
+    assert len(set(ids.values())) == len(ids), f"two connections share a client id: {ids}"
+    assert (ORDERS_DLQ, PROJECTOR_DLQ, NOTIFICATIONS_DLQ) == (
+        "otc-orders-dlq",
+        "otc-projector-dlq",
+        "otc-notifications-dlq",
+    )
+    assert ORDERS_DLQ_DEPTH == "otc-orders-dlq-depth"
+    assert (ORDERS_HEALTH, NOTIFICATIONS_HEALTH, PROJECTOR_HEALTH) == (
+        "otc-orders-health",
+        "otc-notifications-health",
+        "otc-projector-health",
+    )

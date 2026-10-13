@@ -49,12 +49,13 @@ def _unique_id(value: UUID) -> UniqueId:
     return UniqueId(UUID(int=value.int))
 
 
-def order_row_of(order: Order, ids: ResolvedIds) -> OrderRow:
-    """A new `orders` row (insert path). `request_id` stays NULL: it is feature 15's (R62)."""
+def order_row_of(order: Order, ids: ResolvedIds, request_id: UUID | None = None) -> OrderRow:
+    """A new `orders` row (insert path). `request_id` is the caller's idempotency key (R62), NULL
+    when the request supplied none; the aggregate does not carry it."""
     return OrderRow(
         id=order.id.value,
         order_reference=order.order_reference.value,
-        request_id=None,
+        request_id=request_id,
         order_date=wire_instant(order.order_date),
         company_id=ids.company_id,
         retailer_id=ids.retailer_id,

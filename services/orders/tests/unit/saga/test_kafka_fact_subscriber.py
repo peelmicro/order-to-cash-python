@@ -17,6 +17,7 @@ import pytest
 from aiokafka.errors import CommitFailedError
 
 from otc_orders.application.ports.fact_stream import FactMessage
+from otc_orders.infrastructure.messaging.fact_retry import FactRetryStopped
 from otc_orders.infrastructure.messaging.fact_topics import SAGA_FACT_TOPICS
 from otc_orders.infrastructure.messaging.kafka_fact_subscriber import (
     KafkaFactSubscriber,
@@ -154,6 +155,7 @@ async def test_the_consumer_reads_from_earliest_commits_manually_and_uses_the_or
         "group_id": "orders.saga",
         "client_id": "otc-orders-saga",
         "enable_auto_commit": False,
+        "max_poll_interval_ms": 300000,  # aiokafka default, now written down
         "auto_offset_reset": "earliest",
     }
 
@@ -389,3 +391,29 @@ async def test_a_consumer_that_cannot_start_is_stopped_and_the_error_reaches_the
         await h.subscriber.run(_noop_handler, h.stop)
 
     assert h.consumer.stopped
+
+
+async def test_f1_a_retry_interrupted_by_shutdown_is_not_committed_not_sought_and_not_a_handler_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The stop signal ended the retry back-off (`FactRetryStopped`): the record must stay
+    uncommitted (it is redelivered after the restart), the loop must end with the signal, nothing is
+    sought or paced, and the line written is NOT the handler-failure line."""
+    h = harness([0])
+    delivered: list[int] = []
+
+    async def handler(message: FactMessage) -> None:
+        delivered.append(message.offset)
+        h.stop.set()  # the shutdown arrives during the back-off ...
+        raise FactRetryStopped  # ... and `stop_aware_sleep` reports it
+
+    with caplog.at_level(logging.INFO):
+        await h.subscriber.run(handler, h.stop)
+
+    assert delivered == [0], "delivered once and not again: the loop ended"
+    assert h.consumer.commits == [], "the record is NOT committed"
+    assert h.consumer.seeks == [], "no seek: this is not a failure of the record"
+    assert h.sleeps == [], "no pacing"
+    lines = [record.getMessage() for record in caplog.records]
+    assert not any(line.startswith("fact handler failed") for line in lines), lines
+    assert any(line.startswith("fact retry interrupted by shutdown") for line in lines), lines

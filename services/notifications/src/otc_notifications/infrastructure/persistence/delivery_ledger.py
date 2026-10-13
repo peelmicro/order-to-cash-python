@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
+from opentelemetry.trace import SpanKind, Tracer
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -21,6 +22,10 @@ from otc_notifications.infrastructure.messaging.consumer_name import ConsumerNam
 from otc_notifications.infrastructure.messaging.idempotent_consumer import (
     ConsumptionOutcome,
     IdempotentConsumer,
+)
+from otc_notifications.infrastructure.observability.trace_context import (
+    NO_TRACER,
+    TRANSACTION_SPAN,
 )
 from otc_notifications.infrastructure.persistence.models import ProcessedEvent
 
@@ -39,15 +44,22 @@ class LedgerTransaction:
 
 
 class SqlAlchemyDeliveryLedger:
-    def __init__(self, sessions: async_sessionmaker[AsyncSession], clock: Clock) -> None:
+    def __init__(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        clock: Clock,
+        tracer: Tracer = NO_TRACER,
+    ) -> None:
         self._sessions = sessions
+        self._tracer = tracer
         self._consumer = IdempotentConsumer[LedgerTransaction](begin=self._begin, clock=clock.now)
 
     @asynccontextmanager
     async def _begin(self) -> AsyncIterator[LedgerTransaction]:
-        async with self._sessions() as session, session.begin():
-            await session.connection(execution_options={"isolation_level": "READ COMMITTED"})
-            yield LedgerTransaction(session)
+        with self._tracer.start_as_current_span(TRANSACTION_SPAN, kind=SpanKind.INTERNAL):
+            async with self._sessions() as session, session.begin():
+                await session.connection(execution_options={"isolation_level": "READ COMMITTED"})
+                yield LedgerTransaction(session)
 
     async def record(self, event_id: UUID) -> LedgerOutcome:
         async def nothing_else(_transaction: LedgerTransaction) -> None:
@@ -59,10 +71,11 @@ class SqlAlchemyDeliveryLedger:
         return LedgerOutcome.RECORDED
 
     async def forget(self, event_id: UUID) -> None:
-        async with self._sessions() as session, session.begin():
-            await session.execute(
-                delete(ProcessedEvent).where(
-                    ProcessedEvent.event_id == event_id,
-                    ProcessedEvent.consumer == CONSUMER.value,
+        with self._tracer.start_as_current_span(TRANSACTION_SPAN, kind=SpanKind.INTERNAL):
+            async with self._sessions() as session, session.begin():
+                await session.execute(
+                    delete(ProcessedEvent).where(
+                        ProcessedEvent.event_id == event_id,
+                        ProcessedEvent.consumer == CONSUMER.value,
+                    )
                 )
-            )

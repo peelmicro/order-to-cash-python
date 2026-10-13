@@ -20,6 +20,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Text,
@@ -206,6 +207,15 @@ class SagaCommand(Base):
     # The operator's note of an accepted operator cancellation (feature 41), kept until the fact
     # that completes the cancellation; null for every other command.
     operator_note: Mapped[str | None] = mapped_column(Text)
+    # `observability_reliability` (migration 0003): the received bytes of the triggering fact, its
+    # source topic, the at-most-once marker of the first park, and the traceparent recorded at
+    # enqueue.
+    triggering_event_envelope: Mapped[bytes | None] = mapped_column(LargeBinary)
+    triggering_event_topic: Mapped[str | None] = mapped_column(String(64))
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(_ts())
+    trace_parent: Mapped[str | None] = mapped_column(String(55))
+    # The instant of the row's first failed attempt (SA-3 `x-first-failed-at`), set once.
+    first_failed_at: Mapped[datetime | None] = mapped_column(_ts())
 
 
 class SagaIgnoredFact(Base):

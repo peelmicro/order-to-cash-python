@@ -24,6 +24,7 @@ from otc_orders.domain.events import (
     OrderEvent,
     OrderPlaced,
     OrderPlacedLine,
+    OrderSagaFailed,
 )
 from otc_orders.domain.value_objects.compensation_step import CompensationStep
 from otc_orders.infrastructure.outbox.errors import UnmappedDomainEventError
@@ -40,7 +41,13 @@ class BuiltFact:
 
 def narrow(event: object) -> OrderEvent:
     match event:
-        case OrderPlaced() | OrderConfirmed() | OrderCompleted() | OrderCancelled():
+        case (
+            OrderPlaced()
+            | OrderConfirmed()
+            | OrderCompleted()
+            | OrderCancelled()
+            | OrderSagaFailed()
+        ):
             return event
         case _:
             raise UnmappedDomainEventError(type(event).__name__)
@@ -118,6 +125,16 @@ def cancelled_payload(event: OrderCancelled) -> asyncapi.OrderCancelledPayload:
     )
 
 
+def saga_failed_payload(event: OrderSagaFailed) -> asyncapi.OrderSagaFailedPayload:
+    return asyncapi.OrderSagaFailedPayload(
+        order_reference=event.order_reference.value,
+        command=event.command,
+        attempts=event.attempts,
+        last_error=event.last_error,
+        failed_at=wire_instant(event.failed_at),
+    )
+
+
 def _envelope[P: WireModel](
     envelope_type: type[Envelope[P]], event: OrderEvent, payload: P, occurred_at: datetime
 ) -> Envelope[P]:
@@ -155,5 +172,9 @@ def build_fact(event: OrderEvent) -> BuiltFact:
             cancelled = cancelled_payload(event)
             envelope = _envelope(Envelope[asyncapi.OrderCancelledPayload], event, cancelled, at)
             return BuiltFact(envelope=envelope, payload=cancelled, occurred_at=at)
+        case OrderSagaFailed():
+            failed = saga_failed_payload(event)
+            envelope = _envelope(Envelope[asyncapi.OrderSagaFailedPayload], event, failed, at)
+            return BuiltFact(envelope=envelope, payload=failed, occurred_at=at)
         case _:
             assert_never(event)

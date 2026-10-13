@@ -26,13 +26,15 @@ import asyncio
 import contextlib
 import functools
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Final
 
 import nats.errors
 from nats.aio.client import Client
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
+from opentelemetry.trace import SpanKind, Tracer
+from structlog.contextvars import bound_contextvars
 
 from otc_contracts.generated.asyncapi import Code
 from otc_cqrs import Dispatcher
@@ -44,6 +46,7 @@ from otc_orders.infrastructure.messaging.subjects import (
     ORDERS_CREATE_SUBJECT,
     ORDERS_QUEUE_GROUP,
 )
+from otc_orders.infrastructure.observability.trace_context import NO_TRACER, extract_nats
 from otc_orders.presentation import catalog_reference_list, orders_cancel
 from otc_orders.presentation.orders_create import (
     InvalidOrdersCreateRequestError,
@@ -53,8 +56,11 @@ from otc_orders.presentation.orders_create import (
     to_command,
     to_reply,
 )
+from otc_shared_kernel import InvalidUniqueIdError, UniqueId
 
 log = logging.getLogger("otc_orders.presentation.orders_create_responder")
+
+CORRELATION_HEADER: Final = "x-correlation-id"
 
 type Route = Callable[[bytes, Dispatcher[OrdersScope], OrdersScope], Awaitable[bytes]]
 
@@ -100,7 +106,9 @@ class OrdersCreateResponder:
         dispatcher: Dispatcher[OrdersScope],
         scope_factory: Callable[[], OrdersScope],
         clock: Clock,
+        tracer: Tracer = NO_TRACER,
     ) -> None:
+        self._tracer = tracer
         self._connection = connection
         self._dispatcher = dispatcher
         self._scope_factory = scope_factory
@@ -168,6 +176,25 @@ class OrdersCreateResponder:
         await asyncio.gather(*tuple(in_flight), return_exceptions=True)
 
     async def _serve(self, subject: str, message: Msg) -> None:
+        """One request is one unit of work: its lines carry the caller's `x-correlation-id` when it
+        parses as a UUID, and no `correlationId` at all otherwise (never a fabricated one). It is
+        also one `SERVER` span, a child of the caller's span when the request carries a valid
+        `traceparent` and a root otherwise (`R56`; the single extraction site of this class: every
+        subject passes through here)."""
+        with self._tracer.start_as_current_span(
+            f"{subject} serve",
+            context=extract_nats(message.headers),
+            kind=SpanKind.SERVER,
+            attributes={"messaging.system": "nats", "messaging.destination.name": subject},
+        ):
+            correlation_id = _correlation_of(message.headers)
+            if correlation_id is None:
+                await self._answer(subject, message)
+                return
+            with bound_contextvars(correlationId=str(correlation_id)):
+                await self._answer(subject, message)
+
+    async def _answer(self, subject: str, message: Msg) -> None:
         if not message.reply:
             log.warning("%s request carried no reply subject; dropped", subject)
             return
@@ -181,6 +208,16 @@ class OrdersCreateResponder:
                 log.warning("%s refused: %s %s", subject, rpc_error.code.value, rpc_error.message)
             reply = encode(rpc_error)
         await message.respond(reply)
+
+
+def _correlation_of(headers: Mapping[str, str] | None) -> UniqueId | None:
+    value = None if headers is None else headers.get(CORRELATION_HEADER)
+    if value is None:
+        return None
+    try:
+        return UniqueId.parse(value)
+    except InvalidUniqueIdError:
+        return None
 
 
 def _log_fault(task: asyncio.Task[None]) -> None:

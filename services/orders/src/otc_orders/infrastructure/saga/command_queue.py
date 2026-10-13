@@ -12,9 +12,10 @@ integer column. The payload is the request model serialised once by the caller (
 stored as the text that will be sent (L21).
 """
 
-from uuid import uuid4
+from datetime import datetime
+from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,9 +23,11 @@ from otc_orders.application.ports.clock import Clock
 from otc_orders.application.ports.saga_command_store import (
     AcceptedOperatorCancel,
     EnqueueOutcome,
+    FirstParkClaim,
     OwedCommand,
 )
 from otc_orders.application.saga.command_kind import SagaCommandKind
+from otc_orders.infrastructure.observability.trace_context import current_traceparent
 from otc_orders.infrastructure.persistence.models import SagaCommand
 from otc_shared_kernel import UniqueId
 
@@ -51,6 +54,9 @@ class SqlAlchemySagaCommandQueue:
                     payload=command.payload,
                     triggering_event_id=command.triggering_event_id.value,
                     operator_note=command.operator_note,
+                    triggering_event_envelope=command.triggering_event_envelope,
+                    triggering_event_topic=command.triggering_event_topic,
+                    trace_parent=current_traceparent(),
                     status="pending",
                     created_at=now,
                     updated_at=now,
@@ -60,6 +66,32 @@ class SqlAlchemySagaCommandQueue:
             )
         ).first()
         return EnqueueOutcome.ENQUEUED if inserted is not None else EnqueueOutcome.ALREADY_OWED
+
+    async def claim_first_park(self, row_id: UUID, *, at: datetime) -> FirstParkClaim | None:
+        claimed = (
+            await self._session.execute(
+                update(SagaCommand)
+                .where(
+                    SagaCommand.id == row_id,
+                    SagaCommand.status == "parked",
+                    SagaCommand.dead_lettered_at.is_(None),
+                )
+                .values(dead_lettered_at=at)
+                .returning(
+                    SagaCommand.triggering_event_envelope,
+                    SagaCommand.triggering_event_topic,
+                    SagaCommand.first_failed_at,
+                )
+                .execution_options(synchronize_session=False)
+            )
+        ).first()
+        if claimed is None:
+            return None
+        return FirstParkClaim(
+            envelope=None if claimed[0] is None else bytes(claimed[0]),
+            topic=claimed[1],
+            first_failed_at=claimed[2],
+        )
 
     async def find_accepted_operator_cancel(
         self, order_id: UniqueId

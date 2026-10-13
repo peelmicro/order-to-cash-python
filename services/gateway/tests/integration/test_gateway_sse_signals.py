@@ -27,6 +27,7 @@ import pytest
 import pytest_asyncio
 from aiokafka import AIOKafkaProducer
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
+from opentelemetry.trace import Tracer
 
 from otc_contracts import FactEvent, format_instant, parse_fact, to_wire_json
 from otc_contracts.generated import openapi
@@ -280,7 +281,13 @@ async def test_r55_a_projected_fact_reaches_an_sse_client_as_frames_through_the_
     and a reconnect from the middle replaying exactly the frames after it."""
     from otc_projector.composition import Externals, ProjectorSettings, start_runtime
     from otc_projector.infrastructure.messaging.kafka_fact_subscriber import KafkaFactSubscriber
-    from otc_projector.infrastructure.settings import KafkaSettings, MongoSettings, NatsSettings
+    from otc_projector.infrastructure.settings import (
+        FactRetrySettings,
+        KafkaSettings,
+        MongoSettings,
+        NatsSettings,
+        TelemetrySettings,
+    )
 
     saga = next(s for s in SAGAS if s.status == "completed")
     facts = saga_facts(saga)
@@ -304,10 +311,12 @@ async def test_r55_a_projected_fact_reaches_an_sse_client_as_frames_through_the_
             }
         ),
         nats=NatsSettings.model_validate({"NATS_URL": nats_server.url}),
+        telemetry=TelemetrySettings(),
+        fact_retry=FactRetrySettings(),
     )
 
-    def subscriber(kafka: KafkaSettings) -> KafkaFactSubscriber:
-        return KafkaFactSubscriber(kafka, topics=topics)
+    def subscriber(kafka: KafkaSettings, tracer: Tracer) -> KafkaFactSubscriber:
+        return KafkaFactSubscriber(kafka, topics=topics, tracer=tracer)
 
     client = await open_stream(live_gateway, raw_sse, f"/orders/stream?orderId={order_id}")
     await client.next_frame(10, "stream.ready")

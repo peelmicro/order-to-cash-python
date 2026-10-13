@@ -12,7 +12,7 @@
 2. **The atomic apply**, through the idempotent-consumer variant: one `find_one_and_update` whose
    filter is the idempotency check and whose pipeline is the whole projection of the fact. A
    `DuplicateKeyError` here is NOT retried: it would be a duplicate key on `uq_order_reference`, a
-   poison record that is feature 27's to dead-letter, never something to retry blindly.
+   poison record that the fact retry dead-letters (`R16`), never something to retry blindly.
 
 The writer never reads the document in order to decide what to write, and holds no state beyond its
 two collaborators (`PR51`). The store's mapping is converted to the typed `AppliedDocument` here, so

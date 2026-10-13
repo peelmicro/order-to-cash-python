@@ -27,13 +27,18 @@ the test that uses them.
 
 import asyncio
 import contextlib
+import importlib.util
 import json
+import sys
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import ModuleType
 from typing import Any, Protocol
+from unittest import mock
 
 import asyncpg
 import nats
@@ -75,6 +80,8 @@ from otc_contracts.generated.asyncapi import (
 )
 from otc_contracts.generated.asyncapi import OrderLine as WireOrderLine
 from otc_orders.application.saga.command_kind import SagaCommandKind
+from otc_orders.composition import OrdersSettings
+from otc_orders.composition import start_runtime as real_start_runtime
 from otc_orders.domain.order import Order
 from otc_orders.domain.snapshot import OrderLineSnapshot, OrderSnapshot
 from otc_orders.domain.value_objects.cancellation_reason import CancellationReason
@@ -107,9 +114,52 @@ def topic_of(event_type: str) -> str:
     return BILLING_TOPIC
 
 
+DEAD_LETTER_SUPPORT = (
+    Path(__file__).resolve().parents[5] / "tests/observability/dead_letter_support.py"
+)
+
+
+def dead_letter_support() -> ModuleType:
+    """`tests/observability/dead_letter_support.py`, loaded by path (importlib mode)."""
+    name = "dead_letter_support"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, DEAD_LETTER_SUPPORT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class KafkaServerShape(Protocol):
     @property
     def bootstrap_servers(self) -> str: ...
+
+
+TRACE_SUPPORT = Path(__file__).resolve().parents[5] / "tests/observability/trace_support.py"
+
+
+@pytest.fixture
+def trace_support() -> ModuleType:
+    """`tests/observability/trace_support.py` (typed span readers), loaded by path."""
+    name = "trace_support"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, TRACE_SUPPORT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def dl_support() -> ModuleType:
+    """`tests/observability/dead_letter_support.py` (private topics, broker readers, a producer)."""
+    return dead_letter_support()
 
 
 # ------------------------------------------------------------------------------------- the facts
@@ -494,7 +544,10 @@ class Db:
         key = order_id.value if isinstance(order_id, UniqueId) else order_id
         return await self.fetch(
             "SELECT id, command, status, attempts, last_error, payload::text AS payload, "
-            "triggering_event_id, operator_note, next_attempt_at, sent_at FROM saga_commands "
+            "triggering_event_id, operator_note, next_attempt_at, sent_at, "
+            "triggering_event_envelope, triggering_event_topic, dead_lettered_at, trace_parent, "
+            "first_failed_at "
+            "FROM saga_commands "
             "WHERE order_id = $1 ORDER BY created_at",
             key,
         )
@@ -737,6 +790,9 @@ class SagaHarness:
     bootstrap_servers: str
     positions: dict[uuid.UUID, tuple[str, int, int]] = field(default_factory=dict)
     """event id -> (topic, partition, offset) of every fact published through `publish_fact`."""
+    topics: Any = None
+    """The test's `PrivateTopics` when the harness was started with `topics=` (item 10), else None:
+    the runtime then consumes the real fact topics."""
     behaviours: dict[str, Behaviour] = field(default_factory=lambda: dict(BEHAVIOURS))
     """The named stand-in behaviours a test can install: `reject_credit`, `silent`, `not_json` and
     `accept_<kind>` (a stand-in's default)."""
@@ -786,6 +842,16 @@ async def saga_stand_ins(nats_server: Any) -> AsyncIterator[dict[SagaCommandKind
 
 
 @pytest_asyncio.fixture(loop_scope="function")
+async def private_topics(kafka_server: KafkaServerShape) -> Any:
+    """THREE private source topics and their THREE private `.dlq` companions (item 10): a test that
+    publishes a poison fact passes them to `saga_harness(topics=...)`, so the poison is never on a
+    topic any other test reads. Created under a name unique to the test."""
+    return await dead_letter_support().create_private_topics(
+        kafka_server.bootstrap_servers, "orders-dlq"
+    )
+
+
+@pytest_asyncio.fixture(loop_scope="function")
 async def saga_harness(
     orders_host_factory: Callable[..., AbstractAsyncContextManager[Any]],
     kafka_server: KafkaServerShape,
@@ -799,6 +865,22 @@ async def saga_harness(
     await producer.start()
 
     positions: dict[uuid.UUID, tuple[str, int, int]] = {}
+    # The harness's routing: None = the real fact topics; a `PrivateTopics` = THAT test's topics.
+    # `topic_of` keeps deciding WHICH of the three a fact goes to (its mapping is unchanged), so a
+    # stand-in's emitted fact lands where the runtime reads.
+    routing: dict[str, Any] = {"topics": None}
+
+    def route(event_type: str) -> str:
+        real = topic_of(event_type)
+        private = routing["topics"]
+        if private is None:
+            return real
+        chosen: str = {
+            ORDERS_TOPIC: private.orders,
+            FULFILLMENT_TOPIC: private.fulfillment,
+            BILLING_TOPIC: private.billing,
+        }[real]
+        return chosen
 
     async def publish_fact(
         event_type: str,
@@ -807,11 +889,12 @@ async def saga_harness(
         reference: str = "ORD-000001",
         event_id: uuid.UUID | None = None,
         topic: str | None = None,
+        headers: Sequence[tuple[str, bytes]] = (),
         **kwargs: Any,
     ) -> uuid.UUID:
         identifier = event_id if event_id is not None else uuid.uuid4()
         sent = await producer.send_and_wait(
-            topic or topic_of(event_type),
+            topic or route(event_type),
             key=str(correlation_id).encode("utf-8"),
             value=fact_bytes(
                 event_type,
@@ -820,39 +903,83 @@ async def saga_harness(
                 event_id=identifier,
                 **kwargs,
             ),
-            headers=[("x-event-type", event_type.encode("utf-8"))],
+            headers=[("x-event-type", event_type.encode("utf-8")), *headers],
         )
         positions.setdefault(identifier, (sent.topic, int(sent.partition), int(sent.offset)))
         return identifier
 
     @asynccontextmanager
     async def start(
-        *, history: str = "skip", cleanup: bool = True, **knobs: str
+        *,
+        history: str = "skip",
+        cleanup: bool = True,
+        topics: Any = None,
+        dead_letter_producer_factory: Callable[..., Any] | None = None,
+        span_processors: Sequence[Any] = (),
+        metric_readers: Sequence[Any] = (),
+        **knobs: str,
     ) -> AsyncIterator[SagaHarness]:
         """`history`: "skip" (default) starts from the END of every partition; "replay" deletes the
         group, so a first boot reads from the beginning (SO1); "keep" resumes whatever the group
-        committed (a restart). `cleanup=False` leaves the group for a later `history="keep"`."""
-        if history == "skip":
+        committed (a restart). `cleanup=False` leaves the group for a later `history="keep"`.
+
+        `topics` (a `private_topics` fixture value) points the runtime's consumer at THAT test's
+        private source topics instead of the real ones, through the composition root's test seam
+        (`start_runtime(fact_topics=...)`, never an environment variable): a poison fact a test
+        publishes is then on topics nobody else reads, and its dead letter goes to the private
+        `<topic>.dlq`. The group's history is moot on topics that did not exist a moment ago, so the
+        group is only deleted (unless `history="keep"`: a restart resumes what the group
+        committed). `dead_letter_producer_factory` replaces the dead-letter publisher's producer (a
+        test that makes the publication fail). `span_processors` are handed to the runtime's own
+        tracer provider (a test that reads the spans the consumer made) and `metric_readers` to its
+        own meter provider (a test that reads the measurements the runtime recorded)."""
+        routing["topics"] = topics
+        if history == "keep":
+            pass  # a restart: whatever the group committed is what it resumes from
+        elif topics is not None or history == "replay":
+            await delete_group(bootstrap)
+        elif history == "skip":
             await delete_group(bootstrap)
             await commit_group_at_end(bootstrap)
-        elif history == "replay":
-            await delete_group(bootstrap)
         for stand_in in saga_stand_ins.values():
             stand_in.publish = publish_fact
+
+        async def start_with_seams(settings: OrdersSettings) -> Any:
+            return await real_start_runtime(
+                settings,
+                fact_topics=None if topics is None else topics.all,
+                dead_letter_producer_factory=dead_letter_producer_factory,
+                span_processors=span_processors,
+                metric_readers=metric_readers,
+            )
+
+        seamed = (
+            topics is not None
+            or dead_letter_producer_factory is not None
+            or len(span_processors) > 0
+            or len(metric_readers) > 0
+        )
         try:
-            async with orders_host_factory(
-                **({"SAGA_CONSUMER_ENABLED": "true"} | FAST_KNOBS | knobs)
-            ) as host:
-                yield SagaHarness(
-                    runtime=host.runtime,
-                    app=host.app,
-                    stand_ins=saga_stand_ins,
-                    publish_fact=publish_fact,
-                    db=db,
-                    bootstrap_servers=bootstrap,
-                    positions=positions,
-                )
+            with (
+                mock.patch("otc_orders.main.start_runtime", start_with_seams)
+                if seamed
+                else contextlib.nullcontext()
+            ):
+                async with orders_host_factory(
+                    **({"SAGA_CONSUMER_ENABLED": "true"} | FAST_KNOBS | knobs)
+                ) as host:
+                    yield SagaHarness(
+                        runtime=host.runtime,
+                        app=host.app,
+                        stand_ins=saga_stand_ins,
+                        publish_fact=publish_fact,
+                        db=db,
+                        bootstrap_servers=bootstrap,
+                        positions=positions,
+                        topics=topics,
+                    )
         finally:
+            routing["topics"] = None
             if cleanup:
                 await delete_group(bootstrap)
 

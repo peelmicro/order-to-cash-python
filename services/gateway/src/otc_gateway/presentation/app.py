@@ -31,6 +31,7 @@ from otc_gateway.presentation.asgi import (
     BearerAuthMiddleware,
     CorrelationMiddleware,
     ProblemMiddleware,
+    TelemetryMiddleware,
     clock_of,
     correlation_of,
     problem_headers,
@@ -78,6 +79,11 @@ async def _http_handler(request: Request, error: Exception) -> Response:
     return _problem_response(request, spec)
 
 
+# FastAPI 0.142 creates server spans and `http.server.*` metrics whenever a global provider exists
+# and adds OTLP exporters from `OTEL_EXPORTER_OTLP_ENDPOINT` at lifespan startup. This service's
+# telemetry is its runtime's own (`infrastructure/observability/telemetry.py`), so every FastAPI
+# facility is switched off, explicitly, in the call below
+# (`tests/architecture/test_telemetry_wiring.py`).
 def create_app(*, lifespan: Lifespan[FastAPI] | None = None) -> FastAPI:
     app = FastAPI(
         title="otc-gateway",
@@ -87,6 +93,13 @@ def create_app(*, lifespan: Lifespan[FastAPI] | None = None) -> FastAPI:
         openapi_url=None,
         separate_input_output_schemas=False,
         responses=contract.UNLISTED_PROBLEM,
+        telemetry={
+            "tracing": False,
+            "metrics": False,
+            "logs": False,
+            "operation_spans": False,
+            "auto_configure": False,
+        },
     )
     app.state.runtime = None
     app.add_exception_handler(RequestValidationError, _validation_handler)
@@ -102,10 +115,11 @@ def create_app(*, lifespan: Lifespan[FastAPI] | None = None) -> FastAPI:
         routes_ops.router,
     ):
         app.include_router(router)
-    # Last added is outermost: correlation -> problems -> bearer -> routes.
+    # Last added is outermost: telemetry -> correlation -> problems -> bearer -> routes.
     app.add_middleware(BearerAuthMiddleware)
     app.add_middleware(ProblemMiddleware)
     app.add_middleware(CorrelationMiddleware)
+    app.add_middleware(TelemetryMiddleware)
 
     def openapi() -> dict[str, Any]:
         if app.openapi_schema is None:
