@@ -1,7 +1,7 @@
 # Current session
 
-**Feature:** none active — Phase 15 done, **awaiting the maintainer's "full wrap-up"** (nothing committed yet); next phase 16 (Web app): `web_app` (id 29, `sdd: false`)
-**Status:** feature 28 `saga_e2e_verification` **done** (light, closed by the leader on 2026-10-13 after reading the diff, re-checking the three arms' restores with `cmp`, one green run and the full `quality.sh`); effort entry in `progress/history.md` (last entry)
+**Feature:** none active — next phase 16 (Web app): `web_app` (id 29, `sdd: false`)
+**Status:** Phase 15 closed and committed at the full wrap-up (2026-10-15, `37cb5ab`, pushed); Phase 16 not started. Feature 28 `saga_e2e_verification` **done** (light, closed by the leader on 2026-10-13 after reading the diff, re-checking the three arms' restores with `cmp`, one green run and the full `quality.sh`); effort entry in `progress/history.md` (last entry)
 **Session started:** 2026-10-13 06:22 CEST
 
 ## Goal
@@ -20,7 +20,7 @@ None.
 
 ## Notes
 
-**Uncommitted at session end (for the wrap-up):** `tests/saga_e2e/` (4 files), `progress/impl_saga_e2e_verification.md`, `feature_list.json` (id 28 → `done`), `specs/shared/test-matrix.md` (R56 row and the two count rows), `progress/history.md`, this file. One commit: `test(saga): …` (draft in the session report). Nothing under `services/` or `packages/` changed.
+**Committed:** `37cb5ab` (the suite, its record, the R56 matrix row, README, `docs/PROCESS.md`, the effort entry and this brief), pushed; the external Plan, Solution Documents (F65), Stack Comparison and both quizzes updated at the wrap-up. Phase 16 starts in a **fresh session** (CLAUDE.md, one session per phase) from this file.
 
 **Resume point:** the `otcpy` developer stack is **stopped** except `otcpy-n8n`; restart it with `docker compose -p otcpy -f docker-compose.infra.yml start postgres mongodb kafka nats` (add `otel-collector jaeger prometheus mailpit` for traces, metrics and email) and **wait for Kafka to report healthy** before starting any host (README, *Running the services*). The live dev data registers listed in Phase 14's brief are unchanged (Phase 15 touched no developer database or topic: testcontainers only).
 
