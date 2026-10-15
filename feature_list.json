@@ -525,7 +525,7 @@
       "phase": 15,
       "title": "End-to-end saga verification before any frontend work",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "happy path reaches completed",
         ".99 order compensates visibly",
