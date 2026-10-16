@@ -1,7 +1,7 @@
 # Current session
 
 **Feature:** none active — next phase 17 (Web component tests): `web_component_tests` (id 30, `sdd: false`)
-**Status:** Phase 16 closed and committed at the full wrap-up (2026-10-16); Phase 17 not started. Feature 29 `web_app` **done** (stages 1–3 approved by Opus reviews, stage 4 by a scoped Sonnet review; the leader's full `quality.sh` green after a sweep-premise fix); effort entry in `progress/history.md` (last entry). The full session log of Phase 16 is in `.arm/phase16/current.session4.md` (git-ignored) and in the history entry.
+**Status:** Phase 16 closed and committed at the full wrap-up (2026-10-16, `82e8d6a`, pushed); Phase 17 not started. Feature 29 `web_app` **done** (stages 1–3 approved by Opus reviews, stage 4 by a scoped Sonnet review; the leader's full `quality.sh` green after a sweep-premise fix); effort entry in `progress/history.md` (last entry). The full session log of Phase 16 is in `.arm/phase16/current.session4.md` (git-ignored) and in the history entry.
 **Session started:** 2026-10-15 (four sessions; the last on 2026-10-16)
 
 ## Goal
@@ -21,7 +21,7 @@ None.
 
 ## Notes
 
-**Committed:** the feature commit (apps/web, the R55 cell, README, `docs/PROCESS.md`, the seed README, `.env.example`, `quality.sh`, `init.sh`, `feature_list.json`, `progress/`), pushed; #7's number-box fix committed and pushed in `../order-to-cash-nestjs`. The external Plan, Solution Documents, Stack Comparison and both quizzes updated at the wrap-up. Phase 17 starts in a **fresh session** from this file.
+**Committed:** `82e8d6a`, the feature commit (apps/web, the R55 cell, README, `docs/PROCESS.md`, the seed README, `.env.example`, `quality.sh`, `init.sh`, `feature_list.json`, `progress/`), pushed; #7's number-box fix committed and pushed in `../order-to-cash-nestjs` (`d7871d2`). The external Plan (Phase 16 COMPLETED), Solution Documents (Parte 17, F66–F70), Stack Comparison (web rows ✔, *Cierre de la Fase 16 del #9*) and both quizzes (chapter 17 each, re-embedded, checked in headless Chromium) updated at the wrap-up; backups in `.arm/phase16/external/`. Pushing needs `peelmicro`'s token while gh's active account is `ediez-online` (the per-command credential helper; never `gh auth switch`). Phase 17 starts in a **fresh session** from this file.
 
 **Resume point:** at the wrap-up the developer stack and every host (Orders 8101, Fulfillment 8102, Billing 8103, Projector 8105, Gateway 3001, web 3010) were left **running** for the maintainer; check `docker ps` and `ss -ltn` first. Stop them by port (`for p in 3010 3001 8101 8102 8103 8105; do fuser -k -TERM $p/tcp; done`) and `docker compose -p otcpy -f docker-compose.infra.yml stop postgres mongodb kafka nats`. After a web rebuild, a browser tab needs a full reload (Ctrl+Shift+R): the single-page app keeps the old code in memory.
 
