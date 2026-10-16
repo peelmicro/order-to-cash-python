@@ -7,5 +7,7 @@
     "types": ["node", "vitest/globals"]
   },
   "files": ["src/test-setup.ts"],
-  "include": ["src/**/*.spec.ts", "src/**/*.d.ts"]
+  // The pages are reached through the router's glob (a dynamic import), so no spec imports them statically;
+  // listing them keeps them in the compiler's program, so the Angular plugin compiles them like the build does.
+  "include": ["src/**/*.spec.ts", "src/**/*.d.ts", "src/app/**/*.ts", "src/server/**/*.ts", "src/shared/**/*.ts", "src/build/**/*.ts", "scripts/**/*.ts"]
 }

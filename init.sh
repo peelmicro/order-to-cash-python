@@ -205,8 +205,11 @@ if [ -f .superseded-rules ]; then
     # first fix used one, and it went blind to extension-less tracked files such
     # as scripts/git-hooks/commit-msg — a narrowing found by review, not by the
     # author. Build output, dependencies, logs and history are excluded at the
-    # source, never by post-filtering the output.
+    # source, never by post-filtering the output. `.arm/` (git-ignored) holds the
+    # arming protocol's pre-edit backups, which carry old text by design; the
+    # Phase 15 wrap-up's backups of the external documents failed this check.
     HITS="$(grep -rlIF \
+              --exclude-dir=.arm \
               --exclude-dir=node_modules --exclude-dir=.nitro --exclude-dir=.output \
               --exclude-dir=.angular --exclude-dir=dist --exclude-dir=.venv \
               --exclude-dir=__pycache__ --exclude-dir=.mypy_cache --exclude-dir=.ruff_cache \

@@ -57,6 +57,8 @@ pnpm_web() { npx --yes "pnpm@${PNPM_VERSION}" -C apps/web "$@"; }
 pnpm_web install --frozen-lockfile
 # The Analog template ships no lint script, so --if-present skips it; a lint script added later runs here.
 pnpm_web run --if-present lint
+# The OpenAPI types are generated from specs/shared/openapi.yaml; fails, naming the file and the first differing line, when the committed copy is stale.
+pnpm_web run types:check
 pnpm_web run test:ci
 pnpm_web run build
 

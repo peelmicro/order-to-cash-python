@@ -1,12 +1,4 @@
-import { Component } from '@angular/core';
+import { RouteMeta } from '@analogjs/router';
 
-import { AnalogWelcome } from './analog-welcome';
-
-@Component({
-  selector: 'app-home',
-  imports: [AnalogWelcome],
-  template: `
-     <app-analog-welcome/>
-  `,
-})
-export default class Home {}
+/** `/` has no content of its own: it redirects to the orders page, whose guard sends a signed-out user on to `/login`. A redirect page exports `routeMeta` and no component. */
+export const routeMeta: RouteMeta = { redirectTo: '/orders', pathMatch: 'full' };

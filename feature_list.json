@@ -540,7 +540,7 @@
       "phase": 16,
       "title": "Analog web app: spartan/ui, TanStack Query, Tailwind v4, live SSE saga timeline, Nitro BFF",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "BFF ported from #7's apps/web/server: h3 useSession sealed httpOnly cookie, server-side Gateway client, SSE proxy forwarding Last-Event-ID and aborting upstream on disconnect — the JWT never reaches the browser",
         "types generated from specs/shared/openapi.yaml with a drift check",
@@ -590,7 +590,8 @@
       "acceptance": [
         "order reaches completed in the UI",
         ".99 order reaches cancelled with the causal link visible",
-        "re-run against the composed stack in phase 23"
+        "re-run against the composed stack in phase 23",
+        "carried from feature 29 stage 2 (phase 16 re-review, item 8; the browser half of a fix whose jsdom guard R-typing is binding): typing \"19.99\" into the unit price and \"0.29\" into the line discount of a cold /orders/place, with an init-script render lag (150 ms, key gap 60 ms; 60 ms, key gap 40 ms), shows and sends exactly the typed amount (1999, 29); armed by restoring [value] on the three number inputs (must show 9919/290). Evidence: progress/review_web_app.md 'Stage 2 re-review (fix round 1)', probes in .arm/web29r3/s2r1/live/"
       ]
     },
     {

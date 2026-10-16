@@ -19,9 +19,38 @@
     "importHelpers": true,
     "target": "ES2022",
     "module": "ES2022",
-    "lib": ["ES2022", "dom"],
+    "lib": [
+      "ES2022",
+      "dom"
+    ],
     "useDefineForClassFields": false,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@spartan-ng/helm/button": [
+        "./src/app/ui/button/src/index.ts"
+      ],
+      "@spartan-ng/helm/utils": [
+        "./src/app/ui/utils/src/index.ts"
+      ],
+      "@spartan-ng/helm/input": [
+        "./src/app/ui/input/src/index.ts"
+      ],
+      "@spartan-ng/helm/label": [
+        "./src/app/ui/label/src/index.ts"
+      ],
+      "@spartan-ng/helm/card": [
+        "./src/app/ui/card/src/index.ts"
+      ],
+      "@spartan-ng/helm/table": [
+        "./src/app/ui/table/src/index.ts"
+      ],
+      "@spartan-ng/helm/badge": [
+        "./src/app/ui/badge/src/index.ts"
+      ],
+      "@spartan-ng/helm/alert": [
+        "./src/app/ui/alert/src/index.ts"
+      ]
+    }
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,
@@ -30,6 +59,8 @@
     "strictTemplates": true
   },
   "references": [
-    { "path": "tsconfig.spec.json" }
+    {
+      "path": "tsconfig.spec.json"
+    }
   ]
 }

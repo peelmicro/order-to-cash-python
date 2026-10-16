@@ -94,7 +94,7 @@ services/            gateway, orders, fulfillment, billing, notifications, proje
 conftest.py          the shared integration fixture: one Docker-held postgres:18.6 per test session, a template database per service, a fresh database per test
 tests/               architecture guards; database_parity/ (outbox/processed_events identical across the four databases, read from the live catalogs);
                      fixtures/golden_envelopes/ (the wire-parity oracle, copied from #8)
-apps/web/            the Analog (Angular 22) app — scaffold only until phase 16
+apps/web/            the Analog (Angular 22) web app: the backend-for-frontend (Nitro routes, httpOnly session cookie) and the six pages — see "Running the web app"
 scripts/             generate_contracts.py (models from asyncapi.yaml/openapi.yaml, --check for drift), git hooks
 quality.sh           the single quality gate
 ```
@@ -181,7 +181,7 @@ docker exec otcpy-mongodb mongosh -u otc_mongo_root -p otc_mongo_dev_password --
   --eval 'db.getSiblingDB("otc_read_model").order_timeline.find({}, {orderReference: 1, status: 1}).toArray()'
 ```
 
-"Caused by" on a live timeline links facts whose `causationId` names another fact (Orders' and Billing's own chains); a fact produced by an RPC responder names the command that requested it, which is never a timeline entry (R12, made explicit in the contract by `SA-6`). The live walkthrough (the seeded documents byte-identical after a replay and a process restart, one order placed end to end) is in `progress/impl_projector_read_model.md` §9.
+"Caused by" on a live timeline links a fact to the fact whose `eventId` its `causationId` names; a fact produced by an RPC responder names the command that requested it, which is never a timeline entry, so it shows no "caused by" line (R12, made explicit in the contract by `SA-6`). On an order placed through the real stack and completed (nine entries), three entries show one: `order.confirmed.v1` (caused by `credit.approved.v1`), `credit.released.v1` (caused by `payment.received.v1`) and `order.completed.v1` (caused by `credit.released.v1`); the other six cite a command. The links cross contexts (Orders' `order.confirmed.v1` is caused by Billing's `credit.approved.v1`), so the line is not limited to one service's own chain. The live walkthrough (the seeded documents byte-identical after a replay and a process restart, one order placed end to end) is in `progress/impl_projector_read_model.md` §9; the web app's own live timeline is in `progress/impl_web_app.md` (Stage 4 of 4, §4).
 
 The Gateway is the only HTTP edge: every route of `specs/shared/openapi.yaml`, a bearer token from `POST /auth/login`, order list and detail served from the read model, every other route forwarded over NATS to the service that owns it, and `GET /orders/stream`, server-sent events of each order's progress with `Last-Event-ID` reconnection. It needs the `JWT_*` and `GATEWAY_*` settings of `.env.example` in `.env` (an older `.env` lacks them; the boot refuses a missing `JWT_SECRET`). Start the infrastructure first and wait for Kafka to report healthy, or the services fail their boot:
 
@@ -219,6 +219,36 @@ docker pause otcpy-postgres; sleep 4; curl -s -w ' %{http_code}\n' localhost:810
 
 The five series the Grafana dashboard reads are `otc_request_latency_ms`, `otc_fact_processing_latency_ms`, `otc_saga_completion_ms` (once an order completes or is cancelled), `otc_outbox_lag_ms` and `otc_dlq_depth`; the repeated request's own trace is a four-span replay, hence the larger of the two.
 
+## Running the web app
+
+`apps/web` is an Analog (Angular 22) app with its own Node server: the browser talks only to that server, which holds the Gateway's JWT in a sealed httpOnly cookie (`otc_session`) and forwards every call to the Gateway. It needs the Gateway running; the order, stock and billing pages also need the services behind it. Start those as in *Running the services* above (infrastructure, then Orders, Fulfillment, Billing and the Projector, then `uv run python -m otc_gateway` on port 3001). Node comes from `.nvmrc`; pnpm 12.8.1 is pinned by `apps/web/package.json`, so a different global pnpm does not matter.
+
+```bash
+npx --yes pnpm@12.8.1 -C apps/web install --frozen-lockfile
+npx --yes pnpm@12.8.1 -C apps/web dev                        # development, http://localhost:3010 (WEB_PORT)
+npx --yes pnpm@12.8.1 -C apps/web build                      # production build into apps/web/dist
+npx --yes pnpm@12.8.1 -C apps/web start                      # serves that build on WEB_PORT
+curl -s -o /dev/null -w '%{http_code}\n' localhost:3010/login   # 200 once it listens
+```
+
+Both start scripts read the repository `.env`. An older `.env` lacks the web keys: copy the `# ── Web app` block of `.env.example` into it. The keys, all optional:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `WEB_PORT` | `3010` | the one port setting for `dev` and `start` (3000 is often taken on this machine); a value exported in the shell wins over `.env` |
+| `WEB_SESSION_PASSWORD` | random per process | seals the session cookie; at least 32 characters, or the boot refuses; unset, every restart signs everyone out and the server warns |
+| `WEB_COOKIE_SECURE` | `true` | the cookie's `Secure` flag; only the exact value `false` turns it off (browsers treat `http://localhost` as a secure context) |
+| `WEB_GATEWAY_TIMEOUT_MS` | `15000` | bounds each proxied Gateway call (not the event stream); a timeout answers the web server's own 504 problem |
+| `GATEWAY_BASE_URL` | `http://localhost:${GATEWAY_PORT}` | where the web server reaches the Gateway; leave it unset while the Gateway runs as a host process |
+
+Sign in at `http://localhost:3010/login` with the operator account of `.env.example`: the username is `GATEWAY_OPERATOR_USERNAME` and the password `GATEWAY_OPERATOR_PASSWORD`. The pages: `/orders` (list, filters, a live refresh), `/orders/place` (place an order; the `.99` demo order exercises the compensation path), `/orders/<id>` (the order's timeline over server-sent events, with "caused by" links where a fact names the fact that caused it), `/stock` (levels and replenishment), `/billing` (credit limits, invoices, Register payment; after a payment it resolves the invoice's order and links to its timeline). The nav bar shows `#9 · Python / Angular` so a screenshot says which build it is.
+
+```bash
+npx --yes pnpm@12.8.1 -C apps/web types:check   # the generated API types match specs/shared/openapi.yaml
+npx --yes pnpm@12.8.1 -C apps/web test:ci       # Vitest: the BFF routes, the pages through the real file router, the sweeps
+./quality.sh                                    # the backend gates, then the web install, types check, test and build
+```
+
 ## How this is being built
 
 The development **process is a deliverable**, not a footnote: Spec-Driven Development plus an agent harness with a backlog state machine (`feature_list.json`, max one feature in progress), external memory (`progress/`), a specification that precedes the code, and separate leader / spec-author / implementer / reviewer subagents each with an explicitly declared model. Every large feature passes a human approval gate at its specification, and every phase is tested by a human before its commit. `docs/PROCESS.md` explains all of it; the git history is the evidence, and for this repository it reads **harness first, specification copy second, code after**.
@@ -242,7 +272,7 @@ The development **process is a deliverable**, not a footnote: Spec-Driven Develo
 | 13 | Gateway / BFF | ✅ the Gateway, the system's only HTTP edge: every route of the contract, PyJWT bearer auth (the public set a literal, the protected set derived from the served routes), a login rate limit, list and detail from the read model only, every RPC subject and payload asserted against `asyncapi.yaml`, and server-sent events with a heartbeat, a replay buffer and `Last-Event-ID` reconnection (a client that falls behind is disconnected and resumes, never silently skipped); Orders' catalog and operator-cancel responders, with `SA-4`'s release order, the late credit approval, the race against forward progress proved both ways under a held lock, and the operator's note on the timeline. Three amendments raised and applied to all three repositories: **`SA-7`** (the missing `credit.release` row), **`SA-8`** (a stock reservation stranded by an operator cancel at `placed`, in all three builds, now released) and **`SA-9`** (every Gateway status declared; a timeout no longer promises "not applied"). Four units rejected once, two approved first time, none on production behaviour |
 | 14 | Health checks, OTel propagation, retry + DLQ | ✅ structlog JSON logs with `correlationId` and the trace id on every line of a unit of work; one OpenTelemetry trace from the Gateway through NATS, the write transaction, the outbox and Kafka to every consumer; the five dashboard series; retry then `<topic>.dlq` with `SA-3`'s headers in the three consumers, a stop-aware back-off and a boot-time retry budget; the saga's first park writes `order.saga_failed.v1` and a dead letter (none for an operator cancel or a terminal refusal); bounded readiness proven against paused real containers; `requestId` idempotent replay in Orders; the Gateway ends its event streams on shutdown |
 | 15 | End-to-end saga verification | ✅ `tests/saga_e2e/`: the Gateway, Orders, Fulfillment, Billing and the Projector booted in-process through their own lifespans over testcontainers; the happy path to `completed`, a `.99` order compensating in three services, redelivery absorbed, a poison dead-lettered by both consumers, and one trace id — the inbound request's — on every outbox row, Kafka header and saga command row of an order (R56, armed); passes with the developer stack down (`uv run pytest tests/saga_e2e`) |
-| 16 | Angular (Analog) web app | ⬜ |
+| 16 | Angular (Analog) web app | ✅ `apps/web`: Analog (Angular 22) with a Nitro BFF — the JWT stays server-side in a sealed httpOnly cookie, a CSRF origin check, an SSE proxy that forwards `Last-Event-ID` and closes the upstream when the browser leaves; types generated from `openapi.yaml` with a drift check; money from the ISO 4217 table (`SA-5`); login, orders, place order, order detail with the live timeline and its "caused by" links, stock, billing (Register payment, then a link to the paid order); a behavioural sweep fails every request each page makes and requires that error's own text on screen (`npx --yes pnpm@12.8.1 -C apps/web test:ci`; see *Running the web app*) |
 | 17 | Web component tests | ⬜ |
 | 18 | API tests through the Gateway | ⬜ |
 | 19 | Playwright end-to-end tests | ⬜ |

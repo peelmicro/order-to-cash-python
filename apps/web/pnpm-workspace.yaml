@@ -14,3 +14,11 @@ allowBuilds:
   lmdb: false
   # optional native accelerator for msgpackr; falls back to pure JS.
   msgpackr-extract: false
+  # pulled in by @spartan-ng/cli (the generator); its postinstall only installs an optional native daemon
+  # accelerator for the nx task runner, which this project never runs.
+  nx: false
+# pnpm 12 refuses packages published less than its minimum release age ago. These two were added by
+# `pnpm add` after it asked for the exclusion (exact pins, so the exclusion cannot widen to a later release).
+minimumReleaseAgeExclude:
+  - '@spartan-ng/brain@1.7.0'
+  - '@spartan-ng/cli@1.7.0'

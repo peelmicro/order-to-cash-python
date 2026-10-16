@@ -1,18 +1,19 @@
 # Current session
 
-**Feature:** none active — next phase 16 (Web app): `web_app` (id 29, `sdd: false`)
-**Status:** Phase 15 closed and committed at the full wrap-up (2026-10-15, `37cb5ab`, pushed); Phase 16 not started. Feature 28 `saga_e2e_verification` **done** (light, closed by the leader on 2026-10-13 after reading the diff, re-checking the three arms' restores with `cmp`, one green run and the full `quality.sh`); effort entry in `progress/history.md` (last entry)
-**Session started:** 2026-10-13 06:22 CEST
+**Feature:** none active — next phase 17 (Web component tests): `web_component_tests` (id 30, `sdd: false`)
+**Status:** Phase 16 closed and committed at the full wrap-up (2026-10-16); Phase 17 not started. Feature 29 `web_app` **done** (stages 1–3 approved by Opus reviews, stage 4 by a scoped Sonnet review; the leader's full `quality.sh` green after a sweep-premise fix); effort entry in `progress/history.md` (last entry). The full session log of Phase 16 is in `.arm/phase16/current.session4.md` (git-ignored) and in the history entry.
+**Session started:** 2026-10-15 (four sessions; the last on 2026-10-16)
 
 ## Goal
 
-Phase 15: feature 28's five acceptance items in one composed in-process suite (`tests/saga_e2e/`). Done.
+Phase 16: feature 29's seven acceptance items, in four stages. Done.
 
 ## Decisions taken this session
 
-- 06:23 one implementer pass (light), 06:42 returned: 5 passed, no production defect, three arms red and restored. Leader check: diff read, `cmp` of every armed file against its backup, `git status` clean under `services/` and `packages/`, one run 5/0/0/0 (pytest 27.9 s), full `quality.sh` (numbers in the history entry).
-- R56 marked **green** in `specs/shared/test-matrix.md` (composed-stack leg; #8 counts it green on the same leg): 56 green / 1 scoped / 6 not yet green.
-- Five dispositions accepted with re-open triggers (history entry).
+- Stage 4: the order link after a payment ported (#7 and #8 both have it); no order-detail → billing link (neither has one); R55's Status cell filled (column 5 is per-assessment, not an `SA-n`; #8 did the same in `83223f1`) and R55 is **DONE** (57 green / 1 scoped / 5 not yet green).
+- The sweep premise "every reviewed label is produced" failed in the leader's gate after being approved as not reproducible; fixed (fixture texts judged against the baseline's final page), armed, gate green.
+- Manual test by the maintainer on the full stack; one light change from it: the replenish message names the company (#9-only wording).
+- `.env` gained the four `WEB_*` keys (backup `.arm/env/env.before-phase16`).
 
 ## Blockers
 
@@ -20,20 +21,20 @@ None.
 
 ## Notes
 
-**Committed:** `37cb5ab` (the suite, its record, the R56 matrix row, README, `docs/PROCESS.md`, the effort entry and this brief), pushed; the external Plan, Solution Documents (F65), Stack Comparison and both quizzes updated at the wrap-up. Phase 16 starts in a **fresh session** (CLAUDE.md, one session per phase) from this file.
+**Committed:** the feature commit (apps/web, the R55 cell, README, `docs/PROCESS.md`, the seed README, `.env.example`, `quality.sh`, `init.sh`, `feature_list.json`, `progress/`), pushed; #7's number-box fix committed and pushed in `../order-to-cash-nestjs`. The external Plan, Solution Documents, Stack Comparison and both quizzes updated at the wrap-up. Phase 17 starts in a **fresh session** from this file.
 
-**Resume point:** the `otcpy` developer stack is **stopped** except `otcpy-n8n`; restart it with `docker compose -p otcpy -f docker-compose.infra.yml start postgres mongodb kafka nats` (add `otel-collector jaeger prometheus mailpit` for traces, metrics and email) and **wait for Kafka to report healthy** before starting any host (README, *Running the services*). The live dev data registers listed in Phase 14's brief are unchanged (Phase 15 touched no developer database or topic: testcontainers only).
+**Resume point:** at the wrap-up the developer stack and every host (Orders 8101, Fulfillment 8102, Billing 8103, Projector 8105, Gateway 3001, web 3010) were left **running** for the maintainer; check `docker ps` and `ss -ltn` first. Stop them by port (`for p in 3010 3001 8101 8102 8103 8105; do fuser -k -TERM $p/tcp; done`) and `docker compose -p otcpy -f docker-compose.infra.yml stop postgres mongodb kafka nats`. After a web rebuild, a browser tab needs a full reload (Ctrl+Shift+R): the single-page app keeps the old code in memory.
 
-**Brief for phase 16 — Web app (Plan step 21).** One feature: **29** `web_app`, **`sdd: false`**, **seven acceptance items** (count: `python3 -c "import json;print(len([f for f in json.load(open('feature_list.json'))['features'] if f['id']==29][0]['acceptance']))"`): the Nitro BFF ported from #7's `apps/web/server` (sealed httpOnly session cookie, server-side Gateway client, SSE proxy forwarding `Last-Event-ID` and aborting upstream on disconnect — the JWT never reaches the browser); types generated from `specs/shared/openapi.yaml` with a drift check; money from `shared_kernel`'s ISO 4217 table (SA-5), parity-checked both ways; every error shown is that error's own problem-document text (a behavioural sweep failing every request each page makes); the pages (login, orders list, place order, order detail with the live timeline and causal links, stock list + replenish, billing invoices + Register payment + credits); #8's inherited ids 98, 100, 101, 102, 103, 106, the stack label `#9 · Python / Angular`, `WEB_PORT=3010`; backlog 201's "caused by" claims describe live behaviour.
+**Brief for phase 17 — Web component tests (Plan step 22).** One feature: **30** `web_component_tests`, **`sdd: false`**, **three acceptance items** (count: `python3 -c "import json;print(len([f for f in json.load(open('feature_list.json'))['features'] if f['id']==30][0]['acceptance']))"`): timeline, place-order form, stock and billing tables covered; the SSE service tested with a fake EventSource AND against a real local SSE server with a forced mid-stream disconnect; loading-state tests hold the request on an unresolved promise.
 
-- **Classification:** **mixed.** The BFF (session, cookie, token custody, SSE proxy) is **security → full group** (implementer, then an Opus reviewer, arming and the defeat list). Pages, layout and text are **light**. Split the feature into stages, one implementer pass each, with a leader checkpoint between them (Phase 14's lesson): (1) BFF + auth + generated types + drift check; (2) money formatting + parity; (3) orders pages + live timeline; (4) stock and billing pages; (5) the error-text sweep + inherited ids. Review the BFF stage on its own.
-- **Baselines:** this is the trilogy's most-reviewed feature. #8 `../order-to-cash-dotnet/progress/history.md:2832` (approved at review round 4, three rejections — one generic error notice, harness edits that `.env.example` clobbered); #7 `../order-to-cash-nestjs/progress/history.md:1101` (14 pass sections, 7 review passes). Read both reviews' rejection reasons into the briefs as acceptance criteria before the first pass.
-- **Already in place:** `apps/web/` was scaffolded in Phase 5 (Analog 2.8.0 / Angular 22, pnpm 12.8.1 pinned in `packageManager`, build-script decisions in `apps/web/pnpm-workspace.yaml`); `quality.sh` step 7 already runs the web gates. Runners: Vitest via `@analogjs/vitest-angular` + Angular Testing Library, Playwright for e2e — no Jest/Karma/Jasmine. Port 3000 is often taken: `WEB_PORT=3010`.
-- **Process lessons carried:** every test under `setsid --wait` with the result from an artifact; arming never deletes or moves a tracked path; "cannot be armed" needs the failed probe; a shape #7 and #8 agree on is still evidence, not authority (ask whether `specs/shared/` decides it); **wait on a PID, never on `pgrep -f`** (Phase 15: an implementer's `until ! pgrep -f "pytest tests"` loop matched its own command line and never ended; the leader killed it).
-- **`quality.sh` time (maintainer ruling, 2026-10-11):** record pytest's time and pass count, raise it only if the time per test rises by more than 25 % over the previous wrap-up. Last value: Phase 15's (history entry).
-- **Accepted, with a re-open trigger:** Phase 15's set is in its history entry; earlier phases' are unchanged.
-- **Carried into later features:** feature **29** owns the "caused by" UI claim (backlog 201 acceptance 2) and R55's web half; feature **31** `api_tests` runs the black-box script against the Gateway; feature **35** builds the dashboards over feature 27's five series.
-- **Commits:** one per feature (or per service when features of one phase rewrite the same files, Phase 13 ruling); an amendment always on its own and before the code that depends on it.
+- **Start with an inventory, not with code.** Feature 29 already ships 33 Vitest files / 668 tests, including `R-list-states` / `R-stock-states` / `R-billing-states` (requests held on unresolved promises), `order-detail.spec.ts` (timeline, `R-stream-live`, `R-dedup`), and the BFF's SSE contract on a real socket (`src/server/testing/bff-contract.ts`, `R-stream`). Map each of feature 30's three items to existing tests by name (a search result, one classification per hit) before writing anything; write only what is missing. Does a *client-side* SSE test with a real local SSE server and a forced mid-stream disconnect exist (the browser half, `Last-Event-ID` re-sent on reconnect)? That is the likeliest gap; #7 has it in `app/lib/order-stream-client.spec.ts` (history `web_app` entry) and #8 in `apps/web/src/lib/order-stream-client.test.ts`.
+- **Baselines:** #8 closed id 30 together with id 29 (`../order-to-cash-dotnet/progress/history.md:2884`); #7 `../order-to-cash-nestjs/progress/history.md:1124`.
+- **Classification:** test-only → **light** (one implementer, the leader reads the diff and runs the tests), unless the inventory finds a product defect, which is then fixed in the phase as full group.
+- **Process lessons carried:** a test that fails once on a green tree is a finding until its mechanism is shown — seven green runs are not evidence (Phase 16's sweep premise); give a flaky assertion a diagnostic message before chasing it; jsdom cannot show caret, `badInput` or `change` behaviour (three Phase 16 defects were found only in Chromium; the Chromium keystroke check is carried to feature 32); arm backups go in the ROOT `.arm/` (only `/.arm/` is git-ignored; a Phase 16 backup written from `apps/web` landed in `apps/web/.arm/` and would have been committed); every test under `setsid --wait`, wait on a PID.
+- **`quality.sh` time:** Phase 16: 875.31 s inside pytest, 5 231 tests (0.167 s per test, +1.4 %); web 33 files / 668 tests.
+- **Open for the maintainer (not blocking):** two cosmetic #7 stock-page leftovers (`stock/index.vue` `?? '…'` placeholder; the pager count while loading); for #8, `billing-view.tsx:68` claims a credit check fails only at zero (R39: it fails when the hold exceeds available credit); a text caret seen in the maintainer's screenshots is not drawn by the app and not caret browsing (suspected a browser extension).
+- **Carried into later features:** feature **32** `e2e_playwright` has the Chromium keystroke check (feature 29 stage 2, item 8); feature **31** `api_tests` runs the black-box script against the Gateway.
+- **Commits:** one per feature; an amendment always on its own and before the code that depends on it.
 
 ---
 

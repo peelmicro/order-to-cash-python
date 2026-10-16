@@ -1,21 +1,20 @@
-import {
-  provideHttpClient,
-  withInterceptors,
-} from '@angular/common/http';
-import {
-  ApplicationConfig,
-  provideBrowserGlobalErrorListeners,
-} from '@angular/core';
-import { provideClientHydration, withEventReplay } from '@angular/platform-browser';
-import { provideFileRouter, requestContextInterceptor } from '@analogjs/router';
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
+import { TitleStrategy } from '@angular/router';
+import { provideFileRouter } from '@analogjs/router';
+import { provideTanStackQuery } from '@tanstack/angular-query-experimental';
+import { AppTitleStrategy } from './lib/title-strategy';
+import { QUERY_CLIENT } from './session/signed-out';
 
+/**
+ * The application's providers. src/app/testing/browser-harness.ts mounts the same ones in the test bed, replacing only
+ * the network seam; src/app/app-config.spec.ts fails if this list gains a provider the harness would not have.
+ */
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
+    provideZonelessChangeDetection(),
     provideFileRouter(),
-    provideHttpClient(
-      withInterceptors([requestContextInterceptor])
-    ),
-    provideClientHydration(withEventReplay()),
+    { provide: TitleStrategy, useClass: AppTitleStrategy },
+    provideTanStackQuery(QUERY_CLIENT),
   ],
 };

@@ -1,0 +1,27 @@
+# Brief — reviewer (Opus), feature 29 `web_app`, **stage 3 of 4**: stock and billing pages (full group: Register payment parses money)
+
+**Inputs:** the brief `progress/brief_impl_web_app_stage3.md` (8 acceptance items; premise check `progress/premise_impl_web_app_stage3.md`); the record `progress/impl_web_app.md` section **"Stage 3"** (line 793 on, sections 1–10); arms and logs in `.arm/web29s3/` (`arm.py`, `results.jsonl`, `results_batch1.jsonl`, `results_before_rerun_all.jsonl`, `live/`, `logs/gate_*.log`). Earlier reviews: `progress/review_web_app.md` (stage 2 re-review and its *Advisories carried to stage 3*, line 710 on).
+
+**Already checked by the leader (this session, by command):** `git status` shows no tracked change outside `apps/web/**` beyond the leader's own files (`.env.example`, `feature_list.json`, `init.sh`, `quality.sh`, `progress/current.md`, from stage 1 or earlier); after the interruption, every arm directory with a backup has a result row with `cmp` identical, and no host, container (beyond `otcpy-n8n`) or listener on 3010 was left. Not checked: everything below.
+
+**Context:** the session was interrupted at about 17:46 (VS Code closed); the implementer resumed, re-ran 60 arms and the gates. The record claims: Vitest **32 files / 644 tests** (466 + 39 + 55 + 23 + 54 + 7), 83 arms, survivors classified (N4a, N5a by design; N7 a negative control; H01 against the renamed test), equivalent mutants N3b/N3d/N4b/N8b fixed by giving unreadable text its own sentence (this **changed an existing place-order quantity message**), a live finding (ambiguous Replenish buttons) fixed.
+
+## Questions, each answered by a probe (not by reading the record)
+
+1. **Money (blocking class):** Register payment sends exactly the typed amount in the **invoice's** exponent. Probe the production build in Chromium (the implementer's live script `.arm/web29s3/live/live.mjs` shows how): float traps (`"0.29"`, `"19.99"`), BHD `"1.005"` → 1005 and JPY `"1999"` → 1999 at the BFF (the record says these are only proven at the seam/BFF by tests: are those tests sound? arm one), malformed (`"1-2"`, `"1e3"`, `"12e"`) refused in words and nothing sent, a value above MAX_SAFE minor units. Replenish `units`: integer, `"1.5"` and `"1e3"` refused. The BFF forwards the bytes unchanged (BB1–BB3: re-run them).
+2. **Register payment semantics vs `specs/shared/openapi.yaml` lines 664–760:** request body, idempotency/replay, the 200 vs 201 rendering, the prefill and suggested reference. Does the page say anything the spec does not guarantee?
+3. **#8 id 101:** names from the catalogue, the code once when unnamed, `productName` precedence, a catalogue failure keeps the table. The fixtures must not satisfy "never twice" by accident.
+4. **The number-box population guard** (`number-boxes.spec.ts`): attack it with forms the implementer did not try (an input built by `Renderer2`/`document.createElement`, a `[type]` binding, an `<input type=number>` in a component outside `src/app/pages`, a template in a separate `.html` file if Angular/Analog allows one here). Is a syntax guard the right instrument here, or does it need a render-based half (CLAUDE.md, defeat row 11; #7 needed one this session: `../order-to-cash-nestjs/progress/review_web_number_inputs.md`)? Judge the four survivors' classifications.
+5. **The changed place-order message:** is the change correct for every place-order box, do stage 2's place-order tests still prove what they claimed (were any assertions weakened or retitled?), and do stage 2's arms touching those boxes (P01, V02, V03, G01–G05, the R-bad-input rows) still fail? Re-run a sample.
+6. **States and sweep:** loading/empty/error non-vacuous on stock, invoices and credits; the pager claims no count while loading or after a failure; the sweep covers both pages' load requests, actions, interaction-gated reads and labels (re-run W6 and at least two sweep arms); the `PRD-0001` fixture label note (item 6 in section 10).
+7. **H01 / draft writers:** check the enumeration in section 5 by your own search; is there any path that changes an existing box's draft from outside, and if so is it armed?
+8. **Re-run a sample of arms** of your own choosing (at least 10, spread across sections), plus at least two mutations of your own on the money path. Arming protocol with backups in `.arm/web29r4/s3/`.
+9. **Gates:** `quality.sh` section 7's commands and `uv run pytest packages/shared_kernel/tests/test_currency_exponent.py`; reconcile 32 / 644.
+
+## Bounds and verdict
+
+Read-only apart from `.arm/web29r4/s3/`. If you run the live stack (optional; question 1 can use a stub Gateway as #7's reviewer did), restart it as `progress/current.md` *Notes* says and stop everything you started (`docker ps`, `ss -ltnp` before and after; leave `otcpy-n8n` as found). No git command that writes the index or working tree.
+
+**Stopping rule (written before dispatch):** blocking = money or units sent that differ from valid typed text, malformed text sent or silently dropped, a page that states something the spec does not guarantee about a payment, id 101's acceptance unmet, a claimed guard that does not fail when armed (an unclassified survivor), a stage 2 guard weakened by this stage, a bound broken, a gate red. Everything else is an advisory with a recommendation. Under `CLAUDE.md`, one fix round is allowed after a rejection; a second rejection goes to the maintainer.
+
+Write section **"Stage 3 review"** into `progress/review_web_app.md` (append). Return only the verdict, the counts, and at most 5 lines.
