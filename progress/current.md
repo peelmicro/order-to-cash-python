@@ -13,7 +13,7 @@ Phase 17: feature 30's three acceptance items, plus the maintainer-approved #7 a
 - Inventory before code: items 1 and 3 were already met by Phase 16's page tests; item 2's real-server test closed the stream cleanly, so three forced-disconnect cases were added (`response.destroy()`, give-up, 401).
 - Angular Testing Library restored (feature title, CLAUDE.md, #7/#8 parity), pinned **19.5.0**: 19.6.0 was published the same day and pnpm wanted a release-age exception, refused. Rule for briefs: read `npm view <pkg> time` before naming a version.
 - #7: stock, orders, invoices and credit-line pagers no longer claim a count while loading or after a failure; the stock replenish outcome no longer shows "…". #8: `billing-view.tsx:68` states R39.
-- #7's older page specs never run Testing Library's cleanup (no Vitest `globals`): **ACCEPTED, NOT FIXED** (maintainer chose the wrap-up); re-open trigger in the history entry.
+- #7's older page specs never ran Testing Library's cleanup (no Vitest `globals`). Recorded as accepted at the wrap-up without the maintainer having seen the question; **fixed on 2026-10-18 at the maintainer's request** (global `afterEach(cleanup)`, armed guard `app/test-cleanup.spec.ts`, no existing test failed; record `progress/impl_web7_test_cleanup.md`).
 
 ## Blockers
 
@@ -21,7 +21,7 @@ None.
 
 ## Notes
 
-**Committed:** `4c06738`, the feature commit (apps/web tests, `@testing-library/angular` 19.5.0, README, `docs/PROCESS.md`, `feature_list.json`, `progress/`), pushed; #7 `32b3c25` (list pages) and #8 `c5b9cb6` (credit sentence), each with its own history entry, pushed. The external Plan (Phase 17 COMPLETED; benchmark rows for `web_app`, which Phase 16 had left out, and `web_component_tests`), Solution Documents (Parte 18, F71), Stack Comparison (web-tests row ✔ Angular Testing Library, *Cierre de la Fase 17 del #9*) and both quizzes (chapter 18 each, re-embedded, checked in headless Chromium: no page errors, the new text in *Documento*) updated at the wrap-up; backups in `.arm/phase17/external/`. Pushing needs `peelmicro`'s token (the per-command credential helper; never `gh auth switch`). Phase 18 starts in a **fresh session** from this file.
+**Committed:** `4c06738`, the feature commit (apps/web tests, `@testing-library/angular` 19.5.0, README, `docs/PROCESS.md`, `feature_list.json`, `progress/`), pushed; #7 `32b3c25` (list pages) and `34cdad7` (test cleanup, 2026-10-18) and #8 `c5b9cb6` (credit sentence), each with its own history entry, pushed. The external Plan (Phase 17 COMPLETED; benchmark rows for `web_app`, which Phase 16 had left out, and `web_component_tests`), Solution Documents (Parte 18, F71), Stack Comparison (web-tests row ✔ Angular Testing Library, *Cierre de la Fase 17 del #9*) and both quizzes (chapter 18 each, re-embedded, checked in headless Chromium: no page errors, the new text in *Documento*) updated at the wrap-up; backups in `.arm/phase17/external/`. Pushing needs `peelmicro`'s token (the per-command credential helper; never `gh auth switch`). Phase 18 starts in a **fresh session** from this file.
 
 **Resume point:** the developer stack was down for the whole of Phase 17 (only `otcpy-n8n` up); check `docker ps` and `ss -ltn` first. After a web rebuild, a browser tab needs a full reload (Ctrl+Shift+R).
 
