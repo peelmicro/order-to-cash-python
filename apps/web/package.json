@@ -55,6 +55,7 @@
     "@angular/compiler-cli": "^22.0.0",
     "@spartan-ng/cli": "1.7.0",
     "@tailwindcss/vite": "4.3.3",
+    "@testing-library/angular": "19.5.0",
     "@testing-library/dom": "10.4.2",
     "@types/node": "24.13.5",
     "eventsource": "5.1.1",

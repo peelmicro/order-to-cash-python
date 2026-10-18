@@ -557,7 +557,7 @@
       "phase": 17,
       "title": "Web component tests: Vitest + Angular Testing Library (no Jest, Karma or Jasmine)",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "timeline, place-order form, stock and billing tables covered",
         "the SSE service tested with a fake EventSource AND against a real local SSE server with a forced mid-stream disconnect",

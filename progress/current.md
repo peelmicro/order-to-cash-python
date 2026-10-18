@@ -1,19 +1,19 @@
 # Current session
 
-**Feature:** none active — next phase 17 (Web component tests): `web_component_tests` (id 30, `sdd: false`)
-**Status:** Phase 16 closed and committed at the full wrap-up (2026-10-16, `82e8d6a`, pushed); Phase 17 not started. Feature 29 `web_app` **done** (stages 1–3 approved by Opus reviews, stage 4 by a scoped Sonnet review; the leader's full `quality.sh` green after a sweep-premise fix); effort entry in `progress/history.md` (last entry). The full session log of Phase 16 is in `.arm/phase16/current.session4.md` (git-ignored) and in the history entry.
-**Session started:** 2026-10-15 (four sessions; the last on 2026-10-16)
+**Feature:** none active — next phase 18 (API tests): `api_tests` (id 31, `sdd: false`)
+**Status:** Phase 17 closed and committed at the full wrap-up (2026-10-18); Phase 18 not started. Feature 30 `web_component_tests` **done** (light, closed by the leader: diff read, `quality.sh` green); effort entry in `progress/history.md` (last entry). #7's list-page fixes and #8's credit sentence committed and pushed in their own repositories.
+**Session started:** 2026-10-17 (one session, closed on 2026-10-18)
 
 ## Goal
 
-Phase 16: feature 29's seven acceptance items, in four stages. Done.
+Phase 17: feature 30's three acceptance items, plus the maintainer-approved #7 and #8 web fixes. Done.
 
 ## Decisions taken this session
 
-- Stage 4: the order link after a payment ported (#7 and #8 both have it); no order-detail → billing link (neither has one); R55's Status cell filled (column 5 is per-assessment, not an `SA-n`; #8 did the same in `83223f1`) and R55 is **DONE** (57 green / 1 scoped / 5 not yet green).
-- The sweep premise "every reviewed label is produced" failed in the leader's gate after being approved as not reproducible; fixed (fixture texts judged against the baseline's final page), armed, gate green.
-- Manual test by the maintainer on the full stack; one light change from it: the replenish message names the company (#9-only wording).
-- `.env` gained the four `WEB_*` keys (backup `.arm/env/env.before-phase16`).
+- Inventory before code: items 1 and 3 were already met by Phase 16's page tests; item 2's real-server test closed the stream cleanly, so three forced-disconnect cases were added (`response.destroy()`, give-up, 401).
+- Angular Testing Library restored (feature title, CLAUDE.md, #7/#8 parity), pinned **19.5.0**: 19.6.0 was published the same day and pnpm wanted a release-age exception, refused. Rule for briefs: read `npm view <pkg> time` before naming a version.
+- #7: stock, orders, invoices and credit-line pagers no longer claim a count while loading or after a failure; the stock replenish outcome no longer shows "…". #8: `billing-view.tsx:68` states R39.
+- #7's older page specs never run Testing Library's cleanup (no Vitest `globals`): **ACCEPTED, NOT FIXED** (maintainer chose the wrap-up); re-open trigger in the history entry.
 
 ## Blockers
 
@@ -21,19 +21,17 @@ None.
 
 ## Notes
 
-**Committed:** `82e8d6a`, the feature commit (apps/web, the R55 cell, README, `docs/PROCESS.md`, the seed README, `.env.example`, `quality.sh`, `init.sh`, `feature_list.json`, `progress/`), pushed; #7's number-box fix committed and pushed in `../order-to-cash-nestjs` (`d7871d2`). The external Plan (Phase 16 COMPLETED), Solution Documents (Parte 17, F66–F70), Stack Comparison (web rows ✔, *Cierre de la Fase 16 del #9*) and both quizzes (chapter 17 each, re-embedded, checked in headless Chromium) updated at the wrap-up; backups in `.arm/phase16/external/`. Pushing needs `peelmicro`'s token while gh's active account is `ediez-online` (the per-command credential helper; never `gh auth switch`). Phase 17 starts in a **fresh session** from this file.
+**Resume point:** the developer stack was down for the whole of Phase 17 (only `otcpy-n8n` up); check `docker ps` and `ss -ltn` first. After a web rebuild, a browser tab needs a full reload (Ctrl+Shift+R).
 
-**Resume point:** at the wrap-up the developer stack and every host (Orders 8101, Fulfillment 8102, Billing 8103, Projector 8105, Gateway 3001, web 3010) were left **running** for the maintainer; check `docker ps` and `ss -ltn` first. Stop them by port (`for p in 3010 3001 8101 8102 8103 8105; do fuser -k -TERM $p/tcp; done`) and `docker compose -p otcpy -f docker-compose.infra.yml stop postgres mongodb kafka nats`. After a web rebuild, a browser tab needs a full reload (Ctrl+Shift+R): the single-page app keeps the old code in memory.
+**Brief for phase 18 — API tests (Plan step 23).** One feature: **31** `api_tests`, **`sdd: false`**, **six acceptance items** (count: `python3 -c "import json;print(len([f for f in json.load(open('feature_list.json'))['features'] if f['id']==31][0]['acceptance']))"`): happy and compensation paths; a duplicate `paymentReference` yields one payment; #7's assertions inventoried (from #8's inventory) and each mapped; the causal-order check fails when it checked too few edges (#8 id 105); R49's API half with Billing's own database unchanged; R1's API half — every monetary field of every Gateway response an integer with an ISO 4217 code, discovered by shape (port #8's `MoneyFieldSweep`, `../order-to-cash-dotnet/tests/Gateway.IntegrationTests/MoneyFieldSweep.cs`, `MoneyRepresentationHttpTests.cs`), armed with a wrong-shape currency and a non-integer amount; flips R1 from scoped to green.
 
-**Brief for phase 17 — Web component tests (Plan step 22).** One feature: **30** `web_component_tests`, **`sdd: false`**, **three acceptance items** (count: `python3 -c "import json;print(len([f for f in json.load(open('feature_list.json'))['features'] if f['id']==30][0]['acceptance']))"`): timeline, place-order form, stock and billing tables covered; the SSE service tested with a fake EventSource AND against a real local SSE server with a forced mid-stream disconnect; loading-state tests hold the request on an unresolved promise.
-
-- **Start with an inventory, not with code.** Feature 29 already ships 33 Vitest files / 668 tests, including `R-list-states` / `R-stock-states` / `R-billing-states` (requests held on unresolved promises), `order-detail.spec.ts` (timeline, `R-stream-live`, `R-dedup`), and the BFF's SSE contract on a real socket (`src/server/testing/bff-contract.ts`, `R-stream`). Map each of feature 30's three items to existing tests by name (a search result, one classification per hit) before writing anything; write only what is missing. Does a *client-side* SSE test with a real local SSE server and a forced mid-stream disconnect exist (the browser half, `Last-Event-ID` re-sent on reconnect)? That is the likeliest gap; #7 has it in `app/lib/order-stream-client.spec.ts` (history `web_app` entry) and #8 in `apps/web/src/lib/order-stream-client.test.ts`.
-- **Baselines:** #8 closed id 30 together with id 29 (`../order-to-cash-dotnet/progress/history.md:2884`); #7 `../order-to-cash-nestjs/progress/history.md:1124`.
-- **Classification:** test-only → **light** (one implementer, the leader reads the diff and runs the tests), unless the inventory finds a product defect, which is then fixed in the phase as full group.
-- **Process lessons carried:** a test that fails once on a green tree is a finding until its mechanism is shown — seven green runs are not evidence (Phase 16's sweep premise); give a flaky assertion a diagnostic message before chasing it; jsdom cannot show caret, `badInput` or `change` behaviour (three Phase 16 defects were found only in Chromium; the Chromium keystroke check is carried to feature 32); arm backups go in the ROOT `.arm/` (only `/.arm/` is git-ignored; a Phase 16 backup written from `apps/web` landed in `apps/web/.arm/` and would have been committed); every test under `setsid --wait`, wait on a PID.
-- **`quality.sh` time:** Phase 16: 875.31 s inside pytest, 5 231 tests (0.167 s per test, +1.4 %); web 33 files / 668 tests.
-- **Open for the maintainer (not blocking):** two cosmetic #7 stock-page leftovers (`stock/index.vue` `?? '…'` placeholder; the pager count while loading); for #8, `billing-view.tsx:68` claims a credit check fails only at zero (R39: it fails when the hold exceeds available credit); a text caret seen in the maintainer's screenshots is not drawn by the app and not caret browsing (suspected a browser extension).
-- **Carried into later features:** feature **32** `e2e_playwright` has the Chromium keystroke check (feature 29 stage 2, item 8); feature **31** `api_tests` runs the black-box script against the Gateway.
+- **Classification: full group** (wire contract: R1's money representation, R49's refusals against Billing's database). Implementer, then an Opus reviewer, premise_checker over the brief first.
+- **Start from what exists:** `tests/saga_e2e/` (Phase 15) already boots the Gateway, Orders, Fulfillment, Billing and the Projector in-process over testcontainers and drives orders through the Gateway; ask whether the black-box script reuses that fleet fixture (and how it keeps the Gateway black-box: httpx as the only client) before building another.
+- **Baselines:** #8 `../order-to-cash-dotnet/progress/history.md:3079` (≈1 h 30 min implementer, approved first review; its N1 — no at-least-one-edge check in `AssertCausalOrder` — is #8 id 105, an acceptance item here); #7 `../order-to-cash-nestjs/progress/history.md:1168` (approved on the third review).
+- **Matrix rows this phase can move:** R1 (scoped → green), R24's API half (feature 31), R49 (not yet green). Recount the Status column by script before and after: 57 green / 1 scoped (R1) / 5 not yet green (R24, R28, R48, R49, R61) at the end of Phase 17, where R29 counts green because both of its cases are DONE.
+- **Process lessons carried:** integration suites must pass with the developer infrastructure down; every run under `setsid --wait`, wait on a PID; arm backups in the ROOT `.arm/`; a test that fails once on a green tree is a finding until its mechanism is shown.
+- **`quality.sh` time:** Phase 17: 23 min 10 s wall; pytest 5 231 passed in 843.28 s (0.161 s per test); web 35 files / 687 tests, Vitest 524.73 s.
+- **Carried into later features:** feature **32** `e2e_playwright` has the Chromium keystroke check (feature 29 stage 2, item 8).
 - **Commits:** one per feature; an amendment always on its own and before the code that depends on it.
 
 ---
