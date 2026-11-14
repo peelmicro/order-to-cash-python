@@ -124,9 +124,21 @@ async def wait_for_event(process: Process, claim: str, match: Match, seconds: fl
         ) from None
 
 
-def booted(line: Line) -> bool:
+def startup_complete(line: Line) -> bool:
+    """uvicorn's lifespan line. It is logged BEFORE the listening socket is bound (entry 218)."""
     return line.get("logger") == "uvicorn.error" and line.get("event") == (
         "Application startup complete."
+    )
+
+
+def booted(line: Line) -> bool:
+    """The server ACCEPTS connections: uvicorn logs "Uvicorn running on ..." after `create_server`
+    has bound the socket, which `startup_complete` does not guarantee (entry 218)."""
+    event = line.get("event")
+    return (
+        line.get("logger") == "uvicorn.error"
+        and isinstance(event, str)
+        and event.startswith("Uvicorn running on ")
     )
 
 

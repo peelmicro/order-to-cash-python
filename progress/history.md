@@ -1577,3 +1577,17 @@ testcontainers' `MongoDbContainer` returns on the first line. Until the real ser
 **Effort:** leader diagnosis about 25 min; implementer about 70 min, two `quality.sh` runs included. Run 1 of those exposed entry 218.
 
 **Against the baselines:** no #7 or #8 equivalent was found. Both used their own container libraries; not investigated further.
+
+## booted_predicate_fires_before_the_socket_listens (id 218, phase 18) — 2026-10-18 — light (test-only), one implementer pass, closed by the leader after reading the diff and running the affected tests
+
+**Found by:** the leader, checking the one-off `test_or13` failure (`httpx.ConnectError`) in entry 217's first `quality.sh` run.
+
+**Mechanism (read in the library).** uvicorn logs "Application startup complete." from `lifespan.startup()` (`uvicorn/server.py:116`), **before** `create_server` binds the socket (`:154` and after). `log_contract_support.booted` matched that line, so the 8 sites in 7 files that connect right after it raced the bind. It was not a port collision: `tests/api` binds port 0 and holds it.
+
+**Change.** `booted` now matches "Uvicorn running on …", which is logged after the bind. The old predicate is kept as `startup_complete`, so one change covers all 8 sites. Guard: `tests/observability/test_booted_predicate.py`. The arm (`booted` returning `startup_complete`) failed, naming the race. Limit: the bind gap is microseconds, so the guard proves the predicate and the line order, not the race.
+
+**Leader check:** diff read; 5 passed in 30.33 s at load average 9.6. The implementer's three consecutive runs gave 9 of 9 each, and `quality.sh` was green (5 288 passed).
+
+**Effort:** leader diagnosis about 15 min; implementer about 43 min.
+
+**Against the baselines:** none; this is a #9-only harness.
