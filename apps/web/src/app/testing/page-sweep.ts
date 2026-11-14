@@ -147,7 +147,7 @@ export function failureStatuses(key: string, route: string): number[] {
     if (!operation) throw new Error(`sweep: ${key} matches no operation in openapi.yaml and is not in WEB_ONLY_STATUSES`);
     declared = [...operation.statuses, ...BFF_LOCAL_STATUSES];
   }
-  const failing = [...new Set(declared)].filter((status) => status >= 400 && (status !== 401 || (route === '/login' && key === 'POST /api/auth/login'))).sort();
+  const failing = [...new Set(declared)].filter((status) => status >= 400 && (status !== 401 || (route === '/login' && key === 'POST /api/auth/login'))).sort((a, b) => a - b);
   if (failing.length === 0) throw new Error(`sweep: ${key} declares no failure status the sweep can serve on ${route}`);
   return failing;
 }

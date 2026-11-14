@@ -1665,3 +1665,42 @@ testcontainers' `MongoDbContainer` returns on the first line. Until the real ser
 - Totals: **1 implementer (2 passes), 0 reviews (light), 0 rejections, about 35 min of agent work, about 157k subagent tokens.**
 
 **Against the baselines:** #8 used 1 implementer session, light, with no rejection, and fired one workflow in that phase (the other three only at its Phase 25 checkpoint, `561ce37`). #7 was approved on its second review (`../order-to-cash-nestjs/progress/history.md:1281`), after rejections for defects #9 inherited already fixed in the JSON. #9 did more than #8 (all four workflows fired, idempotence counted and armed, scripted screenshots, two fixed defects) in one light implementer session. Item 4 cost an extra pass: the first brief let the implementer stop on an existing owner account instead of telling it to use a throwaway instance.
+
+## Id 34 `sonarqube_quality_gates` (phase 21, light): closed 2026-11-14 by the leader after reading the diff and re-running the checks; one implementer (3 passes), no separate review
+
+- **Classification: light**, inherited: #8 ran it light (`../order-to-cash-dotnet/progress/history.md:3152`). Nothing in #9 forced a difference: root scripts, root config and docs, plus one line of a web test helper approved by the maintainer at round 3.
+- **Scope check, done before dispatch:** only id 34 has phase 21 in `feature_list.json`; the Plan's `### Phase 21` lists only it; the Stack Comparison's "Fase 21" lines (998, 1000, 1008) are all #8's closing.
+- **Change:** `sonar-project.properties` (new; #7's name, because #8's rename reason is specific to `dotnet-sonarscanner end`), `scripts/sonar-scan.sh` (new; `sonarsource/sonar-scanner-cli:12.1.0.3233_8.0.1` in a throwaway container, the repository mounted at its own absolute path), comments in `quality.sh`, a README section, an `.env.example` comment, and `apps/web/src/app/testing/page-sweep.ts:150` (`.sort((a, b) => a - b)`). `pyproject.toml` and `docker-compose.infra.yml` unchanged.
+- **Acceptance, per unit:**
+  1. **Coverage, once across the workspace:** one pytest process (5288 tests) writing one `.coverage` (491 files, branch data). Arm (a), corrupting the artifact: domain-only gave "total of 0 is less than fail-under=80" with the overall gate still at 81%, and everything-but-domain gave "total of 16 is less than fail-under=60" with the domain gate still at 98%, both exit 2. Arm (b), a real exclusion: `testpaths` narrowed, so the real pytest failed with "Total coverage: 43.14%". A coverage `omit` was rejected as the arm because it raises the figure (98% against 96%, measured). Restored with `cp`, `cmp` and sha256; the full re-run was green at 96.40%.
+  2. **ruff, mypy, import-linter:** clean (1259 files formatted, 985 source files, 13 contracts kept, 0 broken).
+  3. **SonarQube:** `ANALYSIS SUCCESSFUL` on a fresh instance. The server shows 487 Python and 96 TypeScript source files and 2076 / 184 branch conditions, equal to coverage.py's `num_branches` / `missing_branches`. 0 open bugs and vulnerabilities after round 3, 500 code smells (not triaged), quality gate `OK`. The gate's only condition is on new code of a first analysis, so `OK` says nothing about the existing code.
+- **Findings, all fixed in this phase:**
+  - **Coverage-path mapping:** with #7's mount (`-v $PWD:/usr/src`) the scan still printed `ANALYSIS SUCCESSFUL` and exited 0, but logged "Cannot resolve 491 file paths" and the server showed 0.0% coverage. Fixed by mounting at the host path. The README says to check the server, not the log.
+  - **Missing continuation backslash** in `sonar.exclusions` (found by the leader in round 1's diff): six patterns became a stray key, and the scanner's own "Excluded sources" line showed it. Fixed in round 2 and verified by parsing the file as Java properties. The leader's premise that `vite-env.d.ts` was being analysed was **wrong in its effect**: a rescan with the old value gave a `diff`-identical server file list. The defect was real but changed no result.
+  - **The first scan's 25 bugs and vulnerabilities**, triaged one row per issue in round 2. The maintainer's disposition was "fix 1, suppress 24". The true positive, a lexicographic sort of HTTP status numbers in a test helper (harmless while every status has three digits), was fixed. 24 false positives are suppressed as 14 (rule, file) entries with written reasons, #7's S7739 style. Armed: removing `e1` and `e11` brought back exactly 7 issues, line 150 not among them; restored, `cmp`, 0 open.
+  - **A scan picked up a git-ignored `.arm/` tsconfig** ("Failed to parse tsconfig"): fixed with `sonar.typescript.tsconfigPaths` and an `.arm/**` exclusion.
+- **Dispositions taken by the leader with evidence, not asked:**
+  - **Web coverage is not imported:** as in #8 (`../order-to-cash-dotnet/sonar-scan.properties:48-65`, `:105-109`); #7 imported lcov. No dependency added. `apps/web` shows 0.0%, and the project-wide figure is 86.7%.
+  - **Elasticsearch's disk watermark:** this machine's disk is at 91%, so the committed `sonarqube` service crash-loops. No compose change: #7 hit the same watermark and freed disk (`../order-to-cash-nestjs/progress/impl_sonarqube_quality_gates.md:146`). The scans ran with an uncommitted tmpfs override (`.arm/phase21/sonar-override.yml`), and the README names the symptom.
+- **The leader's own check:**
+  - read the whole diff;
+  - parsed `sonar-project.properties` as Java properties: 10 keys before the suppressions, then 14 suppression entries adding up to the 24 triaged issues, with no orphan and no stray key;
+  - re-ran both coverage gates on the data file (96% overall, 98% domain) and coverage.py's branch totals (2076 / 184, matching the server);
+  - ran an independent domain-gate arm on a copy of `.coverage`, with 90% of the domain arcs dropped: "total of 12 is less than fail-under=80", exit 2, overall still 83%, original `cmp`-untouched. A first attempt that emptied the files instead failed on "No data to report", a different message, and was not counted;
+  - ran ruff, mypy and lint-imports;
+  - ran the web `types:check`, `test:ci` (35 files, 687 tests) and `build` with the pinned pnpm;
+  - ran `bash -n scripts/sonar-scan.sh` (shellcheck is not installed);
+  - `docker ps` shows nothing of this session's running.
+- **Ported-idiom ledger:** in `progress/impl_sonarqube_quality_gates.md` (coverage merge, scanner, properties file name, coverage-path mapping). #8's arms are classified there.
+- **Inherited from #8's record:** #8's untriaged first scan **avoided** (triaged and dispositioned). #8's gap of an unwritten history entry **avoided**. No #8 backlog id was mapped to this feature.
+- Record: `progress/impl_sonarqube_quality_gates.md`.
+
+**Effort record** (agent durations measured by the harness this session):
+- implementer round 1 (Sonnet): 1 h 14 min, 114k tokens, including two full pytest runs and three SonarQube starts against the crash-loop;
+- round 2, the leader's correction plus the triage: 5 min, 146k tokens;
+- round 3, the maintainer's disposition: 15 min, 165k tokens;
+- leader checks: about 15 min, mostly the web suite.
+- Totals: **1 implementer (3 passes), 0 reviews (light), 1 leader correction round (not a rejection by a reviewer), about 1 h 34 min of agent work, about 425k subagent tokens.**
+
+**Against the baselines:** #8 used 1 implementer session with no rejection; its entry records no duration. #7 took about 32 min of implementation plus one approving review (`../order-to-cash-nestjs/progress/history.md:1247`). **#9 was not faster than either.** The extra time went to the disk-watermark crash-loop (an environment cost #7 also paid), the path-mapping failure that `ANALYSIS SUCCESSFUL` hides, and the triage #8 skipped.

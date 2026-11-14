@@ -7,6 +7,9 @@
 #
 # Exit codes: 0 = every gate passed; non-zero = the exit code of the first failing step.
 
+# SonarQube is NOT part of this script and never starts: it is optional (compose profile "sonar",
+# scripts/sonar-scan.sh, README "Quality gates and SonarQube"). The coverage gates below are the enforced ones.
+
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -34,6 +37,10 @@ section "5. contracts drift check (generated models == a fresh generation from s
 uv run python scripts/generate_contracts.py --check
 
 section "6. pytest + coverage (overall gate: fail_under in pyproject.toml, >= 60%)"
+# ONE pytest process, ONE .coverage data file for the whole workspace (union by line and branch; no
+# per-package averaging). Armed in progress/impl_sonarqube_quality_gates.md: a corrupted .coverage
+# (domain-only and everything-but-domain) and a narrowed `testpaths` (a test path left out), each failing
+# with its own message and exit code.
 uv run pytest --cov --cov-report=term-missing:skip-covered
 
 section "6b. domain coverage (>= ${DOMAIN_COVERAGE_MIN:-80}%)"

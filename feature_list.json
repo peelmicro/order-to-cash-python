@@ -615,7 +615,7 @@
       "phase": 21,
       "title": "Quality gates: ruff, mypy strict, import-linter, coverage thresholds, SonarQube optional profile",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "coverage gate proven to FAIL when breached (artifact corruption and a real exclusion), computed once across the workspace",
         "ruff and mypy clean; import-linter contracts green",
