@@ -27,7 +27,13 @@ None.
 
 ## Notes
 
-**Committed:** see `git log`: 217, 218 and 31, one commit each, then this file's closing commit; pushed with `peelmicro`'s per-command token.
+**Committed:**
+- `472f3a4` (entry 217), `28b21a4` (entry 218) and `a040b64` (feature 31, with README, `docs/PROCESS.md`, the records and this brief), one commit each, then this file's closing commit. Pushed with `peelmicro`'s per-command token.
+- **External documents** updated at the wrap-up, with backups in `.arm/phase18/external/`:
+  - the Plan: Phase 18 COMPLETED, with the `api_tests` benchmark row. The plan's "#7's 33 assertions" did not reconcile (#9's inventory has 20 rows), and that is stated there, not repeated;
+  - the Solution Documents: Parte 19, F72 (the Gateway on a real socket) and F73 (the money sweep by shape), with the header, tree and "not yet" lines;
+  - the Stack Comparison: *Cierre de la Fase 18 del #9*, the Runner row's httpx black-box cell ✔, and the status header;
+  - both quizzes: chapter 19 each, six questions, re-embedded. Checked in headless Chromium: 19 chapters, no page errors, the new text in *Documento*.
 
 **Resume point.** The developer stack is down. `otcpy-n8n` crash-loops while the stack is down: it restarts for ever because it cannot resolve `postgres`. This is pre-existing; stop it, or start the stack. Check `docker ps` and `ss -ltn` first: another project's `kb-poc-*` containers held 5432 and 8080 during Phase 18, and its `llama-server` held about 7 of 16 cores.
 
