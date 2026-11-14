@@ -28,6 +28,8 @@ from dataclasses import dataclass
 
 import httpx
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 from testcontainers.community.mongodb import MongoDbContainer
 from testcontainers.community.nats import NatsContainer
 from testcontainers.community.postgres import PostgresContainer
@@ -105,11 +107,55 @@ def private_nats() -> Iterator[tuple[NatsContainer, str]]:
         container.stop()
 
 
+MONGO_READY_BUDGET_SECONDS = 60.0
+MONGO_READY_PING_TIMEOUT_MS = 500
+
+
+def wait_until_mongo_answers(
+    container: MongoDbContainer,
+    username: str,
+    password: str,
+    budget_seconds: float = MONGO_READY_BUDGET_SECONDS,
+) -> None:
+    """Return once an AUTHENTICATED `ping` succeeds through the HOST's mapped port, else raise.
+
+    `MongoDbContainer` is declared ready on the FIRST "Waiting for connections" line, which the
+    image's temporary init `mongod` logs (it listens on 127.0.0.1 only). The real server logs the
+    second one about 5 s later on 0.0.0.0, so until then a client through the mapped port is reset
+    (entry 217). A sync `MongoClient` is fine here: this is a test fixture, not a service runtime.
+    Paced: one ping per `POLL_INTERVAL_SECONDS`, each bounded by a short server-selection timeout,
+    inside a total budget (`tests/observability/test_mongo_readiness.py` proves the pacing).
+    """
+    uri = (
+        f"mongodb://{username}:{password}@{container.get_container_host_ip()}:"
+        f"{container.get_exposed_port(27017)}/?authSource=admin"
+    )
+    deadline = time.monotonic() + budget_seconds
+    last: Exception | None = None
+    while True:
+        client: MongoClient[dict[str, object]] = MongoClient(
+            uri, serverSelectionTimeoutMS=MONGO_READY_PING_TIMEOUT_MS
+        )
+        try:
+            client.admin.command("ping")
+            return
+        except PyMongoError as error:
+            last = error
+        finally:
+            client.close()
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"MongoDB did not answer an authenticated ping in {budget_seconds:.0f} s: {last}"
+            )
+        time.sleep(POLL_INTERVAL_SECONDS)
+
+
 @contextmanager
 def private_mongo() -> Iterator[tuple[MongoDbContainer, str]]:
     """A MongoDB of this test's own; yields the container and a URI with its root credentials."""
     container = MongoDbContainer(MONGO_IMAGE, username=_MONGO_USER, password=_MONGO_PASSWORD)
     with container:
+        wait_until_mongo_answers(container, _MONGO_USER, _MONGO_PASSWORD)
         host = container.get_container_host_ip()
         port = int(container.get_exposed_port(27017))
         yield (

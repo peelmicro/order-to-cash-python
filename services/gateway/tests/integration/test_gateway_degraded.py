@@ -281,6 +281,7 @@ async def test_r60_with_mongodb_stopped_the_read_model_is_down_and_the_read_rout
     mongo.start()
     stopped: list[bool] = []
     try:
+        health_support().wait_until_mongo_answers(mongo, "otc_test", "degraded_mongo_pw")
         uri = (
             f"mongodb://otc_test:degraded_mongo_pw@{mongo.get_container_host_ip()}:"
             f"{mongo.get_exposed_port(27017)}/?authSource=admin"

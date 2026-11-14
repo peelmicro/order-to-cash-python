@@ -1559,3 +1559,21 @@ Baselines: **#8** ≈4 h 10 implementer, ≈2 h 30 review, 3 rejections, 4 revie
 **Coverage summary:** unchanged (these are web-local `R-` names, not `specs/shared` rows), recounted by script: 56 rows whose Status starts `DONE`, plus R29 (both cases DONE) = **57 green / 1 scoped (R1) / 5 not yet green (R24, R28, R48, R49, R61)**.
 
 **Verdict:** DONE — closed by the leader (light): diff read, `quality.sh` green.
+
+## mongo_container_ready_before_its_real_server (id 217, phase 18) — 2026-10-18 — light (test-only), one implementer pass, closed by the leader after reading the diff and running the affected tests
+
+**Found by:** the leader, checking why feature 31's final `quality.sh` was red on `test_gateway_health_probes.py` R60. It was not this feature's code: the test failed 3 of 3 runs alone.
+
+**Mechanism (measured).** With root credentials set, `mongo:8.3.8` logs "Waiting for connections" twice:
+- first from the init `mongod`, on 127.0.0.1 only;
+- then, 5.2 s later, from the real one.
+
+testcontainers' `MongoDbContainer` returns on the first line. Until the real server starts, every client through the mapped port is reset. The R60 test's boot ping is given 1 s, and the NATS container's start had covered the window until the machine was loaded. Population: 3 sites. `PostgresContainer` is not in the class (it waits with `psql` over TCP, which the Unix-socket-only init server cannot answer).
+
+**Change.** One helper, `wait_until_mongo_answers` in `tests/observability/health_support.py` (an authenticated ping through the host port, bounded and paced), wired into `conftest.py`, `private_mongo` and `test_gateway_degraded.py`. Guard: `tests/observability/test_mongo_readiness.py`. The arm (the helper returns at once) failed 3 of 3, naming the reset.
+
+**Leader check:** diff read; the three affected files gave 9 passed in 48.30 s at load average 14.
+
+**Effort:** leader diagnosis about 25 min; implementer about 70 min, two `quality.sh` runs included. Run 1 of those exposed entry 218.
+
+**Against the baselines:** no #7 or #8 equivalent was found. Both used their own container libraries; not investigated further.

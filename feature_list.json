@@ -910,6 +910,21 @@
         "the two mutation families on the new emission (delete it; corrupt a field of the stock.release request), and a decoy proving that a late stock.reserved.v1 for an order cancelled stock_rejected or credit_rejected releases nothing; a redelivered stock.reserved.v1 after the release issues no second release row (command idempotency on (orderReference, release))"
       ],
       "note": "Found 2026-10-12: disclosed by feature 41's implementer (progress/impl_orders_cancel_responder.md §10), proved reachable by feature 41's reviewer (progress/review_orders_cancel_responder.md N1; .arm/r41/stranded.out, 1 passed in 12.48s against the real Orders host: stock.reserve re-dispatched after the cancel, stock.reserved.v1 recorded precondition_unmet, no stock.release). Root cause specs/shared/saga.md §4.3 row 'Operator cancels while placed | (nothing) | (nothing)': 'nothing acquired' is false once order.placed.v1 has been processed. #8 CancelOrderCommandHandler.cs:157-169 + SagaStepTable.cs:181-186 and #7 cancel-order.handler.ts:118-131 + saga-steps.ts:173-178 behave the same. Not counted against feature 41 (a faithful port). Filed by the leader; fixed in phase 13 after the SA-8 gate (findings are fixed in the phase that detects them)."
+    },
+    {
+      "id": 217,
+      "name": "mongo_container_ready_before_its_real_server",
+      "phase": 18,
+      "title": "The three MongoDbContainer fixtures are declared ready on the image's temporary init mongod (127.0.0.1 only), so a client through the mapped port is reset until the real server starts; test_gateway_health_probes' R60 cases fail at the Gateway's boot ping under load",
+      "sdd": false,
+      "status": "done",
+      "attached_to": "api_tests (id 31), whose quality.sh gate it turns red; the sites are conftest.py:228, tests/observability/health_support.py:111 and services/gateway/tests/integration/test_gateway_degraded.py:280",
+      "acceptance": [
+        "every MongoDbContainer site in the repository (the population is a search result over tests/, services/, packages/ and conftest.py, re-run at the end; it was 3 at filing) yields only after an authenticated ping through the HOST's mapped port succeeds, bounded and paced",
+        "a guard that fails when the fix is removed: the readiness helper alone, then an immediate ping with a short server-selection timeout; armed by restoring the library's log-line wait",
+        "test_gateway_health_probes.py passes three consecutive runs on the loaded machine where it failed 3 of 3 before the fix, and ./quality.sh is green"
+      ],
+      "note": "Found 2026-10-18 by the leader while checking feature 31's red quality.sh (progress/impl_api_tests.md §14, finding b). Mechanism measured with mongo:8.3.8 and root credentials: 'Waiting for connections' is logged at 14:39:14.135 by the init mongod listening on 127.0.0.1 only, then at 14:39:19.371 by the real one on 0.0.0.0; testcontainers' MongoDbContainer waits for the FIRST line (LogMessageWaitStrategy, .venv/.../testcontainers/community/mongodb/__init__.py:62). Window about 5 s on an idle machine; the R60 boot ping is given 1 s and was covered by the NATS container's start until another project's llama-server took about 7 of 16 cores. PostgresContainer is not in the class: it waits by psql over TCP inside the container, which the init server (Unix socket only) cannot answer. LIGHT (test-only). CLOSED 2026-10-18 by the leader (light): diff read (one helper, wait_until_mongo_answers in tests/observability/health_support.py, wired into the three sites); the leader ran test_mongo_readiness.py + test_gateway_health_probes.py + test_gateway_degraded.py, 9 passed in 48.30 s at load average 14; the implementer's arm (helper body returns at once) failed 3 of 3 naming the reset; quality.sh green on its second run (5287 passed). Record progress/impl_mongo_container_ready_before_its_real_server.md."
     }
   ]
 }

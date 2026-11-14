@@ -46,11 +46,14 @@ a container (seconds).
 """
 
 import asyncio
+import importlib.util
+import sys
 import uuid
 import warnings
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 import asyncpg
 import pytest
@@ -222,11 +225,25 @@ class FreshMongoDatabase:
     uri: str
 
 
+def _health_support() -> ModuleType:
+    """`tests/observability/health_support.py`, loaded by path (importlib mode): the one MongoDB
+    readiness helper (entry 217), shared by the three `MongoDbContainer` sites."""
+    path = Path(__file__).resolve().parent / "tests/observability/health_support.py"
+    spec = importlib.util.spec_from_file_location("health_support", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.fixture(scope="session")
 def mongo_server() -> Iterator[MongoServer]:
     # port=27017 is the CONTAINER port; the host port is assigned and held by Docker.
     container = MongoDbContainer(MONGO_IMAGE, username=_MONGO_USER, password=_MONGO_PASSWORD)
     with container:
+        _health_support().wait_until_mongo_answers(container, _MONGO_USER, _MONGO_PASSWORD)
         yield MongoServer(
             host=container.get_container_host_ip(),
             port=int(container.get_exposed_port(27017)),
