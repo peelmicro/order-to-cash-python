@@ -24,7 +24,10 @@ None.
 
 ## Notes
 
-**Committed:** the feature commit (feature 34, with README, `docs/PROCESS.md`, the records and this brief), then this file's closing commit. External documents updated at the wrap-up, with backups in `.arm/phase21/external/`.
+**Committed:**
+- `3fb96c5` (feature 34, with README, `docs/PROCESS.md`, the records and this brief), then this file's closing commit. Pushed with `peelmicro`'s per-command token.
+- **External documents** updated at the wrap-up, with backups and sha256s in `.arm/phase21/external/` (`REPORT.md` there): the Plan (Phase 21 COMPLETED, the `sonarqube_quality_gates` benchmark row, ≈2.9× #7, no ratio to #8); the Solution Documents (Parte 22: F78 `sonar-project.properties`, F79 `scripts/sonar-scan.sh`, and a dated note in F28); the Stack Comparison (*Cierre de la Fase 21 del #9*; the Python "Calidad" cell extended, already ✔ since Phase 5); both quizzes (chapter 22 each, six questions, re-embedded, checked in headless Chromium).
+- **The maintainer's manual test passed** before the wrap-up: lint and type steps, both coverage reports, and the SonarQube script, with the same server numbers as the leader's run.
 
 **Resume point.** The developer stack is down; `otcpy-sonarqube` is stopped (volumes `otcpy_sonarqube_extensions`/`_logs` exist; no `_data` volume, because the scans used `.arm/phase21/sonar-override.yml`, a tmpfs data directory, which is git-ignored). The other project's `kb-poc-*` containers run (`kb-poc-proxy-1` holds 8080). The disk holding Docker is at 91%. Check `docker ps`, `ss -ltn` and `df -h /` first.
 
