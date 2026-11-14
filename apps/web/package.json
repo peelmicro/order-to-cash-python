@@ -16,7 +16,9 @@
     "test:ci": "vitest run",
     "types:generate": "node scripts/openapi-types.mjs generate",
     "types:check": "node scripts/openapi-types.mjs check",
-    "typecheck": "tsc --noEmit -p tsconfig.spec.json"
+    "typecheck": "tsc --noEmit -p tsconfig.spec.json",
+    "typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json",
+    "test:e2e": "node --env-file-if-exists=../../.env ./node_modules/@playwright/test/cli.js test"
   },
   "private": true,
   "dependencies": {
@@ -53,6 +55,7 @@
     "@angular/build": "^22.0.0",
     "@angular/cli": "^22.0.0",
     "@angular/compiler-cli": "^22.0.0",
+    "@playwright/test": "1.64.1",
     "@spartan-ng/cli": "1.7.0",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/angular": "19.5.0",

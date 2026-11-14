@@ -1,25 +1,23 @@
 # Current session
 
-**Feature:** none active. Next is phase 19 (Playwright end-to-end tests): `e2e_playwright` (id 32, `sdd: false`).
-**Status:** Phase 18 is closed and committed at the full wrap-up (2026-11-14); Phase 19 has not started.
-- **Feature 31** `api_tests` is **done**. It was approved at the Sonnet re-review (`progress/review_api_tests_round2.md`) after one Opus rejection (`progress/review_api_tests.md`, D1–D6).
-- **Entries 217** (`mongo_container_ready_before_its_real_server`) **and 218** (`booted_predicate_fires_before_the_socket_listens`) are **done**: light, closed by the leader.
-- Effort entries are in `progress/history.md` (the last three).
+**Feature:** none active. Next is phase 20 (n8n demo workflows): `n8n_workflows` (id 33, `sdd: false`).
+**Status:** Phase 19 is closed and committed at the full wrap-up (2026-11-14); Phase 20 has not started.
+- **Feature 32** `e2e_playwright` is **done**: approved at the Sonnet re-review (`progress/review_e2e_playwright_round2.md`) after one Opus rejection (`progress/review_e2e_playwright.md`, D-1, D-2, N-1 – N-5, all fixed in round 2).
+- Effort entry: the last one in `progress/history.md`.
 
-**Session started:** 2026-10-18 (Phase 18's work); wrap-up on 2026-11-14.
+**Session started:** 2026-11-14; wrap-up on 2026-11-14.
 
 ## Goal
 
-Phase 18: feature 31's seven acceptance items. Done.
+Phase 19: feature 32's four acceptance items. Done (item 3's composed-stack run is carried as the last acceptance item of feature 36).
 
 ## Decisions taken this session
 
-- **Acceptance item 7 (R61's API half) was added to feature 31 at dispatch.** The matrix named feature 31 as R61's closer, and the acceptance list did not carry it (#8 id 72's class). Five rows moved: R1 (scoped → green), R24, R48, R49 and R61. Matrix: **62 green / 0 scoped / 1 not yet green** (R28's e2e half, feature 32).
-- **Two harness races were found while getting `quality.sh` green, and each was fixed in the phase:**
-  - 217: `mongo:8.3.8` with root credentials logs "Waiting for connections" twice, 5.2 s apart, and testcontainers waits for the first;
-  - 218: uvicorn logs "Application startup complete." before it binds the socket.
-- **Review model.** The round-2 re-review ran on Sonnet, scoped to D1–D6, because every change was test or record only (the Opus reviewer's own recommendation).
-- **Process.** The first implementer run was cut when the Claude Code process exited in the middle of an arm, and a test helper was left armed. The leader found it, by comparing every backup with `cmp`, before resuming. Lesson for later briefs: after any interrupted agent, compare every `.arm/*/backups` file with its live file before anything else.
+- **Classification full**, inherited from #8 (`../order-to-cash-dotnet/progress/history.md:3109`); Opus review; the re-review on Sonnet, scoped to the findings, because round 2 changed test, script and record files only (Phase 18's precedent).
+- **`@playwright/test` 1.64.1**, the newest release over two weeks old at dispatch (1.65.0 2026-11-05 and 1.65.1 2026-11-13 were too new); Chromium 1248 downloaded to `~/.cache/ms-playwright`.
+- **`scripts/dev-stack.sh` ported from #8** (uvicorn host processes; fail-fast on a held port naming its `*_HOST_PORT`; process-group teardown; `down` leaves what was up before). Not Playwright's `webServer`.
+- Matrix: **63 green / 0 scoped / 0 not yet green**.
+- **Lesson for briefs:** when two mechanisms can satisfy one assertion, the arm deletes exactly one of them, and the brief names both (the D-1 rejection: the backstop and R55's pending retry).
 
 ## Blockers
 
@@ -27,40 +25,17 @@ None.
 
 ## Notes
 
-**Committed:**
-- `472f3a4` (entry 217), `28b21a4` (entry 218) and `a040b64` (feature 31, with README, `docs/PROCESS.md`, the records and this brief), one commit each, then this file's closing commit. Pushed with `peelmicro`'s per-command token.
-- **External documents** updated at the wrap-up, with backups in `.arm/phase18/external/`:
-  - the Plan: Phase 18 COMPLETED, with the `api_tests` benchmark row. The plan's "#7's 33 assertions" did not reconcile (#9's inventory has 20 rows), and that is stated there, not repeated;
-  - the Solution Documents: Parte 19, F72 (the Gateway on a real socket) and F73 (the money sweep by shape), with the header, tree and "not yet" lines;
-  - the Stack Comparison: *Cierre de la Fase 18 del #9*, the Runner row's httpx black-box cell ✔, and the status header;
-  - both quizzes: chapter 19 each, six questions, re-embedded. Checked in headless Chromium: 19 chapters, no page errors, the new text in *Documento*.
+**Resume point.** The developer stack is down. The maintainer ran `scripts/dev-stack.sh up`, `test:e2e` (7 passed, 10.4 s) and `down` on the default ports at the wrap-up. The other project's `kb-poc-*` containers run; after their 07:16 UTC restart, `kb-poc-postgres-1` no longer publishes 5432, but `kb-poc-proxy-1` still holds 8080 (Redpanda Console's default). Check `docker ps` and `ss -ltn` first.
 
-**Resume point.** The developer stack is down. `otcpy-n8n` crash-loops while the stack is down: it restarts for ever because it cannot resolve `postgres`. This is pre-existing; stop it, or start the stack. Check `docker ps` and `ss -ltn` first: another project's `kb-poc-*` containers held 5432 and 8080 during Phase 18, and its `llama-server` held about 7 of 16 cores.
-
-**Brief for phase 19: Playwright end-to-end tests (Plan step 24).** One feature: **32** `e2e_playwright`, **`sdd: false`**, **four acceptance items**. Count them with `python3 -c "import json;print(len([f for f in json.load(open('feature_list.json'))['features'] if f['id']==32][0]['acceptance']))"`.
-- **The four items:**
-  1. an order reaches `completed` in the UI;
-  2. a `.99` order reaches `cancelled` with its causal link visible (R28's e2e half: it flips R28, the last row not yet green);
-  3. re-run against the composed stack in phase 23: a **carried** item. Its buildable half is now; the composed stack is feature 36's;
-  4. the Chromium keystroke check carried from feature 29 stage 2, item 8: typing "19.99" and "0.29" into a cold `/orders/place` with a render lag shows and sends 1999 and 29; armed by restoring `[value]`, which must show 9919 and 290. Evidence: `progress/review_web_app.md`, `.arm/web29r3/s2r1/live/`.
-- **Classification: full group?** Ask before dispatch; settle it by reading #8's choice. #8 ran it full (`../order-to-cash-dotnet/progress/history.md:3109`). It touches no `src/` if the app is right, so light may be defensible; decide with evidence, not by default.
-- **Start from what exists:**
-  - #8's `apps/web/e2e/{global.setup.ts,happy-path.spec.ts,compensation.spec.ts}` and `playwright.config.ts`, driven by `scripts/dev-stack.sh` (#8 had no composed stack until phase 23). #7's are the same three files.
-  - #9 has **no** `scripts/dev-stack.sh` and no `@playwright/test` in `apps/web/package.json`; Chromium 1243 is cached in `~/.cache/ms-playwright`. Ask whether to port #8's script (the leader may write `scripts/`) or drive the stack another way. Read `npm view @playwright/test time` before naming a version (Phase 17's release-age lesson).
-- **Baselines:**
-  - #8: `../order-to-cash-dotnet/progress/history.md:3109`, about 1 h 23 min of agent work, approved first time with conditions C1/C2. Those were ledger rows false in both halves; ask for every row with a file and line.
-  - #7: `../order-to-cash-nestjs/progress/history.md:1201`, rejected once for D1, a page that went stale after a lost SSE frame. Ask whether #9's order-detail page already carries #7's D1/D2/D7 fix, and where.
-- **Inherited #8 findings to name avoided or recurred:**
-  - #8 id 106: a label's `htmlFor` disagreeing with its `<select>` id, from a module-scope counter. Ask whether #9's place-order form has the shape.
-  - #8 N1: each run consumes stock from one product; check the threshold.
-  - #8 N2: the `install chromium` and `--with-deps` notes belong in README.
-- **Process lessons carried:**
-  - Integration suites pass with the developer infrastructure down. For e2e, which needs a stack, the brief states which stack, and a teardown leaves only what was up before.
-  - Every run goes under `setsid --wait`, waiting on a PID.
-  - Arm backups go in the ROOT `.arm/`.
-  - **After an interrupted agent, compare every backup with `cmp` first.**
-  - A test that fails once on a green tree is a finding until its mechanism is shown (both of Phase 18's harness races came from exactly that).
-- **`quality.sh` time.** Phase 18: 5 288 pytest passed in 1 625.85 s (0.307 s per test, under the other project's load; Phase 17 was 0.161 s on a quiet machine); web 35 files / 687 tests.
+**Brief for phase 20: n8n demo workflows (Plan step 25).** One feature: **33** `n8n_workflows`, **`sdd: false`**, **four acceptance items** (count: `python3 -c "import json;print(len([f for f in json.load(open('feature_list.json'))['features'] if f['id']==33][0]['acceptance']))"`): all four workflows fired for real; auto-imported on container startup, idempotently; removing n8n does not break the stack; README screenshots of the four workflows.
+- **Classification: light**, inherited: #8 ran it LIGHT, one implementer, no reviewer (`../order-to-cash-dotnet/progress/history.md:3137`). Confirm nothing in #9 forces a difference before dispatch.
+- **Measured by the leader at this wrap-up:** `n8n/workflows/*.json` is byte-identical across #7, #8 and #9 (one combined sha256 for all three). #9's `docker-compose.infra.yml` already carries #8's phase-20 changes: `OTC_GATEWAY_URL` overridable (line 450) and `extra_hosts: host.docker.internal:host-gateway` (lines 490 – 491). #9 has **no** `scripts/import-n8n-workflows.sh` / `export-n8n-workflows.sh`; #8 has both.
+- **Two items are new against #8:** "idempotently" and "README screenshots" are in #9's acceptance and not in #8's (#8's list has three items). Ask how #9 proves idempotence (#8 started the infrastructure twice from cold and counted the workflow ids in n8n's store) and how the screenshots are captured (#8 had `scripts/capture-demo.mjs`, for a GIF in phase 24).
+- **Carry from #8's record:** #7's re-review said the burst webhook needs no n8n restart after activation; on #8's instance it did (a 404 first). Test it live; do not inherit either answer.
+- **The services run as host processes** through `scripts/dev-stack.sh`, so n8n reaches the Gateway at `http://host.docker.internal:${GATEWAY_PORT}`. Ask whether `dev-stack.sh` should start the `n8n` profile on request, or the brief runs it by hand.
+- **`otcpy-n8n` crash-loops when started without PostgreSQL** (it cannot resolve `postgres`): pre-existing, seen in Phases 18 and 19. Ask whether that is acceptance item 3's concern ("removing n8n does not break the stack" is the other direction) or a finding to file.
+- **Baselines:** #8 one implementer, light, no rejection (`:3137`); #7 approved on the second review (`../order-to-cash-nestjs/progress/history.md:1281`), its first rejection for a `.99` compensation maths defect, unwired tunables and a credential-leaking `env_file`, all already fixed in the JSON #9 inherits.
+- **Process lessons carried:** every run under `setsid --wait`, waited on by PID; arm backups in the ROOT `.arm/`; after an interrupted agent, compare every backup with `cmp` first; **stop processes by PID, never `pkill -f`** (an implementer ran a machine-wide `pkill -f "sleep 300"` in Phase 19); never touch `kb-poc-*`.
 - **Commits:** one per feature; an amendment is always on its own and before the code that depends on it.
 
 ---

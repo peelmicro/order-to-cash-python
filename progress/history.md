@@ -1610,3 +1610,31 @@ testcontainers' `MongoDbContainer` returns on the first line. Until the real ser
 **Effort:** leader diagnosis about 15 min; implementer about 43 min.
 
 **Against the baselines:** none; this is a #9-only harness.
+
+## Id 32 `e2e_playwright` (phase 19, full group): closed 2026-11-14, approved at the Sonnet re-review after one Opus rejection
+
+- **Classification: full**, inherited rather than re-decided: #8 ran it full (`../order-to-cash-dotnet/progress/history.md:3109`); it flips R28 (saga compensation) and guards a money-entry fix in the browser.
+- **Change:** `apps/web/e2e/` (setup + 6 tests: happy path to `completed` through the billing UI; the `.99` order to `cancelled` with `stock.released.v1` before `order.cancelled.v1` and the causal link; the silent-stream backstop on the order-detail page; the place-order labels; the money keystrokes under two render lags), `apps/web/playwright.config.ts` (`E2E_BASE_URL`, `retries: 0`), `@playwright/test` `1.64.1` (newest release over two weeks old at dispatch) with `test:e2e` and `typecheck:e2e`, `scripts/dev-stack.sh` (ported from #8, adapted to uvicorn host processes; fail-fast on a held port naming its `*_HOST_PORT`; process-group teardown), README notes. No `src/` change of any kind.
+- **Matrix:** R28's e2e half green; **63 green / 0 scoped / 0 not yet green**.
+- **Item 3** (re-run against the composed stack) is carried as the last acceptance item of feature 36; its buildable half (`E2E_BASE_URL`) was proven with one green run.
+- **Rejection (Opus, `progress/review_e2e_playwright.md`):** D-1, the silent-stream spec passed with only the backstop deleted, because R55's pending retry rescued the page; the implementer's arm had deleted both at once. D-2, the matrix group-3 row was not updated with the Total. Round 2 rebuilt the spec on an order already `invoiced`, so only the backstop can reach `completed`; the re-review ran the backstop-only arm RED and restored it (`progress/review_e2e_playwright_round2.md`). N-1 to N-5 fixed in the same round.
+- **Runs:** round 1, 9 consecutive green suite runs, no retries; `quality.sh` exit 0 in 1 489 s (5 288 pytest, coverage 96.38%, web 35 files / 687 tests, unchanged: `e2e/` does not join Vitest). Round 2, 3 consecutive greens; re-review 7 passed in 10.0 s. Teardown each time left only the other project's `kb-poc-*` containers.
+- **Inherited findings:**
+  - **#8 id 106** (label `for` against control id): **avoided**, proven over four hard loads, guarded by `place-order-labels.spec.ts`.
+  - **#8 C1** (ledger row false in a half): **recurred** in row 2's guard half, exactly the #7 D1/D2/D7 row; fixed in round 2.
+  - **#8 C2** (missing row for #7's D1/D2/D7): **avoided**; the row exists and its property is now guarded by an armed spec.
+  - **#7 D1** (stale page after a lost SSE frame): the property was already supplied by #9's web app; its browser guard was vacuous once (D-1) and is now armed.
+  - **#8 N1** (stock consumed per run): measured, 3 units of `PRD-0006` per run against a threshold of 20, about 160 runs; no top-up needed.
+  - **#8 N2** (install notes only in a record): **avoided**, in README.
+  - **#8 id 96** (Gateway ignoring `GATEWAY_PORT`): **avoided**, started with `python -m otc_gateway`.
+
+**Effort record** (agent durations measured by the harness this session):
+- premise check (Sonnet): about 35 s, 35k tokens;
+- implementer round 1 (Sonnet): about 1 h 4 min, 238k tokens, including the 25-minute `quality.sh`;
+- review (Opus): about 13 min, 136k tokens;
+- implementer round 2: about 9 min, 98k tokens;
+- re-review (Sonnet, scoped to the findings, Phase 18's precedent): about 4 min, 52k tokens.
+- Totals: **5 agent sessions, 1 rejection, about 1 h 31 min of agent work, about 560k subagent tokens.**
+
+**Against the baselines:** #8 closed in 2 sessions with no rejection in about 1 h 23 min; #7 in 4 sessions with one rejection (D1) in about 1 h 52 min. #9 sits between them, and **not faster than #8**. The rejection was #8's C1 recurring in the very row #8's C2 had added: the implementer armed the backstop by deleting the whole `refetchInterval`, which also removed the pending retry, so the arm could not tell the two mechanisms apart. Lesson for briefs: when two mechanisms can satisfy one assertion, the arm deletes exactly one of them, and the brief names both.
+- **Process notes:** the implementer ran a machine-wide `pkill -f "sleep 300"` during a probe (recorded; the `kb-poc-*` containers stayed healthy). The other project's `kb-poc-*` containers were restarted during the session by something outside this one; nothing in this session's records touched them.

@@ -587,7 +587,7 @@
       "phase": 19,
       "title": "Playwright end-to-end tests",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "order reaches completed in the UI",
         ".99 order reaches cancelled with the causal link visible",
@@ -647,7 +647,8 @@
         "cold start timed with built images and from zero, both reported",
         "no external: true redeclaration of the network in the apps file",
         "infra-only mode still works with apps run from the CLI",
-        "carried from orders_acceptance (id 15; progress/review_orders_acceptance.md Q4, accepted there with a re-open trigger): the orders service runs one replica and one uvicorn worker while OUTBOX_RELAY_ENABLED=true, or disables the relay on all but one — proven against the built compose file (replicas, worker count, relay flag read from it), armed"
+        "carried from orders_acceptance (id 15; progress/review_orders_acceptance.md Q4, accepted there with a re-open trigger): the orders service runs one replica and one uvicorn worker while OUTBOX_RELAY_ENABLED=true, or disables the relay on all but one — proven against the built compose file (replicas, worker count, relay flag read from it), armed",
+        "carried from e2e_playwright (id 32, acceptance item 3; its buildable half, a base URL taken from E2E_BASE_URL, is built in phase 19): feature 32's Playwright suite runs green against the composed stack, unchanged, with the run's pass count recorded"
       ]
     },
     {
