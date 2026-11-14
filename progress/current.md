@@ -24,7 +24,10 @@ None.
 
 ## Notes
 
-**Committed:** the feature 33 commit, then this file's closing commit. Pushed with `peelmicro`'s per-command token.
+**Committed:**
+- `3adbd44` (feature 33, with README, `docs/PROCESS.md`, the records and this brief), then this file's closing commit. Pushed with `peelmicro`'s per-command token.
+- **External documents** updated at the wrap-up, with backups and sha256s in `.arm/phase20/external/` (`REPORT.md` there): the Plan (Phase 20 COMPLETED, the `n8n_workflows` benchmark row; no ratio to #8, whose entry records no duration); the Solution Documents (Parte 21: F76 `check-n8n-workflow-set.sh`, F77 the screenshot capture scripts, and a dated note in F23); the Stack Comparison (*Cierre de la Fase 20 del #9*; no Python cell moved, since n8n on PostgreSQL has been ✔ since Phase 4); both quizzes (chapter 21 each, six questions, re-embedded, checked in headless Chromium).
+- **Correction made at the wrap-up:** #8 fired the other three workflows at its Phase 25 checkpoint (`561ce37`), not never. `progress/history.md` and `docs/PROCESS.md` were corrected in the closing commit.
 
 **Resume point.** The developer stack is down; the other project's `kb-poc-*` containers run (`kb-poc-proxy-1` holds 8080). Check `docker ps` and `ss -ltn` first. The four n8n workflows are inactive in `otcpy_n8n_data`'s database.
 
