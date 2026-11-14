@@ -499,8 +499,9 @@ services:
       retries: 30
       start_period: 30s
 
-  # ── n8n-init — one-shot: imports the four workflow JSONs. Script REUSED
-  #    BYTE-IDENTICALLY from #8 (and #7). ─────────────────────────────────────────────
+  # ── n8n-init — one-shot: imports the four workflow JSONs. Script derived from
+  #    #8's (and #7's); #9 changed it in phase 20 so a workflow that was ACTIVE
+  #    stays active across a re-import (n8n's `import:workflow` deactivates it). ──────
   n8n-init:
     image: n8nio/n8n:2.36.2
     container_name: otcpy-n8n-init

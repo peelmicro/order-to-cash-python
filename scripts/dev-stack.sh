@@ -4,6 +4,7 @@
 # and the web app (built, then served by apps/web/scripts/serve.mjs). One log file and one PID file per process.
 #
 #   scripts/dev-stack.sh up        # infra, migrate, seed, six services, web build + serve; returns once everything is ready
+#   scripts/dev-stack.sh up --with-n8n   # the same, plus the n8n demo workflows (see "n8n" below); DEV_STACK_N8N=1 does the same
 #   scripts/dev-stack.sh wait      # poll every readiness endpoint (exit 0 only when all answer)
 #   scripts/dev-stack.sh status    # what runs, on which port, with which pid and log
 #   scripts/dev-stack.sh down      # stop the processes this script started (by process group), then the infra it started
@@ -25,7 +26,14 @@
 # containers this script started are stopped (never removed, volumes are never touched), every process it started
 # is killed by process group. Nothing else on the machine (another project's containers, for one) is touched.
 #
-# Do not start the `n8n` compose profile: it crash-loops without the rest of the n8n stack.
+# n8n (opt-in). Without `--with-n8n` (or DEV_STACK_N8N=1) nothing about n8n is started or touched. With it, `up` also starts the
+# `n8n` compose profile (the n8n server, then the one-shot n8n-init that imports the four workflows, which land INACTIVE), waits for
+# n8n's readiness and for n8n-init to exit 0. The services run as host processes here, so the n8n container reaches the Gateway through
+# OTC_GATEWAY_URL=http://host.docker.internal:${GATEWAY_PORT} (a caller-set OTC_GATEWAY_URL wins; docker-compose.infra.yml maps
+# host.docker.internal to the Docker host). n8n's own port is N8N_HOST_PORT (5678). `down` stops n8n and n8n-init BEFORE PostgreSQL:
+# n8n keeps its state in PostgreSQL, and a n8n container (restart: unless-stopped) left running while PostgreSQL is stopped cannot resolve
+# the name `postgres` any more, so it fails to boot and loops. That is why `down` also stops n8n whenever it stops PostgreSQL, even if
+# this script did not start n8n. A n8n that was already running when `up` ran, with PostgreSQL also running, is left up on `down`.
 
 set -u
 
@@ -34,6 +42,9 @@ RUN_DIR="$ROOT/logs/dev-stack"
 COMPOSE=(docker compose -p otcpy -f "$ROOT/docker-compose.infra.yml")
 # Infrastructure the six services and the web app need. kafka-init creates the topics and exits 0.
 INFRA=(postgres mongodb kafka nats kafka-init)
+# n8n and its import job, behind the `n8n` compose profile; started only with --with-n8n.
+N8N_SERVICES=(n8n n8n-init)
+WITH_N8N="${DEV_STACK_N8N:-0}"
 # name:port:module — Orders, Fulfillment, Billing, Notifications and the Projector speak uvicorn on 810x (README, "Running the services").
 SERVICES=(orders:8101:otc_orders fulfillment:8102:otc_fulfillment billing:8103:otc_billing notifications:8104:otc_notifications projector:8105:otc_projector gateway::otc_gateway)
 
@@ -59,6 +70,10 @@ load_env() {
   export NATS_MONITOR_HOST_PORT="$(envval NATS_MONITOR_HOST_PORT 8222)"
   export GATEWAY_PORT="$(envval GATEWAY_PORT 3001)"
   export WEB_PORT="$(envval WEB_PORT 3010)"
+  export N8N_HOST_PORT="$(envval N8N_HOST_PORT 5678)"
+  # The host-process Gateway, as the n8n container sees it. Only when the caller did not choose one (`envval` would also read .env / .env.example).
+  # Exported only with --with-n8n, so the other commands (and `env <cmd>`) see an unchanged environment.
+  [ "$WITH_N8N" = "1" ] && export OTC_GATEWAY_URL="${OTC_GATEWAY_URL:-http://host.docker.internal:${GATEWAY_PORT}}"
   # The OTel collector is not part of this stack, so nothing is exported unless the caller says where (empty = no export, as in the test suites). Without this
   # every service retries its OTLP export against a closed port and `down` takes minutes. `.env` is not consulted: its default points at a collector this script never starts.
   export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT-}"
@@ -112,6 +127,10 @@ check_ports() {
       failed=1
     fi
   done
+  if [ "$WITH_N8N" = "1" ] && ! container_running n8n && port_in_use "$N8N_HOST_PORT"; then
+    echo "  [FAIL] port $N8N_HOST_PORT (n8n) is held by $(port_holder "$N8N_HOST_PORT") — set N8N_HOST_PORT to a free port"
+    failed=1
+  fi
   if ! is_running "$RUN_DIR/web.pid" && port_in_use "$WEB_PORT"; then
     echo "  [FAIL] port $WEB_PORT (the web app) is held by $(port_holder "$WEB_PORT") — set WEB_PORT to a free port"
     failed=1
@@ -223,6 +242,23 @@ cmd_up() {
   done
   echo "  [OK]   otcpy-kafka-init created the topics and exited 0"
 
+  if [ "$WITH_N8N" = "1" ]; then
+    echo "── n8n (${N8N_SERVICES[*]}) — reaches the Gateway at $OTC_GATEWAY_URL"
+    # Only the server is recorded: n8n-init is a one-shot (like kafka-init) and is stopped together with it.
+    if ! container_running n8n && ! grep -qx n8n "$RUN_DIR/n8n-started" 2>/dev/null; then
+      echo n8n >>"$RUN_DIR/n8n-started"
+    fi
+    "${COMPOSE[@]}" --profile n8n up -d "${N8N_SERVICES[@]}" >"$RUN_DIR/n8n.log" 2>&1 \
+      || { echo "  [FAIL] docker compose (n8n) — see $RUN_DIR/n8n.log"; return 1; }
+    wait_healthy n8n 180 || return 1
+    deadline=$((SECONDS + 120))
+    until [ "$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' otcpy-n8n-init 2>/dev/null)" = "exited 0" ]; do
+      [ "$SECONDS" -ge "$deadline" ] && { echo "  [FAIL] otcpy-n8n-init did not exit 0 within 120s"; return 1; }
+      sleep 1
+    done
+    echo "  [OK]   otcpy-n8n-init imported the workflows (inactive) and exited 0; n8n at http://localhost:${N8N_HOST_PORT}"
+  fi
+
   echo "── migrations + seed (idempotent)"
   local svc
   for svc in orders fulfillment billing notifications; do
@@ -262,6 +298,7 @@ cmd_up() {
 
   echo
   echo "Stack ready. Web: http://localhost:${WEB_PORT}  Gateway: http://localhost:${GATEWAY_PORT}"
+  [ "$WITH_N8N" = "1" ] && echo "n8n: http://localhost:${N8N_HOST_PORT} (workflows imported inactive; activate the ones you want from its UI)"
   echo "Run the suite with: pnpm -C apps/web test:e2e    Stop with: scripts/dev-stack.sh down"
 }
 
@@ -295,6 +332,10 @@ cmd_status() {
   for n in "${INFRA[@]}"; do
     if container_running "$n"; then echo "  running  otcpy-$n"; else echo "  stopped  otcpy-$n"; fi
   done
+  for n in "${N8N_SERVICES[@]}"; do
+    if container_running "$n"; then echo "  running  otcpy-$n"; else echo "  stopped  otcpy-$n"; fi
+  done
+  [ -f "$RUN_DIR/n8n-started" ] && echo "  n8n containers started by this script (down stops these): $(paste -sd' ' "$RUN_DIR/n8n-started")"
   [ -f "$RUN_DIR/infra-started" ] && echo "  infra started by this script (down stops these): $(paste -sd' ' "$RUN_DIR/infra-started")"
   return 0
 }
@@ -307,6 +348,19 @@ cmd_down() {
     spec="${SERVICES[$i]}"
     stop_process "${spec%%:*}"
   done
+  # n8n first, always before PostgreSQL: n8n's state lives there, and a n8n left running without its database cannot resolve `postgres`
+  # and loops. Stopped when this script started it, and ALSO whenever PostgreSQL is about to be stopped (see the header).
+  local stop_n8n=0
+  grep -qx n8n "$RUN_DIR/n8n-started" 2>/dev/null && stop_n8n=1
+  if [ "$stop_n8n" = 0 ] && grep -qx postgres "$RUN_DIR/infra-started" 2>/dev/null && container_running n8n; then
+    stop_n8n=1
+    echo "  [NOTE] n8n was not started by this script but PostgreSQL is being stopped: stopping n8n with it"
+  fi
+  if [ "$stop_n8n" = 1 ]; then
+    "${COMPOSE[@]}" --profile n8n stop "${N8N_SERVICES[@]}" >"$RUN_DIR/n8n-down.log" 2>&1 || echo "  [WARN] docker compose stop (n8n) — see $RUN_DIR/n8n-down.log"
+    echo "  [OK]   stopped n8n (${N8N_SERVICES[*]}) before PostgreSQL"
+  fi
+  rm -f "$RUN_DIR/n8n-started"
   # Only the containers THIS script started. A container that was already running before `up` is not ours to stop.
   if [ -f "$RUN_DIR/infra-started" ]; then
     local mine
@@ -342,7 +396,16 @@ cmd_rebuild_web() {
 }
 
 case "${1:-}" in
-  up) cmd_up ;;
+  up)
+    shift
+    for arg in "$@"; do
+      case "$arg" in
+        --with-n8n) WITH_N8N=1 ;;
+        *) echo "usage: $0 up [--with-n8n]"; exit 2 ;;
+      esac
+    done
+    cmd_up
+    ;;
   rebuild-web) cmd_rebuild_web ;;
   wait) cmd_wait ;;
   status) cmd_status ;;
@@ -353,5 +416,5 @@ case "${1:-}" in
     load_env
     cd "$ROOT" && exec "$@"
     ;;
-  *) echo "usage: $0 {up|wait|status|down|rebuild-web|env <command> [args...]}"; exit 2 ;;
+  *) echo "usage: $0 {up [--with-n8n]|wait|status|down|rebuild-web|env <command> [args...]}"; exit 2 ;;
 esac

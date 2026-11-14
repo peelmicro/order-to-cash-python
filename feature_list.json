@@ -601,7 +601,7 @@
       "phase": 20,
       "title": "The four n8n demo workflows, reused unchanged, against the Python Gateway",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "order generator, bank robot, stock replenishment, burst — all four fired for real",
         "auto-imported on container startup, idempotently",
