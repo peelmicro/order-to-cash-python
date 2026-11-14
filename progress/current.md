@@ -25,6 +25,14 @@ None.
 
 ## Notes
 
+**Committed:**
+- `16d4a42` (feature 32, with README, `docs/PROCESS.md`, the records and this brief), then this file's closing commit. Pushed with `peelmicro`'s per-command token.
+- **External documents** updated at the wrap-up, with backups and sha256s in `.arm/phase19/external/` (`REPORT.md` there):
+  - the Plan: Phase 19 COMPLETED, with the `e2e_playwright` benchmark row and the change from the plan's pinned 1.63.0 to 1.64.1;
+  - the Solution Documents: Parte 20, F74 (the Playwright config and a test against the real stack) and F75 (`scripts/dev-stack.sh`), with the header, tree and "not yet" lines;
+  - the Stack Comparison: *Cierre de la Fase 19 del #9*, the Python "Tests web" cell's Playwright 1.64.1 ✔ (the composed-stack run stays ◐ for phase 23), and the status header;
+  - both quizzes: chapter 20 each, six questions, re-embedded. Checked in headless Chromium: 20 chapters, no page errors, the new text in *Documento*.
+
 **Resume point.** The developer stack is down. The maintainer ran `scripts/dev-stack.sh up`, `test:e2e` (7 passed, 10.4 s) and `down` on the default ports at the wrap-up. The other project's `kb-poc-*` containers run; after their 07:16 UTC restart, `kb-poc-postgres-1` no longer publishes 5432, but `kb-poc-proxy-1` still holds 8080 (Redpanda Console's default). Check `docker ps` and `ss -ltn` first.
 
 **Brief for phase 20: n8n demo workflows (Plan step 25).** One feature: **33** `n8n_workflows`, **`sdd: false`**, **four acceptance items** (count: `python3 -c "import json;print(len([f for f in json.load(open('feature_list.json'))['features'] if f['id']==33][0]['acceptance']))"`): all four workflows fired for real; auto-imported on container startup, idempotently; removing n8n does not break the stack; README screenshots of the four workflows.
