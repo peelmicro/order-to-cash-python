@@ -60,6 +60,7 @@ WEB_FORBIDDEN = re.compile(r"reload|watch", re.IGNORECASE)
 # lists them one by one, S7.2).
 EXPECTED_POPULATION: dict[str, int] = {
     "services/gateway/tests/conftest.py": 2,  # uvicorn.Config, uvicorn.Server
+    "tests/api/conftest.py": 2,  # uvicorn.Config, uvicorn.Server (feature 31; lifespan off)
     "services/gateway/tests/integration/test_gateway_listens_on_gateway_port.py": 1,
     "services/gateway/tests/integration/test_gateway_log_contract.py": 1,
     "services/gateway/tests/integration/test_gateway_shutdown_with_open_streams.py": 1,
@@ -281,7 +282,7 @@ def test_item_7_the_population_of_server_starting_calls_equals_the_literal() -> 
         "a server-starting call site was added or removed; edit EXPECTED_POPULATION on purpose "
         f"(found {dict(found)})"
     )
-    assert sum(found.values()) == 13
+    assert sum(found.values()) == 15
 
 
 def _tree(tmp_path: Path, name: str, text: str) -> Path:

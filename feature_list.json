@@ -570,14 +570,15 @@
       "phase": 18,
       "title": "API tests: pytest + httpx black-box through the Gateway — the SAME script #7 and #8 prove",
       "sdd": false,
-      "status": "pending",
+      "status": "done",
       "acceptance": [
         "full happy path; full compensation path",
         "duplicate paymentReference yields one payment",
         "#7's assertions inventoried (from #8's inventory) and each mapped",
         "the causal-order check fails when it has checked too few edges (#8 id 105)",
         "R49's API half against the real Gateway, with Billing's own database showing nothing changed",
-        "R1's API half: every monetary field of every Gateway response is an integer accompanied by an ISO 4217 code, discovered by shape not by name (port #8's MoneyFieldSweep, tests/Gateway.IntegrationTests/MoneyRepresentationHttpTests.cs) and armed with a wrong-shape currency and a non-integer amount; flips R1 from scoped to green"
+        "R1's API half: every monetary field of every Gateway response is an integer accompanied by an ISO 4217 code, discovered by shape not by name (port #8's MoneyFieldSweep, tests/Gateway.IntegrationTests/MoneyRepresentationHttpTests.cs) and armed with a wrong-shape currency and a non-integer amount; flips R1 from scoped to green",
+        "R61's API half (`api/stock-replenishment.spec`): a replenish through the real Gateway tops up a stock item without emitting a fact, without touching any reservation and without advancing any order — the test matrix names feature 31 as this half's closer (added at the phase 18 dispatch, 2026-10-18; #8 id 72's class: a matrix row whose named closer's acceptance list did not carry it)"
       ]
     },
     {

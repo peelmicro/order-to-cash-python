@@ -1560,6 +1560,25 @@ Baselines: **#8** ≈4 h 10 implementer, ≈2 h 30 review, 3 rejections, 4 revie
 
 **Verdict:** DONE — closed by the leader (light): diff read, `quality.sh` green.
 
+## api_tests (id 31, phase 18) — 2026-10-18 — full group, implementer, reviewer (Opus) rejected once, round 2 fixes reviewed by Sonnet, APPROVED
+
+Record: `progress/impl_api_tests.md`; reviews: `progress/review_api_tests.md` (D1 to D6), `progress/review_api_tests_round2.md`. Tests added: 54 in `tests/api` (10 fleet tests). Matrix: R1 (API half), R24, R48, R49, R61 moved to DONE. Inherited #8 findings: ids 57, 60, 105, 72, 63, 104, F1 and the shared-fleet regression avoided; #7's two rejections avoided; a flaky test of the implementer's recurred and was fixed.
+
+**Effort.** Sessions: implementer run 1 (brief 07:56, cut at arm I9 about 08:59, resumed about 15:52, final `quality.sh` 16:33), review 1 (18:37 to 19:16, 39 min), round 2 (19:10 to 19:55, 45 min), review 2 (19:54 to 20:05, 11 min). Full `quality.sh` about 23 to 27 min each. Entries 217 and 218 (separate light fixes) fell inside the window.
+
+**Verdict:** DONE after one rejection round (D1 poll hang, D2 filtered backlog enumeration, D3 sibling-invoice outbox clause, D4 self-switchable vacuity check, D5 count, D6 effort record).
+
+**Against the baselines (leader, from the records above).** #9's agent work was about 3 h 20 min. The implementer ran about 1 h 03 min before the cut and about 44 min after resuming; review 1 took 39 min, the fix round 45 min and review 2 11 min. That is 4 agent sessions, 1 rejection.
+- **#8:** about 2 h of agent work, 2 sessions, 0 rejections (`../order-to-cash-dotnet/progress/history.md:3079`), plus the 16 min of its id 105 follow-up. #9 is **slower than #8**: about 1.6× in agent time, and one rejection more.
+- **#7:** 8 sessions, 2 rejections and a spec amendment (`../order-to-cash-nestjs/progress/history.md:1168`). #9 is **faster than #7**.
+- **Why #9 lost to #8.** None of #9's rejection findings were production defects. All four blocking or required findings (D1 to D4) were test-honesty defects in #9's own new guards: a pacing guard that could only hang, a backlog enumeration filtered by the property under test, a count satisfied by the sibling invoice, and a vacuity check the system under test could switch off. #8's suite had none of these, partly because it had less to cover: #8 had no R1 sweep in this feature and no R61 half. #9 also took on R1's API half (scoped → green) and R61's API half (an acceptance item added at dispatch: the matrix named feature 31 as its closer and the acceptance list did not, #8 id 72's class).
+- **Why #9 gained on #7.** The projector's causal-depth sort was inherited, as #8's was, so the black-box suite found no production defect. The reviewer's tiebreak reversal (R24-A1) failed as intended.
+- **Not counted above:** the two light entries this feature's gate exposed (217, 218), whose effort is recorded in their own entries below.
+
+**Coverage summary** (recounted by script by both reviews): **62 green / 0 scoped / 1 not yet green** (R28, its e2e half, feature 32). R1, R24, R48, R49 and R61 moved.
+
+**Gate:** the last full `./quality.sh` (`.arm/n31r2/quality.log`) passed every gate, with 5 288 pytest tests passed in 1 625.85 s, or 0.307 s per test, against Phase 17's 0.161 s, and 687 web tests. +57 tests: 54 in `tests/api`, plus the guards of 217 and 218. The time per test nearly doubled, but this is **not** comparable: another project's `llama-server` held about 7 of 16 cores for the whole phase (load average 9 to 14). The leader's lighter re-runs at the same load bear this out.
+
 ## mongo_container_ready_before_its_real_server (id 217, phase 18) — 2026-10-18 — light (test-only), one implementer pass, closed by the leader after reading the diff and running the affected tests
 
 **Found by:** the leader, checking why feature 31's final `quality.sh` was red on `test_gateway_health_probes.py` R60. It was not this feature's code: the test failed 3 of 3 runs alone.

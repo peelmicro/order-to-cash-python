@@ -133,6 +133,7 @@ async def eventually[T](
 @dataclass
 class Fleet:
     http: httpx.AsyncClient  # the Gateway, in-process over ASGI, already logged in
+    gateway: Any  # the Gateway's ASGI app (feature 31 serves it on a socket; lifespan: the fleet's)
     databases: dict[str, FreshDatabase]  # "orders" | "fulfillment" | "billing"
     mongo: FreshMongoDatabase
     bootstrap_servers: str
@@ -318,6 +319,7 @@ async def fleet(
         http.headers["Authorization"] = f"Bearer {login.json()['accessToken']}"
         yield Fleet(
             http=http,
+            gateway=gateway,
             databases=databases,
             mongo=fresh_mongo_database,
             bootstrap_servers=kafka_server.bootstrap_servers,
